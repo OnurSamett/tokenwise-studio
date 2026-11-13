@@ -35,7 +35,7 @@ export class Chats {
   save(c) { fs.writeFileSync(this.f(c.id, "json"), JSON.stringify(c, null, 2)); return c; }
   get(id) { return JSON.parse(fs.readFileSync(this.f(id, "json"), "utf8")); }
   list() {
-    return fs.readdirSync(this.dir).filter((x) => x.endsWith(".json"))
+    return fs.readdirSync(this.dir).filter((x) => x.endsWith(".json") && !x.endsWith(".mcp.json"))
       .map((x) => JSON.parse(fs.readFileSync(path.join(this.dir, x), "utf8")))
       .sort((a, b) => b.created.localeCompare(a.created));
   }
