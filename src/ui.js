@@ -60,6 +60,10 @@ http.createServer(async (req, res) => {
   const m = url.pathname.match(/^\/api\/(\w+)(?:\/([\w-]+))?$/);
   try {
     if (url.pathname === "/") return send(res, 200, fs.readFileSync(htmlPath, "utf8"), "text/html; charset=utf-8");
+    if (url.pathname === "/logo.png" || url.pathname === "/favicon.png") {
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=3600" });
+      return res.end(fs.readFileSync(path.join(path.dirname(htmlPath), "..", "assets", "logo.png")));
+    }
     if (!m) return send(res, 404, { error: "not found" });
     const [, what, id] = m;
     if (req.method === "GET") {
