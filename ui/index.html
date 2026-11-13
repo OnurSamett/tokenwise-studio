@@ -275,7 +275,7 @@
 </head>
 <body>
 <aside class="side" id="side">
-  <div class="brand"><img src="/mark.svg" alt="" style="border-radius:0">tokenwise <span>studio</span></div>
+  <div class="brand"><img src="/logo.png" alt="">tokenwise <span>studio</span></div>
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> New task</button>
   <div class="label">Recent</div>
   <div class="chats" id="chats"></div>
@@ -421,7 +421,7 @@ function welcome() {
     ["Explain how this project is structured", "Cheap Claude Haiku workers do the reading, the orchestrator writes the summary."],
     ["Add tests for the least-tested module", "A Codex worker writes them in its own branch, then the tests are run."],
   ];
-  return h("div", { class: "welcome" }, h("img", { src: "/mark.svg", alt: "", style: "width:56px;height:56px;border-radius:0" }),
+  return h("div", { class: "welcome" }, h("img", { src: "/logo.png", alt: "" }),
     h("h2", {}, "What should the team work on?"),
     h("p", {}, "Describe a task. The orchestrator plans it and hands pieces to Codex, Claude or Gemini workers. Every change waits for your review."),
     h("div", { class: "examples" }, ex.map(([t, s]) => h("button", { onclick: () => { $("#input").value = t; autosize(); $("#send").disabled = false; $("#input").focus(); } }, t, h("small", {}, s)))),

@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo-512.png" width="112" alt="tokenwise studio logo"></p>
+<p align="center"><img src="assets/logo.png" width="112" alt="tokenwise studio logo"></p>
 
 # tokenwise studio
 

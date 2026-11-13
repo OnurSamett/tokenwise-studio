@@ -94,10 +94,6 @@ const handler = async (req, res) => {
   const m = url.pathname.match(/^\/api\/(\w+)(?:\/([\w-]+))?$/);
   try {
     if (url.pathname === "/") return send(res, 200, fs.readFileSync(htmlPath, "utf8"), "text/html; charset=utf-8");
-    if (url.pathname === "/mark.svg") {
-      res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "no-cache" });
-      return res.end(fs.readFileSync(path.join(path.dirname(htmlPath), "..", "assets", "mark.svg")));
-    }
     if (url.pathname === "/logo.png" || url.pathname === "/favicon.png") {
       res.writeHead(200, { "content-type": "image/png", "cache-control": "no-cache" });
       const file = url.pathname === "/favicon.png" ? "favicon-64.png" : "logo.png";
