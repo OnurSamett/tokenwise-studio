@@ -260,6 +260,9 @@
   .toggle input { accent-color: var(--accent); width: 16px; height: 16px; margin-top: 2px; }
   .toggle small { display: block; color: var(--dim); font-size: 12.5px; }
   @media (max-width: 560px) { .rolerow .rl { flex-direction: column; gap: 2px; } .rolerow .rl small { text-align: left; } }
+  .rolerow .ctl.with-badge { grid-template-columns: 34px minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(0, 1fr); align-items: center; }
+  .rolerow .ctl .badge { width: 34px; height: 34px; border-radius: 9px; font-size: 13px; }
+  .maker { display: inline-grid; place-items: center; min-width: 22px; height: 18px; padding: 0 5px; border-radius: 5px; font: 700 10.5px/1 -apple-system, sans-serif; letter-spacing: .02em; }
   .goodat { font-size: 12.5px; color: var(--muted); margin-top: 6px; display: flex; gap: 6px; align-items: baseline; }
   .goodat i { font-style: normal; color: var(--dim); }
   .tier { font-size: 11px; border-radius: 999px; padding: 0 7px; line-height: 18px; border: 1px solid var(--line2); color: var(--muted); white-space: nowrap; }
@@ -393,6 +396,19 @@ function applyTheme() {
   $("#themebtn").title = `Theme: ${theme} (click to change)`;
 }
 function cycleTheme() { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; try { localStorage.setItem("tw-theme", theme); } catch {} applyTheme(); toast(`Theme: ${theme}`); }
+
+// Model makers (our own neutral badges, not company logos): initials + a recognisable colour.
+const MAKERS = [
+  [/mistral/i, "Mi", "#ff7000"], [/deepseek/i, "DS", "#4d6bfe"], [/kimi|moonshot/i, "K", "#9aa0ff"], [/glm|z-ai|zhipu/i, "Z", "#3b82f6"],
+  [/nemotron|nvidia/i, "N", "#76b900"], [/step|stepfun/i, "S", "#00b4d8"], [/minimax/i, "MM", "#e8467c"], [/laguna|poolside/i, "P", "#a78bfa"],
+  [/gpt-oss|openai/i, "O", "#10a37f"], [/qwen/i, "Q", "#7c3aed"], [/llama|meta/i, "L", "#0866ff"],
+];
+function makerBadge(model) {
+  const id = String(model || "");
+  const m = MAKERS.find(([re]) => re.test(id));
+  if (!m) return null;
+  return h("span", { class: "maker", style: `background:${m[2]}22;color:${m[2]};border:1px solid ${m[2]}55`, title: "model maker" }, m[1]);
+}
 
 // ---------- model catalog ----------
 let CATALOG = null;
@@ -735,11 +751,12 @@ async function renderDrawer(full) {
         const sel = (val, list, on, label) => h("select", { onchange: (e) => { on(e.target.value); t.preset = null; draw(); } }, list.map((v) => h("option", { value: v, selected: v === val ? true : null }, label ? label(v) : v)));
         return h("div", { class: "rolerow" },
           h("div", { class: "rl" }, h("b", {}, RL[id] || id), h("small", {}, SUB[id] || "")),
-          h("div", { class: "ctl" },
+          h("div", { class: "ctl with-badge" },
+            h("span", { class: "badge " + r.agent, title: AGENT[r.agent] || r.agent }, BADGE[r.agent] || "?"),
             sel(r.agent, agentOpts(id), (v) => { r.agent = v; r.model = (opt.agents[v]?.models || ["auto"])[0]; }, (v) => `${AGENT[v] || v}${opt.agents[v]?.ready ? "" : " · not ready"}`),
             id === "images" ? h("span", { class: "fixed", title: "The image model is picked automatically" }, "Image model") : sel(r.model, models, (v) => { r.model = v; }, (v) => (v === "auto" ? (r.agent === "free" ? "Auto (best available)" : "Auto") : a.labels?.[v] || describeModel(r.agent, v)?.label || modelName(v) || v)),
             id === "images" ? h("span", { class: "fixed" }, "—") : sel(r.effort || "medium", ["low", "medium", "high", "xhigh"], (v) => { r.effort = v; }, (v) => v[0].toUpperCase() + v.slice(1))),
-          (() => { const m = id === "images" ? null : describeModel(r.agent, r.model); return m ? h("div", { class: "goodat" }, h("span", { class: "tier " + m.tier }, TIER[m.tier] || m.tier), h("span", {}, "Good at: ", m.goodAt)) : r.model === "auto" && id !== "images" ? h("div", { class: "goodat" }, h("i", {}, r.agent === "free" ? "Picks the strongest free model available and moves on if one is rate limited." : "Picks the model for each piece by the tokenwise rules.")) : null; })());
+          (() => { const m = id === "images" ? null : describeModel(r.agent, r.model); return m ? h("div", { class: "goodat" }, r.agent === "free" ? makerBadge(r.model) : null, h("span", { class: "tier " + m.tier }, TIER[m.tier] || m.tier), h("span", {}, "Good at: ", m.goodAt)) : r.model === "auto" && id !== "images" ? h("div", { class: "goodat" }, h("i", {}, r.agent === "free" ? "Picks the strongest free model available and moves on if one is rate limited." : "Picks the model for each piece by the tokenwise rules.")) : null; })());
       });
       const freeOk = opt.agents.free?.ready || opt.agents.free?.optIn;
       set(body,
@@ -782,7 +799,7 @@ async function renderDrawer(full) {
           return h("div", { class: "mgroup" },
             h("h4", {}, h("span", { class: "badge " + agent }, BADGE[agent]), title, h("span", { class: "tier " + (ready ? "fast" : "") }, ready ? "ready" : "not set up")),
             items.map((c) => h("div", { class: "mrow" + (avail(agent, c) ? "" : " off") },
-              h("b", {}, c.label), h("span", { class: "tier " + c.tier }, TIER[c.tier] || c.tier),
+              h("b", {}, agent === "free" ? [makerBadge(c.match), " "] : null, c.label), h("span", { class: "tier " + c.tier }, TIER[c.tier] || c.tier),
               h("div", { class: "good" }, "Good at: ", c.goodAt),
               h("div", { class: "note" }, c.notes, c.source === "vendor description" ? "" : " (tokenwise default)", avail(agent, c) ? "" : " · not offered on your account right now"))));
         }),
