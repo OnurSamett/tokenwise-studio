@@ -35,12 +35,12 @@ export function agyModels() {
 
 /**
  * Antigravity bakes effort into the model id (e.g. gemini-3.8-flash-low).
- * Accepts a family ("flash", "argon", "hydrogen") or a full id, plus our effort level.
+ * Accepts a family ("hydrogen" = fast default, "argon" = frontier, "flash" = older) or a full id, plus our effort level.
  */
 export function agySlug(model, effort) {
   const list = agyModels() || [];
   if (model && list.includes(model)) return model;
-  const fam = (model || process.env.TOKENWISE_GEMINI_MODEL || "flash").toLowerCase();
+  const fam = (model || process.env.TOKENWISE_GEMINI_MODEL || "hydrogen").toLowerCase();
   const order = { low: ["low", "medium"], medium: ["medium", "low", "high"], high: ["high", "medium"], xhigh: ["xhigh", "high"] }[effort] || ["medium"];
   const cands = list.filter((id) => id.startsWith("gemini") && id.includes(`-${fam}-`));
   for (const e of order) { const hit = cands.find((id) => id.endsWith(`-${e}`)); if (hit) return hit; }
