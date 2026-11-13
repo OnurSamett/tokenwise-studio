@@ -149,10 +149,11 @@ export class Jobs {
   usage(id) {
     const f = this.file(id, "log");
     const sum = { input: 0, cached: 0, output: 0 };
-    let found = false, claude = null, cost = null;
+    let found = false, claude = null, cost = null, model = null;
     for (const l of fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n") : []) {
       let e;
       try { const o = JSON.parse(l); if (o.stream !== "out") continue; e = JSON.parse(o.line); } catch { continue; }
+      if (e && e.type === "free.init" && e.model) { model = `${e.model} (${e.provider})`; continue; } // the model that actually answered
       if (e && e.type === "free.usage" && e.usage) {
         claude = { input: e.usage.prompt_tokens || 0, cached: 0, output: e.usage.completion_tokens || 0 };
         continue;
@@ -172,7 +173,7 @@ export class Jobs {
         cost = typeof e.total_cost_usd === "number" ? e.total_cost_usd : null;
       }
     }
-    return { tokens: claude || (found ? sum : null), cost };
+    return { tokens: claude || (found ? sum : null), cost, ...(model ? { model } : {}) };
   }
 
   async wait(id, timeoutS = 600) {

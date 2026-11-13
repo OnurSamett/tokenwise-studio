@@ -75,7 +75,7 @@ export function command({ agent, model, effort, via }, { task, cwd, write, lastF
   }
   if (agent === "free") {
     // Free-tier chat APIs driven by our own small tool loop (src/freeagent.js): reads the repo,
-    // and in write mode edits files and runs allowlisted test commands inside the worktree.
+    // and in write mode edits files inside the worktree (no commands; see freeagent.js).
     const env = model && model !== "auto" ? { TOKENWISE_FREE_MODEL: model } : {};
     return { cmd: process.execPath, args: [FREEAGENT, ...(write ? ["--write"] : []), task], env };
   }

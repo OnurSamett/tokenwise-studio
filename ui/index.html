@@ -681,10 +681,12 @@ async function renderDrawer(full) {
   }
 }
 
+// Files that can make code run later (CI, git hooks, package scripts, build files): flag them in review.
+const RUNS_CODE = /^(\.github\/workflows\/|\.husky\/|\.githooks\/|\.vscode\/)|(^|\/)(package\.json|Makefile|\.gitattributes|\.gitmodules|setup\.py|pyproject\.toml|Cargo\.toml|build\.rs|conftest\.py|\.pre-commit-config\.yaml)$/;
 function fileBlock(f, checkbox, tag) {
   const lines = f.patch.split("\n").filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode)/.test(l));
   return h("details", { class: "file", open: true },
-    h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "plus" }, "+" + f.add), h("span", { class: "minus" }, "−" + f.del)),
+    h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), RUNS_CODE.test(f.path) ? h("span", { class: "tag", style: "color:var(--warn)", title: "This file can make code run later (CI, hooks, scripts). Review it carefully." }, "⚠ can run code") : null, tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "plus" }, "+" + f.add), h("span", { class: "minus" }, "−" + f.del)),
     h("div", { class: "diff" }, lines.map((l) => h("span", { class: l.startsWith("+") ? "a" : l.startsWith("-") ? "d" : l.startsWith("@@") ? "h" : "" }, l.startsWith("@@") ? "⋯" : l || " "))));
 }
 
