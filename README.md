@@ -1,4 +1,6 @@
-# 🪙 tokenwise studio
+<p align="center"><img src="assets/logo-512.png" width="112" alt="tokenwise studio logo"></p>
+
+# tokenwise studio
 
 **One agent orchestrates, the others do the work.** Let Claude Opus plan and review while ChatGPT Codex **Sol**, Claude **Haiku/Sonnet** or **Gemini** do the hands-on work, each in its own git worktree, with a live web UI to watch and approve it all.
 
