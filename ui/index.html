@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tokenwise studio</title>
+<style>
+  :root {
+    --bg: #070d1f; --panel: #0d1630; --panel2: #121d3d; --line: #1f2c55;
+    --text: #e8ecf8; --muted: #8d98bd; --gold: #f2c14e; --blue: #5b8cff;
+    --ok: #3ccf91; --bad: #ff6b6b; --run: #f2c14e; --merged: #8b7bff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  .coin { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe08a, var(--gold) 60%, #b8862a); }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header .repo { color: var(--muted); font-family: var(--mono); font-size: 12px; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50vw; }
+  main { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; height: calc(100vh - 53px); }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; height: auto; } }
+  aside { border-right: 1px solid var(--line); overflow: auto; padding: 14px; }
+  .orch { background: linear-gradient(135deg, #1a2550, var(--panel)); border: 1px solid #2c3c78; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .orch b { color: var(--gold); }
+  .tree { border-left: 2px solid var(--line); margin-left: 14px; padding-left: 12px; }
+  .job { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; cursor: pointer; position: relative; }
+  .job::before { content: ""; position: absolute; left: -14px; top: 20px; width: 12px; height: 2px; background: var(--line); }
+  .job.sel { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
+  .job .t { font-weight: 560; margin: 4px 0 2px; word-break: break-word; }
+  .meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); }
+  .chip { border-radius: 999px; padding: 1px 8px; font-size: 11.5px; font-weight: 600; border: 1px solid var(--line); background: var(--panel2); }
+  .chip.codex { color: #7fe3b8; } .chip.claude { color: #ffb38a; } .chip.gemini { color: #8fb4ff; }
+  .st { font-weight: 650; } .st.running { color: var(--run); } .st.done { color: var(--ok); } .st.failed { color: var(--bad); } .st.merged { color: var(--merged); } .st.discarded { color: var(--muted); }
+  section { overflow: auto; padding: 16px 20px; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  h2 { font-size: 16px; margin: 0 0 4px; }
+  .task { white-space: pre-wrap; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0 12px; font-size: 13px; }
+  .tabs { display: flex; gap: 6px; margin: 8px 0; }
+  .tabs button, .btn { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  .tabs button.on { border-color: var(--blue); color: #fff; }
+  .btn.gold { background: var(--gold); color: #1b1400; border-color: var(--gold); font-weight: 650; }
+  .btn.red { color: var(--bad); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  pre { margin: 0; background: #050a18; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 62vh; overflow: auto; }
+  .l-err { color: #ff9b9b; } .l-meta { color: var(--muted); } .add { color: #7fe3a0; } .del { color: #ff8f8f; } .hunk { color: var(--blue); }
+  .final { border-left: 3px solid var(--gold); padding: 8px 12px; background: var(--panel); border-radius: 0 8px 8px 0; white-space: pre-wrap; margin: 8px 0; }
+  .actions { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+  form { background: var(--panel); border: 1px dashed #2c3c78; border-radius: 10px; padding: 10px; margin-top: 14px; display: grid; gap: 6px; }
+  form select, form input, form textarea { width: 100%; background: #050a18; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  form .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .err { color: var(--bad); font-size: 12px; min-height: 1em; }
+</style>
+</head>
+<body>
+<header><div class="coin"></div><h1>tokenwise studio</h1><span class="repo" id="repo"></span></header>
+<main>
+  <aside>
+    <div class="orch"><b>Orchestrator</b> — your main agent session (e.g. Claude Opus in Claude Code) calling the <code>delegate</code> tool.</div>
+    <div class="tree" id="tree"><div class="empty">No jobs yet.</div></div>
+    <form id="f">
+      <b>Delegate manually</b>
+      <div class="row">
+        <select name="agent"><option>codex</option><option>claude</option><option>gemini</option></select>
+        <input name="model" placeholder="model (sol / haiku…)">
+        <select name="effort"><option>medium</option><option>low</option><option>high</option><option>xhigh</option></select>
+      </div>
+      <textarea name="task" rows="3" placeholder="Self-contained task: files, what to do, when it's done"></textarea>
+      <label><input type="checkbox" name="write" style="width:auto"> may edit files (own git worktree)</label>
+      <button class="btn gold">Start</button>
+      <div class="err" id="ferr"></div>
+    </form>
+  </aside>
+  <section id="detail"><div class="empty">Select a job to see its live output and changes.</div></section>
+</main>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const h = (tag, attrs = {}, ...kids) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "class" ? (el.className = v) : k.startsWith("on") ? el.addEventListener(k.slice(2), v) : el.setAttribute(k, v);
+  for (const k of kids) el.append(k instanceof Node ? k : document.createTextNode(k ?? ""));
+  return el;
+};
+let jobs = [], sel = null, tab = "log", logFrom = 0, logBox = null;
+
+const since = (a, b) => { const s = Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000); return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + (s % 60) + "s"; };
+
+async function refresh() {
+  const r = await fetch("/api/jobs").then((r) => r.json());
+  $("#repo").textContent = r.repo;
+  jobs = r.jobs.reverse();
+  const tree = $("#tree"); tree.replaceChildren();
+  if (!jobs.length) tree.append(h("div", { class: "empty" }, "No jobs yet."));
+  for (const j of jobs) {
+    tree.append(h("div", { class: "job" + (j.id === sel ? " sel" : ""), onclick: () => select(j.id) },
+      h("div", { class: "meta" }, h("span", { class: "chip " + j.agent }, j.agent), h("span", { class: "chip" }, `${j.model} · ${j.effort}`), j.write ? h("span", { class: "chip" }, "writes") : "", h("span", { class: "st " + j.status }, j.status), since(j.created, j.finished)),
+      h("div", { class: "t" }, j.title)));
+  }
+  if (sel) renderHeader();
+}
+
+function select(id) { sel = id; tab = "log"; logFrom = 0; renderDetail(); refresh(); }
+
+function renderHeader() {
+  const j = jobs.find((x) => x.id === sel); if (!j) return;
+  const hd = $("#hd"); if (!hd) return;
+  hd.replaceChildren(
+    h("h2", {}, j.title),
+    h("div", { class: "meta" }, h("span", { class: "chip " + j.agent }, j.agent), h("span", { class: "chip" }, `${j.model} · ${j.effort}`), h("span", { class: "st " + j.status }, j.status), j.diffStat ? h("span", {}, j.diffStat.split("\n").pop()) : ""),
+    h("div", { class: "task" }, j.task),
+    j.final ? h("div", { class: "final" }, j.final) : "",
+    j.write ? h("div", { class: "actions" },
+      h("button", { class: "btn gold", onclick: () => act("merge"), ...(j.status === "done" ? {} : { disabled: "" }) }, "Apply changes"),
+      h("button", { class: "btn red", onclick: () => act("discard"), ...(["merged", "discarded"].includes(j.status) ? { disabled: "" } : {}) }, "Discard")) : "");
+}
+
+function renderDetail() {
+  const d = $("#detail"); d.replaceChildren(h("div", { id: "hd" }),
+    h("div", { class: "tabs" }, ...["log", "diff"].map((t) => h("button", { class: t === tab ? "on" : "", onclick: () => { tab = t; logFrom = 0; renderDetail(); } }, t === "log" ? "Live output" : "Changes"))),
+    (logBox = h("pre", {})));
+  renderHeader(); poll();
+}
+
+async function poll() {
+  if (!sel) return;
+  if (tab === "diff") {
+    const { diff } = await fetch("/api/diff/" + sel).then((r) => r.json());
+    logBox.replaceChildren();
+    for (const l of (diff || "(no changes yet)").split("\n")) logBox.append(h("div", { class: l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : l.startsWith("@@") ? "hunk" : "" }, l));
+    return;
+  }
+  const r = await fetch(`/api/log/${sel}?from=${logFrom}`).then((r) => r.json());
+  const atBottom = logBox.scrollTop + logBox.clientHeight >= logBox.scrollHeight - 30;
+  for (const l of r.lines) logBox.append(h("div", { class: "l-" + l.stream }, l.text));
+  logFrom = r.next;
+  if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+}
+
+async function act(what) {
+  const r = await fetch(`/api/${what}/${sel}`, { method: "POST" }).then((r) => r.json());
+  if (r.error) alert(r.error);
+  refresh();
+}
+
+$("#f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const body = { agent: fd.get("agent"), effort: fd.get("effort"), task: fd.get("task"), write: !!fd.get("write") };
+  if (fd.get("model")) body.model = fd.get("model");
+  const r = await fetch("/api/delegate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+  $("#ferr").textContent = r.error || "";
+  if (!r.error) { e.target.reset(); select(r.id); }
+});
+
+refresh(); setInterval(refresh, 2000); setInterval(() => tab === "log" && poll(), 1200);
+</script>
+</body>
+</html>

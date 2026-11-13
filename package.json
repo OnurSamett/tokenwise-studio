@@ -1,0 +1,22 @@
+{
+  "name": "tokenwise-studio",
+  "version": "0.1.0",
+  "description": "Let one agent orchestrate others: Claude Opus delegates to Codex Sol, Claude Haiku/Sonnet or Gemini workers in isolated git worktrees, with a live web UI.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "tokenwise-studio-mcp": "src/mcp.js",
+    "tokenwise-studio-ui": "src/ui.js"
+  },
+  "scripts": {
+    "ui": "node src/ui.js",
+    "mcp": "node src/mcp.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "3.25.76"
+  }
+}
