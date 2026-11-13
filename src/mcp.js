@@ -12,7 +12,7 @@ const server = new McpServer({ name: "tokenwise-studio", version: "0.1.0" });
 
 const brief = (j) => ({
   id: j.id, status: j.status, agent: j.agent, model: j.model, effort: j.effort, write: j.write,
-  title: j.title, diffStat: j.diffStat, final: j.final ? String(j.final).slice(0, 4000) : null,
+  title: j.title, diffStat: j.diffStat, files: j.files, final: j.final ? String(j.final).slice(0, 4000) : null,
 });
 const ok = (obj) => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }] });
 const fail = (e) => ({ isError: true, content: [{ type: "text", text: String(e.message || e) }] });
@@ -67,10 +67,10 @@ server.registerTool("job_diff", {
 
 server.registerTool("job_merge", {
   title: "Apply a job's changes",
-  description: "Apply a finished write job's changes to the main working tree as staged, uncommitted changes (so you can still review or commit) and remove its worktree.",
-  inputSchema: { id: z.string() },
-}, async ({ id }) => {
-  try { return ok(brief(jobs.merge(id))); } catch (e) { return fail(e); }
+  description: "Optionally pass `files` to apply only those paths. Apply a finished write job's changes to the main working tree as staged, uncommitted changes (so you can still review or commit) and remove its worktree.",
+  inputSchema: { id: z.string(), files: z.array(z.string()).optional() },
+}, async ({ id, files }) => {
+  try { return ok(brief(jobs.merge(id, files))); } catch (e) { return fail(e); }
 });
 
 server.registerTool("job_discard", {

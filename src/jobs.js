@@ -4,6 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { command, resolve, textOf } from "./workers.js";
 
+// Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
+const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/node_modules/**", "**/.DS_Store",
+  "**/.mypy_cache/**", "**/.ruff_cache/**", "**/target/debug/**", "**/.next/**", "**/coverage/**"];
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
 export class Jobs {
@@ -48,7 +51,7 @@ export class Jobs {
 
   isGit() { try { git(this.repo, "rev-parse", "--is-inside-work-tree"); return true; } catch { return false; } }
 
-  start({ agent, model, effort, task, write = false, title, timeoutMin = 20 }) {
+  start({ agent, model, effort, task, write = false, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null }) {
     const spec = resolve({ agent, model, effort });
     const id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
     let cwd = this.repo, branch = null;
@@ -59,9 +62,9 @@ export class Jobs {
       git(this.repo, "worktree", "add", "-q", "-b", branch, cwd, "HEAD");
     }
     const job = this.save({
-      id, title: title || task.slice(0, 80), task, ...spec, write, cwd, branch,
+      id, title: title || task.slice(0, 80), task, ...spec, write, cwd, branch, parent,
       status: "running", created: new Date().toISOString(), finished: null, exitCode: null,
-      final: null, diffStat: null,
+      final: null, diffStat: null, files: [], pid: null,
     });
 
     const lastFile = this.file(id, "last");
@@ -71,6 +74,7 @@ export class Jobs {
     write1("meta", `$ ${cmd} ${args.map((a) => (a.length > 60 ? a.slice(0, 57) + "..." : a)).join(" ")}`);
 
     const child = spawn(cmd, args, { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    this.save({ ...job, pid: child.pid });
     let lastText = null, buf = { out: "", err: "" };
     const onData = (stream) => (chunk) => {
       buf[stream] += chunk.toString();
@@ -89,13 +93,14 @@ export class Jobs {
     const done = new Promise((res) => child.on("close", (code) => {
       clearTimeout(timer);
       const j = this.get(id);
-      j.exitCode = code; j.finished = new Date().toISOString();
-      j.status = code === 0 ? "done" : "failed";
+      j.exitCode = code; j.finished = new Date().toISOString(); j.pid = null;
+      if (j.status !== "discarded") j.status = code === 0 ? "done" : "failed";
       j.final = (fs.existsSync(lastFile) && fs.readFileSync(lastFile, "utf8").trim()) || lastText;
       if (write) {
         try {
-          git(cwd, "add", "-A");
+          git(cwd, "add", "-A", "--", ".", ...ARTIFACTS.map((x) => `:(exclude,glob)${x}`));
           j.diffStat = git(cwd, "diff", "--cached", "--stat", "HEAD").trim() || "(no changes)";
+          j.files = git(cwd, "diff", "--cached", "--name-only", "HEAD").split("\n").filter(Boolean);
           fs.writeFileSync(this.file(id, "diff"), git(cwd, "diff", "--cached", "--binary", "HEAD"));
         } catch (e) { j.diffStat = "diff failed: " + e.message; }
       }
@@ -125,20 +130,29 @@ export class Jobs {
     return fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "";
   }
 
-  /** Apply the worker's changes to the main working tree (uncommitted), then clean up. */
-  merge(id) {
+  /** Apply the worker's changes (all files, or only `files`) to the main working tree as staged
+   *  changes, then remove the worktree. Files not selected are dropped. */
+  merge(id, files) {
     const j = this.get(id);
     if (!j.write) throw new Error("read-only job: nothing to merge");
-    if (j.status === "running") throw new Error("job still running");
+    if (j.status !== "done") throw new Error(`job is ${j.status}; only finished jobs can be applied`);
     const f = this.file(id, "diff");
-    if (fs.existsSync(f) && fs.statSync(f).size > 0) git(this.repo, "apply", "--3way", "--whitespace=nowarn", f);
+    if (fs.existsSync(f) && fs.statSync(f).size > 0) {
+      const pick = Array.isArray(files) && files.length ? files : null;
+      if (pick && pick.some((x) => !(j.files || []).includes(x))) throw new Error("unknown file in selection");
+      const args = ["apply", "--3way", "--whitespace=nowarn", ...(pick ? pick.flatMap((x) => ["--include", x]) : []), f];
+      git(this.repo, ...args);
+      j.applied = pick || j.files;
+    }
     this.cleanup(j);
     j.status = "merged"; return this.save(j);
   }
 
   discard(id) {
     const j = this.get(id);
-    const r = this.running.get(id); if (r) r.child.kill("SIGTERM");
+    const r = this.running.get(id);
+    if (r) r.child.kill("SIGTERM");
+    else if (j.status === "running" && j.pid) { try { process.kill(j.pid, "SIGTERM"); } catch {} }
     if (j.write) this.cleanup(j);
     j.status = "discarded"; return this.save(j);
   }
