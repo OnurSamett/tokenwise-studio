@@ -67,6 +67,34 @@ function claude(e, base) {
   return [];
 }
 
+const AGY_TOOL = {
+  read_file: "read", view_file: "read", list_dir: "search", grep_search: "search", find_by_name: "search",
+  edit_file: "edit", write_to_file: "edit", replace_file_content: "edit", multi_replace_file_content: "edit", sed_file: "edit",
+  run_command: "cmd",
+};
+function antigravity(e, base) {
+  if (e.event === "init") return [{ kind: "meta", text: `session started · ${e.init?.model || ""}` }];
+  const s = e.step_update;
+  if (s && s.state === "DONE" && s.step_type === "tool") {
+    const p = s.tool_info?.parameters || {};
+    const kind = AGY_TOOL[s.tool_name] || "tool";
+    const target = p.Path || p.TargetFile || p.AbsolutePath || p.DirectoryPath || p.SearchPath || "";
+    if (kind === "cmd") return [{ kind, text: short(p.CommandLine || p.Command || s.tool_name, 200) }];
+    if (kind === "search") return [{ kind, text: `${s.tool_name} ${short(p.Query || p.Pattern || rel(target, base), 120)}` }];
+    if (kind === "tool") return [{ kind, text: s.tool_name }];
+    return [{ kind, text: kind === "edit" ? `edit ${rel(target, base)}` : rel(target, base) }];
+  }
+  if (e.event === "result" && e.result) {
+    const r = e.result, u = r.usage || {};
+    const out = [];
+    if (r.response) out.push({ kind: "say", text: r.response.replace(/\]\(file:\/\/[^)]*\)/g, "]").replace(/\[`?([^\]`]+)`?\]/g, "`$1`") });
+    out.push({ kind: "usage", text: `${(u.input_tokens || 0).toLocaleString()} in (${(u.cache_read_tokens || 0).toLocaleString()} cached) · ${(u.output_tokens || 0).toLocaleString()} out` });
+    out.push({ kind: r.status === "SUCCESS" ? "done" : "error", text: `${(r.status || "").toLowerCase()} · ${Math.round(r.duration_seconds || 0)}s` });
+    return out;
+  }
+  return [];
+}
+
 function gemini(e) {
   if (e.type === "message" && e.role === "assistant" && e.content) return [{ kind: "say", text: e.content }];
   if (e.type === "tool_use") return [{ kind: "tool", text: `${e.tool_name || e.name || "tool"} ${short(JSON.stringify(e.parameters || e.args || {}), 120)}` }];
@@ -87,5 +115,6 @@ export function normalize(agent, entry, base) {
   let e; try { e = JSON.parse(entry.line); } catch { return [{ kind: "say", text: entry.line }]; }
   if (agent === "codex") return codex(e, base);
   if (agent === "claude") return claude(e, base);
+  if (e.event) return antigravity(e, base);
   return gemini(e);
 }

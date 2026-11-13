@@ -304,7 +304,7 @@ const api = async (p, body) => {
 const clock = (a, b) => { const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 const AGENT = { codex: "Codex", claude: "Claude", gemini: "Gemini" };
 const BADGE = { codex: "C", claude: "A", gemini: "G" };
-const modelName = (m = "") => { const f = String(m).match(/(luna|terra|sol|astra|haiku|sonnet|opus|flash|pro)/i); return f ? f[1][0].toUpperCase() + f[1].slice(1).toLowerCase() : m; };
+const modelName = (m = "") => { const f = String(m).match(/(luna|terra|sol|astra|haiku|sonnet|opus|flash|argon|hydrogen|pro)/i); return f ? f[1][0].toUpperCase() + f[1].slice(1).toLowerCase() : m; };
 const effortBars = (e) => { const n = { low: 1, medium: 2, high: 3, xhigh: 4 }[e] || 2; return h("span", { class: "effort", title: `effort: ${e}` }, ...[1, 2, 3].map((i) => h("i", { class: i <= Math.min(n, 3) ? "on" : "" }))); };
 const STATE = { running: "working", done: "ready", failed: "failed", merged: "applied", discarded: "discarded" };
 
@@ -402,7 +402,7 @@ function doctorRow() {
     set(row, ["claude", "codex", "gemini"].map((k) => {
       const v = d[k] || {};
       const cls = v.installed && v.signedIn ? "" : v.installed ? " warn" : " off";
-      const label = v.installed && v.signedIn ? "ready" : v.installed ? [k === "gemini" ? "API key: " : "sign in: ", h("code", {}, fix[k])] : "not installed";
+      const label = v.installed && v.signedIn ? (v.via === "antigravity" ? "ready · Antigravity" : "ready") : v.installed ? (v.via === "antigravity" ? ["sign in: ", h("code", {}, "agy")] : [k === "gemini" ? "API key: " : "sign in: ", h("code", {}, fix[k])]) : "not installed";
       return h("span", { class: "doc" + cls, title: v.installed ? "" : `npm i -g ${k === "claude" ? "@anthropic-ai/claude-code" : k === "codex" ? "@openai/codex" : "@google/gemini-cli"}` }, h("i"), AGENT[k], " · ", label);
     }));
   }).catch(() => {});

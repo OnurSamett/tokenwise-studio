@@ -1,5 +1,6 @@
 // Worker adapters: turn {agent, model, effort, write} into a headless CLI command.
 import { execFileSync } from "node:child_process";
+import { findAgy, agySlug } from "./antigravity.js";
 
 export const AGENTS = ["codex", "claude", "gemini"];
 const EFFORTS = ["low", "medium", "high", "xhigh"];
@@ -37,12 +38,24 @@ export function resolve({ agent, model, effort }) {
     }
   } else if (agent === "claude") {
     m = model || process.env.TOKENWISE_CLAUDE_MODEL || "haiku";
+  } else if (agent === "gemini" && findAgy() && !process.env.GEMINI_API_KEY) {
+    // Prefer Antigravity (personal Google account); fall back to Gemini CLI when an API key is set.
+    m = agySlug(model, eff);
+    return { agent, model: m, effort: eff, via: "antigravity" };
   }
   return { agent, model: m, effort: eff };
 }
 
 /** Build the CLI invocation. `lastFile` receives Codex's final message. */
-export function command({ agent, model, effort }, { task, cwd, write, lastFile }) {
+export function command({ agent, model, effort, via }, { task, cwd, write, lastFile }) {
+  if (agent === "gemini" && via === "antigravity") {
+    const args = ["-p", task, "--model", model, "--output-format", "stream-json", "--print-timeout", "0s",
+      "--mode", write ? "accept-edits" : "plan"];
+    // Headless mode can't ask for permission. Write jobs (in their own worktree) may edit files and run
+    // commands, but only inside Antigravity's terminal sandbox, like Codex's workspace-write sandbox.
+    if (write) args.push("--sandbox", "--settings", JSON.stringify({ permissions: { allow: ["write_file(*)", "command(*)"] } }));
+    return { cmd: findAgy(), args };
+  }
   if (agent === "codex") {
     return {
       cmd: "codex",
@@ -71,6 +84,7 @@ export function command({ agent, model, effort }, { task, cwd, write, lastFile }
 export function textOf(evt) {
   if (!evt || typeof evt !== "object") return null;
   if (typeof evt.result === "string") return evt.result; // claude final
+  if (evt.event === "result" && evt.result) return evt.result.response || null; // antigravity final
   const item = evt.item || evt.msg || evt;
   if (typeof item.text === "string") return item.text;
   if (typeof item.message === "string") return item.message;

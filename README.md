@@ -33,7 +33,7 @@ Companion to [tokenwise](https://github.com/OnurSamett/tokenwise): tokenwise dec
 ## Requirements
 
 - Node 20+, git
-- At least one worker CLI, signed in: [Codex CLI](https://github.com/openai/codex) (`codex login`), [Claude Code](https://www.npmjs.com/package/@anthropic-ai/claude-code) (`claude auth login`), [Gemini CLI](https://github.com/google-gemini/gemini-cli) (needs `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com); Google-account sign-in no longer works for individuals)
+- At least one worker CLI, signed in: [Codex CLI](https://github.com/openai/codex) (`codex login`), [Claude Code](https://www.npmjs.com/package/@anthropic-ai/claude-code) (`claude auth login`), Gemini via [Google Antigravity](https://antigravity.google) (`agy`, included in Gemini.app on macOS; run it once to sign in with your Google account; models `flash`, `argon`, `hydrogen`) or [Gemini CLI](https://github.com/google-gemini/gemini-cli) with `GEMINI_API_KEY` (Gemini CLI's own Google sign-in no longer works for individuals)
 
 ## Setup
 
@@ -84,7 +84,7 @@ Just ask your orchestrator, e.g. in Claude Code on Opus:
 ### Defaults and guard rails
 
 - Codex: `sol` at `medium` (families `terra`/`sol` resolve to the newest version automatically). `astra` is blocked unless `TOKENWISE_CODEX_ASTRA=1`.
-- Claude: `haiku` at `low`. Gemini: its default model at `medium`.
+- Claude: `haiku` at `low`. Gemini (Antigravity): `flash` at `medium`; write jobs may run commands only inside Antigravity's terminal sandbox.
 - `max`/`ultra` effort is refused.
 - Write jobs branch from `HEAD`: uncommitted changes in your tree aren't visible to workers.
 - The UI binds to `127.0.0.1` only. State lives in `.tokenwise-studio/` (git-excluded automatically).

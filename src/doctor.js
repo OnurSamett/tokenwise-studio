@@ -1,5 +1,6 @@
 // Environment check for the UI: which CLIs are installed and signed in. Cached for 60s, never throws.
 import { spawnSync } from "node:child_process";
+import { findAgy, agyModels } from "./antigravity.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,13 +18,16 @@ const installed = (bin) => {
 };
 
 function check() {
-  const claude = installed("claude"), codex = installed("codex"), gemini = installed("gemini");
+  const claude = installed("claude"), codex = installed("codex"), gemini = installed("gemini"), agy = !!findAgy();
   return {
     git: { installed: installed("git") },
     claude: { installed: claude, signedIn: claude && /"loggedIn"\s*:\s*true/.test(run("claude", ["auth", "status"])?.out || "") },
     codex: { installed: codex, signedIn: codex && /logged in/i.test(run("codex", ["login", "status"])?.out || "") },
-    // Google-account sign-in no longer works for individuals in Gemini CLI, so only an API key counts.
-    gemini: { installed: gemini, signedIn: !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENAI_USE_VERTEXAI), needs: "api-key" },
+    // Gemini CLI's Google sign-in no longer works for individuals, so without Antigravity only an API key counts.
+    // Gemini runs through Antigravity (personal Google account) when available, else Gemini CLI with an API key.
+    gemini: agy
+      ? { installed: true, signedIn: !!agyModels(), via: "antigravity" }
+      : { installed: gemini, signedIn: !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENAI_USE_VERTEXAI), needs: "api-key" },
   };
 }
 

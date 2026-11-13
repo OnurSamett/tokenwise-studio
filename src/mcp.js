@@ -22,7 +22,7 @@ server.registerTool("delegate", {
   description: [
     "Start a self-contained task on another AI agent CLI and return a job id immediately (it runs in the background).",
     "agent: 'codex' (models: terra, sol [default], or a full slug; astra is blocked unless the user opted in),",
-    "'claude' (haiku [default], sonnet, opus) or 'gemini'. effort: low|medium|high|xhigh.",
+    "'claude' (haiku [default], sonnet, opus) or 'gemini' (via Google Antigravity: flash [default, fast], argon, hydrogen [strongest]). effort: low|medium|high|xhigh.",
     "write=false: read-only answer. write=true: the worker edits files in its own git worktree branched from HEAD",
     "(uncommitted changes in the main tree are NOT visible to it); review with job_diff, then job_merge or job_discard.",
     "The worker cannot see this conversation: put every detail it needs in `task` (files, constraints, done-condition).",

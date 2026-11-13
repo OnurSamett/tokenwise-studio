@@ -97,6 +97,8 @@ export class Jobs {
       if (j.status !== "discarded") j.status = code === 0 ? "done" : "failed";
       Object.assign(j, this.usage(id));
       j.final = (fs.existsSync(lastFile) && fs.readFileSync(lastFile, "utf8").trim()) || lastText;
+      // Some CLIs answer with local file:// markdown links; keep just the link text.
+      if (j.final) j.final = String(j.final).replace(/\[([^\]]+)\]\(file:\/\/[^)]*\)/g, "$1");
       if (write) {
         try {
           git(cwd, "add", "-A", "--", ".", ...ARTIFACTS.map((x) => `:(exclude,glob)${x}`));
@@ -124,6 +126,12 @@ export class Jobs {
     for (const l of fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n") : []) {
       let e;
       try { const o = JSON.parse(l); if (o.stream !== "out") continue; e = JSON.parse(o.line); } catch { continue; }
+      if (e && e.event === "result" && e.result?.usage) { // antigravity
+        const r = e.result.usage;
+        // Antigravity's input_tokens already includes the cached part (total = input + output).
+        claude = { input: r.input_tokens || 0, cached: r.cache_read_tokens || 0, output: (r.output_tokens || 0) + (r.thinking_tokens || 0) };
+        continue;
+      }
       const u = e && e.usage;
       if (!u) continue;
       if (e.type === "turn.completed") {
