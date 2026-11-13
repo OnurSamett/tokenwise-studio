@@ -28,7 +28,7 @@ server.registerTool("delegate", {
     "(uncommitted changes in the main tree are NOT visible to it); review with job_diff, then job_merge or job_discard.",
     "The worker cannot see this conversation: put every detail it needs in `task` (files, constraints, done-condition).",
     "Dispatch independent tasks in parallel, then job_wait each.",
-    "If a worker's plan is near its usage limit or it hits a rate limit, the job is automatically moved to the next worker (codex → gemini → claude → local → free); job_wait follows the move.",
+    "If a worker's plan is near its usage limit or it hits a rate limit, the job is automatically moved to the next worker (codex → gemini → claude → free → local); job_wait follows the move.",
   ].join(" "),
   inputSchema: {
     agent: z.enum(["codex", "claude", "gemini", "local", "free"]),

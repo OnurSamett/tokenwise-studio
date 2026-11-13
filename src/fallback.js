@@ -2,7 +2,7 @@
 // error), hand the task to the next available worker instead of stopping.
 //
 // Order (override with TOKENWISE_FALLBACK, comma-separated):
-//   codex → gemini → claude → local → free
+//   codex → gemini → claude → free → local
 // - "local" (Ollama) is free and unlimited and can edit files.
 // - "free" (free-tier chat API) is read-only text only and opt-in (TOKENWISE_ALLOW_FREE=1),
 //   because free tiers may use prompts for training.
@@ -11,7 +11,7 @@ import { limits } from "./limits.js";
 
 export const RATE_LIMIT = /rate.?limit|usage limit|quota|\b429\b|too many requests|limit (?:reached|exceeded)|exceeded your|out of credits/i;
 
-const chain = () => (process.env.TOKENWISE_FALLBACK || "codex,gemini,claude,local,free").split(",").map((s) => s.trim()).filter(Boolean);
+const chain = () => (process.env.TOKENWISE_FALLBACK || "codex,gemini,claude,free,local").split(",").map((s) => s.trim()).filter(Boolean);
 const threshold = () => Number(process.env.TOKENWISE_LIMIT_THRESHOLD || 90);
 
 /** Is this agent's plan at or above the threshold? Returns a short reason or null. */

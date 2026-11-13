@@ -1,6 +1,7 @@
 // Environment check for the UI: which CLIs are installed and signed in. Cached for 60s, never throws.
 import { spawnSync } from "node:child_process";
 import { findAgy, agyModels } from "./antigravity.js";
+import { freeProviders } from "./freechat.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -45,9 +46,10 @@ function localCheck() {
 
 // Free-tier chat API (read-only). Configured by a key; used only after the user opts in.
 function freeCheck() {
-  const via = process.env.OPENROUTER_API_KEY ? "openrouter" : process.env.GROQ_API_KEY ? "groq" : null;
+  const list = freeProviders().map((p) => p.name);
+  const via = list.join(" → ") || null;
   const optIn = process.env.TOKENWISE_ALLOW_FREE === "1";
-  return { installed: !!via, signedIn: !!via && optIn, via, optIn, fix: !via ? "set OPENROUTER_API_KEY or GROQ_API_KEY" : optIn ? null : "TOKENWISE_ALLOW_FREE=1" };
+  return { installed: list.length > 0, signedIn: list.length > 0 && optIn, via, providers: list, optIn, fix: !list.length ? "export NVIDIA_API_KEY=…" : optIn ? null : "TOKENWISE_ALLOW_FREE=1" };
 }
 
 let cache = null;
