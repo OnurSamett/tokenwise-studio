@@ -247,14 +247,19 @@
   .presets { display: flex; gap: 6px; flex-wrap: wrap; }
   .presets button { border: 1px solid var(--line2); background: var(--s2); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
   .presets button.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
-  .rolerow { display: grid; grid-template-columns: 1fr 120px 130px 100px; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  /* Role rows: title on its own line, then three aligned controls that never wrap. */
+  .rolerow { padding: 12px 0; border-bottom: 1px solid var(--line); }
   .rolerow:last-child { border-bottom: 0; }
-  .rolerow label { font-size: 14px; } .rolerow small { display: block; color: var(--dim); font-size: 12px; }
-  .rolerow select { background: var(--bg); border: 1px solid var(--line2); color: var(--text); border-radius: 8px; padding: 6px 8px; font: 13px inherit; width: 100%; }
+  .rolerow .rl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .rolerow .rl b { font-size: 14px; font-weight: 550; }
+  .rolerow .rl small { color: var(--dim); font-size: 12px; text-align: right; }
+  .rolerow .ctl { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(0, 1fr); gap: 8px; }
+  .rolerow select, .rolerow .fixed { box-sizing: border-box; height: 34px; background: var(--bg); border: 1px solid var(--line2); color: var(--text); border-radius: 8px; padding: 0 8px; font: 13px/32px inherit; width: 100%; min-width: 0; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+  .rolerow .fixed { color: var(--dim); border-style: dashed; display: flex; align-items: center; }
   .toggle { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; font-size: 14px; }
   .toggle input { accent-color: var(--accent); width: 16px; height: 16px; margin-top: 2px; }
   .toggle small { display: block; color: var(--dim); font-size: 12.5px; }
-  @media (max-width: 560px) { .rolerow { grid-template-columns: 1fr 1fr; } .rolerow label { grid-column: 1 / -1; } }
+  @media (max-width: 560px) { .rolerow .rl { flex-direction: column; gap: 2px; } .rolerow .rl small { text-align: left; } }
   .filelist { font: 12.5px var(--mono); color: var(--muted); display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
 
   @media (max-width: 760px) {
@@ -686,7 +691,9 @@ async function renderDrawer(full) {
     const RL = { code: "Writes code", quick: "Quick & mechanical work", review: "Reviews and second opinions", images: "Images" };
     const SUB = { code: "features, fixes, refactors", quick: "summaries, boilerplate, menus", review: "checks the work before you apply it", images: "icons, sprites, textures" };
     const body = h("div", { class: "d-body" });
+    const sameRoles = (x, y) => ["code", "quick", "review"].every((k) => x?.[k]?.agent === y?.[k]?.agent && x?.[k]?.model === y?.[k]?.model && x?.[k]?.effort === y?.[k]?.effort) && x?.images?.agent === y?.images?.agent;
     const draw = () => {
+      if (!t.preset) t.preset = Object.keys(PRESET_ROLES).find((p) => sameRoles(t.roles, PRESET_ROLES[p])) || null;
       const seg = h("div", { class: "seg" },
         h("button", { class: t.mode === "auto" ? "on" : "", onclick: () => { t.mode = "auto"; draw(); } }, h("b", {}, "Automatic"), h("span", {}, "The orchestrator picks the right worker, model and effort for each piece (tokenwise rules).")),
         h("button", { class: t.mode === "manual" ? "on" : "", onclick: () => { t.mode = "manual"; draw(); } }, h("b", {}, "I choose"), h("span", {}, "You pick who does each kind of work. Fallback only kicks in when a plan is out of quota.")));
@@ -702,10 +709,11 @@ async function renderDrawer(full) {
         if (id !== "images" && !models.includes(r.model)) r.model = models[0];
         const sel = (val, list, on, label) => h("select", { onchange: (e) => { on(e.target.value); t.preset = null; draw(); } }, list.map((v) => h("option", { value: v, selected: v === val ? true : null }, label ? label(v) : v)));
         return h("div", { class: "rolerow" },
-          h("label", {}, RL[id] || id, h("small", {}, SUB[id] || "")),
-          sel(r.agent, agentOpts(id), (v) => { r.agent = v; r.model = (opt.agents[v]?.models || ["auto"])[0]; }, (v) => `${AGENT[v] || v}${opt.agents[v]?.ready ? "" : " (not ready)"}`),
-          id === "images" ? h("span", { class: "muted", style: "font-size:12.5px" }, "best available") : sel(r.model, models, (v) => { r.model = v; }, (v) => (v === "auto" ? "auto" : modelName(v) || v)),
-          id === "images" ? h("span") : sel(r.effort || "medium", ["low", "medium", "high", "xhigh"], (v) => { r.effort = v; }));
+          h("div", { class: "rl" }, h("b", {}, RL[id] || id), h("small", {}, SUB[id] || "")),
+          h("div", { class: "ctl" },
+            sel(r.agent, agentOpts(id), (v) => { r.agent = v; r.model = (opt.agents[v]?.models || ["auto"])[0]; }, (v) => `${AGENT[v] || v}${opt.agents[v]?.ready ? "" : " · not ready"}`),
+            id === "images" ? h("span", { class: "fixed", title: "The image model is picked automatically" }, "Image model") : sel(r.model, models, (v) => { r.model = v; }, (v) => (v === "auto" ? "Auto" : modelName(v) || v)),
+            id === "images" ? h("span", { class: "fixed" }, "—") : sel(r.effort || "medium", ["low", "medium", "high", "xhigh"], (v) => { r.effort = v; }, (v) => v[0].toUpperCase() + v.slice(1))));
       });
       const freeOk = opt.agents.free?.ready || opt.agents.free?.optIn;
       set(body,

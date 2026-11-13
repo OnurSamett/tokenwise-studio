@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // tokenwise studio web UI + API. Usage: tokenwise-studio-ui [repo-path] [--port 4777]
 // Binds to 127.0.0.1 only.
+import "./env-init.js"; // must stay first: loads API keys / PATH from the login shell
 import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
