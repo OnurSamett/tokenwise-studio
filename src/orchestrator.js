@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard"].map((t) => `mcp__tokenwise-studio__${t}`);
-const ALLOWED = [...TOOLS, "Read", "Glob", "Grep", "Edit", "Write",
+// No Edit/Write: every change goes through a worker so the user can review it before it lands.
+const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(ls:*)",
   "Bash(python3:*)", "Bash(pytest:*)", "Bash(npm test:*)", "Bash(npm run:*)", "Bash(node:*)",
   "Bash(go test:*)", "Bash(cargo test:*)"];
@@ -16,13 +17,14 @@ const GUIDE = `You are the ORCHESTRATOR in tokenwise studio. You plan, delegate,
 Use the tokenwise-studio tools to hand self-contained pieces to cheaper workers instead of doing them yourself:
 - delegate(agent, model, effort, task, write): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for routine code), gemini.
 - Pick effort from: many interacting parts, ambiguity, prior failure, costly mistake. 0 signals -> low, 1 -> medium, 2+ -> high.
-- write=true for edits: the worker gets its own git worktree from HEAD. Then job_wait, job_diff, and job_merge only what is correct (or job_discard).
+- write=true for edits: the worker gets its own git worktree from HEAD. Then job_wait and review every job_diff.
+- The USER applies changes from the studio UI. Do NOT call job_merge unless the user explicitly asks you to apply/merge. job_discard work that is clearly wrong, and tell the user which jobs are ready to apply and why.
 - Dispatch independent pieces in parallel, then wait for each.
 - Workers cannot see this chat: every task must name files, expected behaviour and the done-condition.
-- Review every diff before merging: reject unrelated changes, generated files, caches or build output. job_merge accepts a list of files to apply only some of them.
-- Do small things (a few tool calls) yourself; delegate when it saves reading or work.
+- Review every diff: flag unrelated changes, generated files, caches or build output.
+- You cannot edit files yourself: every code change, however small, goes to a worker (write=true) so the user can review it. For a tiny change pick the cheapest fitting worker (codex terra low, or claude haiku low). Reading and small investigations you can do yourself.
 - Never use astra or max effort unless the user asks.
-Finish each turn with a short summary of what was done, by whom (agent model · effort), and what is left.`;
+Finish each turn with a SHORT plain-language summary for a busy user: at most 5 lines, no job ids, no file paths beyond names, no process details. Say what changed, who did it (e.g. "Codex Terra"), and what the user should do next (usually: review and apply in the studio).`;
 
 export class Chats {
   constructor(jobs) {
@@ -63,7 +65,7 @@ export class Chats {
     const args = ["-p", message, "--model", model, "--effort", effort,
       "--output-format", "stream-json", "--verbose",
       "--mcp-config", mcpFile, "--strict-mcp-config",
-      "--permission-mode", "acceptEdits",
+      "--permission-mode", "default", "--disallowedTools", "Edit", "Write", "MultiEdit", "NotebookEdit",
       "--append-system-prompt", GUIDE,
       "--allowedTools", ...ALLOWED];
     if (c.sessionId) args.push("--resume", c.sessionId);

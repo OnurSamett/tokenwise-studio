@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { Jobs } from "./jobs.js";
 import { Chats } from "./orchestrator.js";
 import { normalize } from "./events.js";
+import { limits } from "./limits.js";
 
 const argv = process.argv.slice(2);
 const pi = argv.indexOf("--port");
@@ -68,6 +69,7 @@ http.createServer(async (req, res) => {
     const [, what, id] = m;
     if (req.method === "GET") {
       if (what === "state") return send(res, 200, { repo, chats: chats.list(), jobs: jobs.list() });
+      if (what === "limits") return send(res, 200, limits(jobs.home));
       if (what === "chatlog") return send(res, 200, chatTimeline(id, from));
       if (what === "log") return send(res, 200, jobTimeline(id, from));
       if (what === "diff") return send(res, 200, { files: splitDiff(jobs.diff(id)) });

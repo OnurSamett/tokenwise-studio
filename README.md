@@ -16,6 +16,14 @@ Companion to [tokenwise](https://github.com/OnurSamett/tokenwise): tokenwise dec
        └───── job_diff → job_merge / job_discard ─────┘
 ```
 
+## What it looks like
+
+- **One calm conversation.** You describe a task; the orchestrator explains its plan and hands pieces to workers.
+- **A team card per step**: each worker with its agent, model, effort and live progress.
+- **"N files ready for review"**: one click opens a review drawer with per-file diffs and checkboxes. Nothing lands until you press *Apply* (changes are staged, not committed).
+- **Plan limits in the sidebar**: your Claude and ChatGPT Codex 5-hour and weekly usage, read from the CLIs' own output.
+- The orchestrator cannot edit files itself; every change comes from a worker you can review.
+
 ## Why
 
 - **Spread usage across plans you already pay for.** Heavy thinking stays on Opus; mechanical edits run on your ChatGPT (Codex) or Google plan.
