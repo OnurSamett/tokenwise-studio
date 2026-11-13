@@ -61,7 +61,8 @@ export function command({ agent, model, effort }, { task, cwd, write, lastFile }
     };
   }
   // gemini
-  const args = ["-p", task, "-o", "stream-json", "--approval-mode", write ? "auto_edit" : "plan"];
+  // --skip-trust: headless Gemini refuses untrusted folders; workers already run read-only or in their own worktree.
+  const args = ["-p", task, "-o", "stream-json", "--skip-trust", "--approval-mode", write ? "auto_edit" : "plan"];
   if (model) args.push("-m", model);
   return { cmd: "gemini", args };
 }

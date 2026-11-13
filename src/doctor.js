@@ -22,8 +22,8 @@ function check() {
     git: { installed: installed("git") },
     claude: { installed: claude, signedIn: claude && /"loggedIn"\s*:\s*true/.test(run("claude", ["auth", "status"])?.out || "") },
     codex: { installed: codex, signedIn: codex && /logged in/i.test(run("codex", ["login", "status"])?.out || "") },
-    gemini: { installed: gemini, signedIn: !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
-      || fs.existsSync(path.join(os.homedir(), ".gemini", "oauth_creds.json"))) },
+    // Google-account sign-in no longer works for individuals in Gemini CLI, so only an API key counts.
+    gemini: { installed: gemini, signedIn: !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENAI_USE_VERTEXAI), needs: "api-key" },
   };
 }
 

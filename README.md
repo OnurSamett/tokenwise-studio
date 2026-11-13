@@ -33,7 +33,7 @@ Companion to [tokenwise](https://github.com/OnurSamett/tokenwise): tokenwise dec
 ## Requirements
 
 - Node 20+, git
-- At least one worker CLI, signed in: [Codex CLI](https://github.com/openai/codex) (`codex login`), [Claude Code](https://www.npmjs.com/package/@anthropic-ai/claude-code) (`claude auth login`), [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+- At least one worker CLI, signed in: [Codex CLI](https://github.com/openai/codex) (`codex login`), [Claude Code](https://www.npmjs.com/package/@anthropic-ai/claude-code) (`claude auth login`), [Gemini CLI](https://github.com/google-gemini/gemini-cli) (needs `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com); Google-account sign-in no longer works for individuals)
 
 ## Setup
 

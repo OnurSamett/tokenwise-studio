@@ -397,12 +397,12 @@ function welcome() {
 
 function doctorRow() {
   const row = h("div", { class: "doctor" });
-  const fix = { claude: "claude auth login", codex: "codex login", gemini: "gemini" };
+  const fix = { claude: "claude auth login", codex: "codex login", gemini: "export GEMINI_API_KEY=…" };
   api("doctor").then((d) => {
     set(row, ["claude", "codex", "gemini"].map((k) => {
       const v = d[k] || {};
       const cls = v.installed && v.signedIn ? "" : v.installed ? " warn" : " off";
-      const label = v.installed && v.signedIn ? "ready" : v.installed ? ["sign in: ", h("code", {}, fix[k])] : "not installed";
+      const label = v.installed && v.signedIn ? "ready" : v.installed ? [k === "gemini" ? "API key: " : "sign in: ", h("code", {}, fix[k])] : "not installed";
       return h("span", { class: "doc" + cls, title: v.installed ? "" : `npm i -g ${k === "claude" ? "@anthropic-ai/claude-code" : k === "codex" ? "@openai/codex" : "@google/gemini-cli"}` }, h("i"), AGENT[k], " · ", label);
     }));
   }).catch(() => {});
