@@ -170,12 +170,30 @@
   .check { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; }
   .empty { color: var(--dim); text-align: center; padding: 40px 0; }
 
+  .stepi { display: flex; gap: 8px; align-items: baseline; font-size: 13px; color: var(--dim); }
+  .stepi .gi { width: 14px; text-align: center; flex: none; font-size: 11px; }
+  .stepi code { font-size: 12px; background: none; padding: 0; color: var(--muted); }
+  .stepi.err { color: var(--bad); }
+  .orch-meta { font-size: 12.5px; color: var(--dim); margin: 3px 0 -4px; }
+  .orch-meta b { color: var(--muted); font-weight: 600; }
+  .say h4 { font-size: 14.5px; margin: 10px 0 6px; font-weight: 650; }
+  .chatitem .when { font-size: 11.5px; color: var(--dim); flex: none; }
+  .chatitem .rv { font-size: 11px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 0 7px; flex: none; }
+  .jump { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 10px); background: var(--s3); border: 1px solid var(--line2); color: var(--text); border-radius: 999px; padding: 5px 12px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+  .dock-in { position: relative; }
+  .toasts { position: fixed; top: 66px; right: 24px; display: flex; align-items: flex-end; flex-direction: column; gap: 8px; z-index: 40; pointer-events: none; }
+  .toast { background: var(--s3); border: 1px solid var(--line2); border-radius: 10px; padding: 9px 14px; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.4); animation: tin .2s ease; display: flex; gap: 8px; align-items: center; }
+  .toast.bad { border-color: rgba(240,113,120,.5); } .toast .ti { color: var(--ok); } .toast.bad .ti { color: var(--bad); }
+  @keyframes tin { from { opacity: 0; transform: translateY(6px); } }
+  .hint { font-size: 12px; color: var(--dim); }
+
   @media (max-width: 760px) {
     .side { position: fixed; inset: 0 auto 0 0; z-index: 22; background: var(--bg); transform: translateX(-100%); transition: transform .2s; }
     body.side-open .side { transform: none; }
     .menu-btn { display: block; }
     .worker { grid-template-columns: 32px minmax(0, 1fr) 44px; } .worker .bar { display: none; }
     .col { padding: 20px 16px 30px; } .dock { padding: 0 16px 14px; } .top { padding: 0 16px; }
+    #khint { display: none; } .toasts { left: 16px; right: 16px; }
   }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
@@ -197,13 +215,14 @@
   </div>
   <div class="scroll" id="scroll"><div class="col" id="col"></div></div>
   <div class="dock"><div class="dock-in">
+    <button class="jump" id="jump" hidden>↓ Latest</button>
     <div class="banner" id="banner" hidden></div>
     <div class="composer">
       <textarea id="input" rows="1" placeholder="Ask the team…"></textarea>
       <div class="crow">
         <select class="pill" id="omodel" title="Orchestrator model"><option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option></select>
         <select class="pill" id="oeffort" title="Orchestrator effort"><option value="medium">medium</option><option value="low">low</option><option value="high">high</option><option value="xhigh">xhigh</option></select>
-        <span class="grow err" id="cerr"></span>
+        <span class="grow"><span class="err" id="cerr"></span><span class="hint" id="khint">↵ send · ⇧↵ new line</span></span>
         <button class="stop" id="stop" title="Stop" hidden><i></i></button>
         <button class="send" id="send" title="Send (⌘↵)">↑</button>
       </div>
@@ -211,6 +230,7 @@
   </div></div>
 </div>
 
+<div class="toasts" id="toasts"></div>
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
 
@@ -250,6 +270,8 @@ function md(text) {
     const ol = line.match(/^\s*\d+[.)] (.*)/), ul = line.match(/^\s*[-*] (.*)/);
     if (ol || ul) { const t = ol ? "ol" : "ul"; if (!list || list.t !== t) { flush(); list = { t, items: [] }; } list.items.push("<li>" + inline((ol || ul)[1]) + "</li>"); continue; }
     flush();
+    const hd = line.match(/^#{1,4}\s+(.*)/);
+    if (hd) { out.push("<h4>" + inline(hd[1]) + "</h4>"); continue; }
     if (line.trim()) out.push("<p>" + inline(line) + "</p>");
   }
   if (code) out.push("<pre>" + esc(code.join("\n")) + "</pre>");
@@ -269,9 +291,11 @@ const pending = () => chatJobs().filter((j) => j.write && j.status === "done" &&
 const drawn = {};
 const changed = (k, v) => { const j = JSON.stringify(v); if (drawn[k] === j) return false; drawn[k] = j; return true; };
 function renderSide() {
-  if (!changed("side", [chatId, S.chats.map((c) => [c.id, c.title, c.status])])) return;
+  const rev = (c) => S.jobs.filter((j) => j.parent === c.id && j.write && j.status === "done" && (j.files || []).length).length;
+  const ago = (t) => { const m = Math.round((Date.now() - new Date(t)) / 60000); return m < 1 ? "now" : m < 60 ? m + "m" : m < 1440 ? Math.round(m / 60) + "h" : Math.round(m / 1440) + "d"; };
+  if (!changed("side", [chatId, Math.floor(Date.now() / 60000), S.chats.map((c) => [c.id, c.title, c.status, rev(c)])])) return;
   set($("#chats"), S.chats.length ? S.chats.map((c) => h("button", { class: "chatitem" + (c.id === chatId ? " on" : ""), onclick: () => { openChat(c.id); document.body.classList.remove("side-open"); } },
-    h("span", { class: "t" }, c.title), c.status === "running" ? h("span", { class: "live" }) : null)) : h("div", { class: "label" }, "No tasks yet"));
+    h("span", { class: "t" }, c.title), c.status === "running" ? h("span", { class: "live", title: "working" }) : rev(c) ? h("span", { class: "rv" }, `${rev(c)} to review`) : h("span", { class: "when" }, ago(c.turns?.at(-1)?.started || c.created)))) : h("div", { class: "label" }, "No tasks yet"));
 }
 
 // ---------- conversation ----------
@@ -295,11 +319,31 @@ function turnBlock(i) {
   const activity = h("details", { class: "activity", hidden: true }, h("summary", {}, h("span", { class: "chev" }, "›"), label), steps);
   const team = h("div", {});
   const replies = h("div", { class: "orch-body-replies", style: "display:flex;flex-direction:column;gap:12px" });
+  const meta = h("div", { class: "orch-meta" });
   const user = h("div", { class: "you" });
   // The team card is inserted into the reply flow at the moment the first task is delegated.
-  const el = h("div", { class: "turn" }, user, h("div", { class: "orch" }, h("div", { class: "avatar" }, "✦"), h("div", { class: "orch-body" }, activity, replies)));
+  const el = h("div", { class: "turn" }, user, h("div", { class: "orch" }, h("div", { class: "avatar" }, "✦"), h("div", { class: "orch-body" }, meta, activity, replies)));
   $("#col").append(el);
-  return (turns[i] = { el, user, activity, label, steps, team, replies, n: 0 });
+  return (turns[i] = { el, user, activity, label, steps, team, replies, meta, n: 0 });
+}
+
+// Turn a timeline event into a short human sentence.
+function stepRow(it) {
+  const short = (s, n = 90) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+  const base = (p) => String(p || "").split("/").pop();
+  const tidy = (c) => String(c).split(S.repo).join(".").replace(/^cd\s+("[^"]*"|\S+)\s*&&\s*/, "").replace(/^"(.*)"$/, "$1");
+  let icon = "·", body;
+  switch (it.kind) {
+    case "read": icon = "📄"; body = ["Read ", h("code", {}, base(it.text))]; break;
+    case "edit": icon = "✎"; body = ["Edited ", h("code", {}, base(it.text.replace(/^\w+ /, "")))]; break;
+    case "search": icon = "🔍"; body = ["Searched ", h("code", {}, short(it.text.replace(/^(grep|glob) /, ""), 60))]; break;
+    case "cmd": { const c = tidy(it.text); icon = "▶"; body = /unittest|pytest|npm test|go test|cargo test/.test(c) ? "Ran the tests" : ["Ran ", h("code", {}, short(c, 70))]; break; }
+    case "error":
+      if (/requires approval|can't be checked|Parser skipped|permission|not allowed|denied/i.test(it.text)) { icon = "⦸"; body = "Skipped a command that needs your permission"; return h("div", { class: "stepi" }, h("span", { class: "gi" }, icon), h("span", {}, body)); }
+      icon = "!"; body = short(tidy(it.text), 160); break;
+    default: body = short(it.text, 120);
+  }
+  return h("div", { class: "stepi" + (it.kind === "error" ? " err" : "") }, h("span", { class: "gi" }, icon), h("span", {}, body));
 }
 
 function addItem(it) {
@@ -310,7 +354,7 @@ function addItem(it) {
   if (it.kind === "delegate" && !t.team.isConnected) { t.replies.append(t.team); return; }
   if (it.kind === "delegate" || (it.kind === "tool" && /^job /.test(it.text))) return; // shown as the team card instead
   t.activity.hidden = false; t.n++;
-  t.steps.append(h("div", { class: "step" + (it.kind === "error" ? " err" : "") }, it.text));
+  t.steps.append(stepRow(it));
 }
 
 function renderTurnChrome() {
@@ -319,6 +363,7 @@ function renderTurnChrome() {
   (c.turns || []).forEach((tr, i) => {
     const t = turnBlock(i);
     if (!t.user.firstChild) set(t.user, h("div", {}, tr.user));
+    if (!t.meta.firstChild) set(t.meta, h("b", {}, modelName(tr.model || c.model)), " · ", new Date(tr.started).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     const running = c.status === "running" && i === c.turns.length - 1;
     set(t.label, running ? [h("span", { class: "spin" }), ` Working · ${t.n} step${t.n === 1 ? "" : "s"}`] : `${t.n} step${t.n === 1 ? "" : "s"}`);
     if (running) t.activity.hidden = false;
@@ -332,7 +377,7 @@ function renderTurnChrome() {
 function teamCard(jobs) {
   const live = jobs.filter((j) => j.status === "running").length;
   return h("div", { class: "team" },
-    h("div", { class: "team-h" }, live ? h("span", { class: "spin" }) : "✓", live ? `${live} of ${jobs.length} working` : `Delegated ${jobs.length} task${jobs.length > 1 ? "s" : ""}`),
+    h("div", { class: "team-h" }, live ? h("span", { class: "spin" }) : h("span", { style: "color:var(--ok)" }, "✓"), live ? `${live} of ${jobs.length} working` : `Delegated ${jobs.length} task${jobs.length > 1 ? "s" : ""}`),
     jobs.map((j) => h("button", { class: "worker", onclick: () => openJob(j.id) },
       h("span", { class: "badge " + j.agent }, BADGE[j.agent] || "?"),
       h("span", {}, h("div", { class: "w-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort), h("span", { class: "w-state " + j.status }, STATE[j.status] || j.status)), h("div", { class: "w-task" }, j.title)),
@@ -357,6 +402,9 @@ function renderTop() {
   $("#chattitle").textContent = c ? "· " + c.title : "";
   const running = c?.status === "running";
   $("#stop").hidden = !running; $("#send").hidden = running;
+  const busy = S.chats.some((x) => x.status === "running") || S.jobs.some((j) => j.status === "running");
+  const nrev = S.jobs.filter((j) => j.write && j.status === "done" && (j.files || []).length).length;
+  document.title = (busy ? "● " : nrev ? `(${nrev}) ` : "") + "tokenwise studio";
 }
 
 async function pollChat() {
@@ -365,7 +413,7 @@ async function pollChat() {
   const r = await api(`chatlog/${chatId}?from=${chatFrom}`);
   r.items.forEach(addItem); chatFrom = r.next;
   renderTurnChrome();
-  if (atBottom || r.items.length) sc.scrollTop = sc.scrollHeight;
+  if (r.items.length) { if (atBottom || r.items.some((i) => i.kind === "user")) sc.scrollTop = sc.scrollHeight; else $("#jump").hidden = false; }
 }
 
 function openChat(id) {
@@ -379,7 +427,7 @@ async function send() {
   $("#cerr").textContent = "";
   try {
     const c = await api("chat", { id: chatId, message, model: $("#omodel").value, effort: $("#oeffort").value });
-    $("#input").value = ""; autosize();
+    $("#input").value = ""; autosize(); $("#send").disabled = true;
     if (!chatId) { chatId = c.id; chatFrom = 0; turns = []; set($("#col")); }
     await refresh();
   } catch (e) { $("#cerr").textContent = e.message; }
@@ -439,7 +487,8 @@ async function renderDrawer(full) {
           if (sel.length) await api(`merge/${j.id}`, { files: sel }); else await api(`discard/${j.id}`, {});
         }
         closeDrawer(); await refresh();
-      } catch (e) { alert(e.message); applyBtn.disabled = false; }
+        const n = boxes.filter((b) => b.checked).length; toast(`Applied ${n} file${n === 1 ? "" : "s"} · staged, not committed`);
+      } catch (e) { toast(e.message, true); applyBtn.disabled = false; }
     }
     set(d,
       h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Review changes"), h("div", { class: "meta" }, `${boxes.length} file${boxes.length === 1 ? "" : "s"} from ${p.length} worker${p.length === 1 ? "" : "s"}`)), h("button", { class: "x", onclick: closeDrawer, "aria-label": "Close" }, "×")),
@@ -478,14 +527,14 @@ function fileBlock(f, checkbox, tag) {
 }
 
 async function act(what, id) {
-  try { await api(`${what}/${id}`, {}); await refresh(); renderDrawer(true); } catch (e) { alert(e.message); }
+  try { await api(`${what}/${id}`, {}); await refresh(); renderDrawer(true); toast(what === "merge" ? "Changes applied · staged, not committed" : "Discarded"); } catch (e) { toast(e.message, true); }
 }
 
 // ---------- plan limits ----------
 const until = (t) => { if (!t) return ""; const m = Math.round((t - Date.now()) / 60000); if (m <= 0) return "resetting"; if (m < 60) return `resets in ${m}m`; const hrs = Math.round(m / 60); return hrs < 48 ? `resets in ${hrs}h` : `resets in ${Math.round(hrs / 24)}d`; };
 function meter(label, w) {
   if (!w) return null;
-  return h("div", { class: "meter" + (w.pct >= 95 ? " full" : w.pct >= 80 ? " hot" : ""), title: until(w.resetsAt) },
+  return h("div", { class: "meter" + (w.pct >= 95 ? " full" : w.pct >= 80 ? " hot" : ""), title: w.resetsAt ? "Resets " + new Date(w.resetsAt).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "" },
     h("span", {}, label, " · ", until(w.resetsAt)), h("b", {}, w.pct + "%"), h("span", { class: "track" }, h("i", { style: `width:${Math.min(100, w.pct)}%` })));
 }
 async function renderLimits() {
@@ -493,6 +542,11 @@ async function renderLimits() {
   const plan = (name, agent, d) => d ? h("div", { class: "plan" }, h("div", { class: "pname" }, h("span", { class: "badge " + agent }, BADGE[agent]), name), meter("5-hour", d.fiveHour), meter("Weekly", d.week)) : null;
   const blocks = [plan("Claude", "claude", L.claude), plan("ChatGPT Codex", "codex", L.codex)].filter(Boolean);
   set($("#usage"), blocks.length ? blocks : h("div", { class: "none" }, "Shows up after the first run."));
+}
+
+function toast(text, bad = false) {
+  const t = h("div", { class: "toast" + (bad ? " bad" : "") }, h("span", { class: "ti" }, bad ? "!" : "✓"), text);
+  $("#toasts").append(t); setTimeout(() => t.remove(), 3800);
 }
 
 // ---------- loop ----------
@@ -504,7 +558,12 @@ async function refresh() {
 
 function autosize() { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 220) + "px"; }
 $("#input").addEventListener("input", autosize);
-$("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } });
+$("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+$("#input").addEventListener("input", () => { $("#send").disabled = !$("#input").value.trim(); });
+$("#send").disabled = true;
+$("#jump").onclick = () => { const sc = $("#scroll"); sc.scrollTo({ top: sc.scrollHeight, behavior: "smooth" }); };
+$("#scroll").addEventListener("scroll", () => { const sc = $("#scroll"); if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 60) $("#jump").hidden = true; });
+document.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); newTask(); } });
 $("#send").onclick = send;
 $("#stop").onclick = () => chatId && api(`stop/${chatId}`, {}).then(refresh);
 $("#newtask").onclick = newTask;

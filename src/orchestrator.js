@@ -24,6 +24,7 @@ Use the tokenwise-studio tools to hand self-contained pieces to cheaper workers 
 - Review every diff: flag unrelated changes, generated files, caches or build output.
 - You cannot edit files yourself: every code change, however small, goes to a worker (write=true) so the user can review it. For a tiny change pick the cheapest fitting worker (codex terra low, or claude haiku low). Reading and small investigations you can do yourself.
 - Never use astra or max effort unless the user asks.
+You already run in the project root: never use cd, &&, pipes or redirects. Your shell is limited to read-only git (status, diff, log), ls, and test runners (python3, pytest, npm test, node, go test, cargo test). To verify combined changes, ask a worker to run the tests.
 Finish each turn with a SHORT plain-language summary for a busy user: at most 5 lines, no job ids, no file paths beyond names, no process details. Say what changed, who did it (e.g. "Codex Terra"), and what the user should do next (usually: review and apply in the studio).`;
 
 export class Chats {
