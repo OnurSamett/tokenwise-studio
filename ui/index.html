@@ -118,6 +118,10 @@
   .badge.codex { background: rgba(92,207,168,.12); color: var(--codex); }
   .badge.claude { background: rgba(232,160,122,.12); color: var(--claude); }
   .badge.gemini { background: rgba(132,169,255,.12); color: var(--gemini); }
+  .badge.local { background: rgba(200,200,210,.12); color: var(--muted); }
+  .badge.free { background: rgba(232,184,106,.12); color: var(--warn); }
+  .moved { font-size: 11.5px; color: var(--dim); margin-top: 1px; }
+  .w-state.moved { color: var(--dim); }
   .w-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
   .w-task { color: var(--muted); font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .effort { display: inline-flex; gap: 2px; } .effort i { width: 4px; height: 10px; border-radius: 2px; background: var(--line2); } .effort i.on { background: var(--muted); }
@@ -302,11 +306,11 @@ const api = async (p, body) => {
   const j = await r.json(); if (j.error) throw new Error(j.error); return j;
 };
 const clock = (a, b) => { const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
-const AGENT = { codex: "Codex", claude: "Claude", gemini: "Gemini" };
-const BADGE = { codex: "C", claude: "A", gemini: "G" };
+const AGENT = { codex: "Codex", claude: "Claude", gemini: "Gemini", local: "Local", free: "Free API" };
+const BADGE = { codex: "C", claude: "A", gemini: "G", local: "L", free: "F" };
 const modelName = (m = "") => { const f = String(m).match(/(luna|terra|sol|astra|haiku|sonnet|opus|flash|argon|hydrogen|pro)/i); return f ? f[1][0].toUpperCase() + f[1].slice(1).toLowerCase() : m; };
 const effortBars = (e) => { const n = { low: 1, medium: 2, high: 3, xhigh: 4 }[e] || 2; return h("span", { class: "effort", title: `effort: ${e}` }, ...[1, 2, 3].map((i) => h("i", { class: i <= Math.min(n, 3) ? "on" : "" }))); };
-const STATE = { running: "working", done: "ready", failed: "failed", merged: "applied", discarded: "discarded" };
+const STATE = { running: "working", done: "ready", failed: "failed", merged: "applied", discarded: "discarded", moved: "moved on" };
 
 // Tiny safe markdown: escape first, then inline code / bold, lists and fenced code.
 function md(text) {
@@ -399,10 +403,12 @@ function doctorRow() {
   const row = h("div", { class: "doctor" });
   const fix = { claude: "claude auth login", codex: "codex login", gemini: "export GEMINI_API_KEY=…" };
   api("doctor").then((d) => {
-    set(row, ["claude", "codex", "gemini"].map((k) => {
+    set(row, ["claude", "codex", "gemini", "local", "free"].map((k) => {
       const v = d[k] || {};
       const cls = v.installed && v.signedIn ? "" : v.installed ? " warn" : " off";
-      const label = v.installed && v.signedIn ? (v.via === "antigravity" ? "ready · Antigravity" : "ready") : v.installed ? (v.via === "antigravity" ? ["sign in: ", h("code", {}, "agy")] : [k === "gemini" ? "API key: " : "sign in: ", h("code", {}, fix[k])]) : "not installed";
+      const label = v.installed && v.signedIn ? (v.via === "antigravity" ? "ready · Antigravity" : k === "local" ? `ready · ${v.model}` : k === "free" ? `ready · ${v.via}` : "ready")
+        : v.fix ? h("code", {}, v.fix)
+        : v.installed ? (v.via === "antigravity" ? ["sign in: ", h("code", {}, "agy")] : [k === "gemini" ? "API key: " : "sign in: ", h("code", {}, fix[k])]) : "not installed";
       return h("span", { class: "doc" + cls, title: v.installed ? "" : `npm i -g ${k === "claude" ? "@anthropic-ai/claude-code" : k === "codex" ? "@openai/codex" : "@google/gemini-cli"}` }, h("i"), AGENT[k], " · ", label);
     }));
   }).catch(() => {});
@@ -488,7 +494,8 @@ function teamCard(jobs) {
     h("div", { class: "team-h" }, live ? h("span", { class: "spin" }) : h("span", { style: "color:var(--ok)" }, "✓"), live ? `${live} of ${jobs.length} working` : `Delegated ${jobs.length} task${jobs.length > 1 ? "s" : ""}`),
     jobs.map((j) => h("button", { class: "worker", onclick: () => openJob(j.id) },
       h("span", { class: "badge " + j.agent }, BADGE[j.agent] || "?"),
-      h("span", {}, h("div", { class: "w-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort), h("span", { class: "w-state " + j.status }, STATE[j.status] || j.status)), h("div", { class: "w-task" }, j.title)),
+      h("span", {}, h("div", { class: "w-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort), h("span", { class: "w-state " + j.status }, STATE[j.status] || j.status)), h("div", { class: "w-task" }, j.title),
+        j.movedFrom ? h("div", { class: "moved", title: j.movedFrom.reason }, `↪ took over from ${AGENT[j.movedFrom.agent] || j.movedFrom.agent} · ${j.movedFrom.reason}`) : null),
       h("span", { class: "bar " + j.status }, h("i")),
       h("span", { class: "w-time" }, clock(j.created, j.finished)))));
 }

@@ -15,7 +15,7 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
 
 const GUIDE = `You are the ORCHESTRATOR in tokenwise studio. You plan, delegate, review and integrate.
 Use the tokenwise-studio tools to hand self-contained pieces to cheaper workers instead of doing them yourself:
-- delegate(agent, model, effort, task, write): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for routine code), gemini (hydrogen for quick and routine work, argon (frontier) for hard problems). Spread work across providers to spare each plan's limits.
+- delegate(agent, model, effort, task, write): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for routine code), gemini (hydrogen for quick and routine work, argon (frontier) for hard problems). Spread work across providers to spare each plan's limits. When plans run low, jobs move automatically to the next worker (ending with 'local', a free Ollama model); mention such moves in your summary.
 - Pick effort from: many interacting parts, ambiguity, prior failure, costly mistake. 0 signals -> low, 1 -> medium, 2+ -> high.
 - write=true for edits: the worker gets its own git worktree from HEAD. Then job_wait and review every job_diff.
 - The USER applies changes from the studio UI. Do NOT call job_merge unless the user explicitly asks you to apply/merge. job_discard work that is clearly wrong, and tell the user which jobs are ready to apply and why.

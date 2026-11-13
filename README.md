@@ -81,6 +81,15 @@ Just ask your orchestrator, e.g. in Claude Code on Opus:
 | `job_merge` | Apply a job's diff to your working tree (staged, not committed) and clean up |
 | `job_discard` | Stop and throw away a job |
 
+### When a plan runs out
+
+Jobs fall back automatically along `codex → gemini → claude → local → free` (override with `TOKENWISE_FALLBACK`):
+
+- **Before starting**, a job skips any plan at or above `TOKENWISE_LIMIT_THRESHOLD` (default 90%) of its 5-hour or weekly limit, or a worker that isn't signed in.
+- **While running**, a job that fails with a rate/usage-limit error is re-run on the next worker; the UI shows "↪ took over from Codex · hit a rate limit", and `job_wait` follows the move.
+- **local**: an Ollama model driven by Codex CLI's `--oss` mode: free, unlimited, full agent (`brew install ollama && ollama pull gpt-oss:20b`).
+- **free**: a free-tier chat API (OpenRouter `:free` or Groq), read-only answers only, and only after you opt in with `TOKENWISE_ALLOW_FREE=1`, since free tiers may use prompts for training.
+
 ### Defaults and guard rails
 
 - Codex: `sol` at `medium` (families `terra`/`sol` resolve to the newest version automatically). `astra` is blocked unless `TOKENWISE_CODEX_ASTRA=1`.

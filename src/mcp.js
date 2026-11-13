@@ -12,7 +12,7 @@ const server = new McpServer({ name: "tokenwise-studio", version: "0.1.0" });
 
 const brief = (j) => ({
   id: j.id, status: j.status, agent: j.agent, model: j.model, effort: j.effort, write: j.write,
-  title: j.title, diffStat: j.diffStat, files: j.files, final: j.final ? String(j.final).slice(0, 4000) : null,
+  title: j.title, diffStat: j.diffStat, files: j.files, movedFrom: j.movedFrom || null, movedTo: j.movedTo || null, final: j.final ? String(j.final).slice(0, 4000) : null,
 });
 const ok = (obj) => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }] });
 const fail = (e) => ({ isError: true, content: [{ type: "text", text: String(e.message || e) }] });
@@ -22,14 +22,16 @@ server.registerTool("delegate", {
   description: [
     "Start a self-contained task on another AI agent CLI and return a job id immediately (it runs in the background).",
     "agent: 'codex' (models: terra, sol [default], or a full slug; astra is blocked unless the user opted in),",
+    "'local' (Ollama model via Codex, free and unlimited, can edit files), 'free' (free-tier chat API, read-only, opt-in),",
     "'claude' (haiku [default], sonnet, opus) or 'gemini' (via Google Antigravity: hydrogen [default, fast], argon [frontier, strongest]). effort: low|medium|high|xhigh.",
     "write=false: read-only answer. write=true: the worker edits files in its own git worktree branched from HEAD",
     "(uncommitted changes in the main tree are NOT visible to it); review with job_diff, then job_merge or job_discard.",
     "The worker cannot see this conversation: put every detail it needs in `task` (files, constraints, done-condition).",
     "Dispatch independent tasks in parallel, then job_wait each.",
+    "If a worker's plan is near its usage limit or it hits a rate limit, the job is automatically moved to the next worker (codex → gemini → claude → local → free); job_wait follows the move.",
   ].join(" "),
   inputSchema: {
-    agent: z.enum(["codex", "claude", "gemini"]),
+    agent: z.enum(["codex", "claude", "gemini", "local", "free"]),
     task: z.string().min(10),
     model: z.string().optional(),
     effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),

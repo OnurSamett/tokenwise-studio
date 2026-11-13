@@ -3,6 +3,7 @@ import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { command, resolve, textOf } from "./workers.js";
+import { RATE_LIMIT, available, nearLimit, nextAgent } from "./fallback.js";
 
 // Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
 const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/node_modules/**", "**/.DS_Store",
@@ -51,7 +52,16 @@ export class Jobs {
 
   isGit() { try { git(this.repo, "rev-parse", "--is-inside-work-tree"); return true; } catch { return false; } }
 
-  start({ agent, model, effort, task, write = false, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null }) {
+  start({ agent, model, effort, task, write = false, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
+    tried = [], movedFrom = null, noFallback = false }) {
+    // Before starting: if this plan is near its limit or the worker isn't usable, pick the next one in the chain.
+    if (!noFallback) {
+      const why = nearLimit(agent, this.home) || (!available(agent, { write }) ? `${agent} not available` : null);
+      if (why) {
+        const alt = nextAgent({ tried: [...tried, agent], write, home: this.home });
+        if (alt) { movedFrom = movedFrom || { agent, reason: why }; tried = [...tried, agent]; agent = alt; model = undefined; }
+      }
+    }
     const spec = resolve({ agent, model, effort });
     const id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
     let cwd = this.repo, branch = null;
@@ -63,17 +73,18 @@ export class Jobs {
     }
     const job = this.save({
       id, title: title || task.slice(0, 80), task, ...spec, write, cwd, branch, parent,
+      tried: [...tried, agent], movedFrom, movedTo: null,
       status: "running", created: new Date().toISOString(), finished: null, exitCode: null,
       final: null, diffStat: null, files: [], pid: null,
     });
 
     const lastFile = this.file(id, "last");
-    const { cmd, args } = command(spec, { task, cwd, write, lastFile });
+    const { cmd, args, env: extraEnv } = command(spec, { task, cwd, write, lastFile });
     const log = fs.createWriteStream(this.file(id, "log"), { flags: "a" });
     const write1 = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line }) + "\n");
     write1("meta", `$ ${cmd} ${args.map((a) => (a.length > 60 ? a.slice(0, 57) + "..." : a)).join(" ")}`);
 
-    const child = spawn(cmd, args, { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(cmd, args, { cwd, env: { ...process.env, ...(extraEnv || {}) }, stdio: ["ignore", "pipe", "pipe"] });
     this.save({ ...job, pid: child.pid });
     let lastText = null, buf = { out: "", err: "" };
     const onData = (stream) => (chunk) => {
@@ -95,11 +106,27 @@ export class Jobs {
       const j = this.get(id);
       j.exitCode = code; j.finished = new Date().toISOString(); j.pid = null;
       if (j.status !== "discarded") j.status = code === 0 ? "done" : "failed";
+      // Hit a usage/rate limit? Re-run the same task on the next worker in the chain.
+      if (j.status === "failed" && !noFallback) {
+        let tail = ""; try { tail = fs.readFileSync(this.file(id, "log"), "utf8").slice(-30000); } catch {}
+        if (RATE_LIMIT.test(tail)) {
+          const alt = nextAgent({ tried: j.tried, write, home: this.home });
+          if (alt) {
+            try {
+              const nj = this.start({ agent: alt, effort, task, write, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" } });
+              j.status = "moved"; j.movedTo = nj.id;
+              write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
+            } catch (e) { write1("meta", `fallback failed: ${e.message}`); }
+          }
+        }
+      }
       Object.assign(j, this.usage(id));
       j.final = (fs.existsSync(lastFile) && fs.readFileSync(lastFile, "utf8").trim()) || lastText;
       // Some CLIs answer with local file:// markdown links; keep just the link text.
       if (j.final) j.final = String(j.final).replace(/\[([^\]]+)\]\(file:\/\/[^)]*\)/g, "$1");
-      if (write) {
+      if (write && j.status === "moved") {
+        this.cleanup(j); // its replacement job has its own worktree
+      } else if (write) {
         try {
           git(cwd, "add", "-A", "--", ".", ...ARTIFACTS.map((x) => `:(exclude,glob)${x}`));
           j.diffStat = git(cwd, "diff", "--cached", "--stat", "HEAD").trim() || "(no changes)";
@@ -126,6 +153,10 @@ export class Jobs {
     for (const l of fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n") : []) {
       let e;
       try { const o = JSON.parse(l); if (o.stream !== "out") continue; e = JSON.parse(o.line); } catch { continue; }
+      if (e && e.type === "free.usage" && e.usage) {
+        claude = { input: e.usage.prompt_tokens || 0, cached: 0, output: e.usage.completion_tokens || 0 };
+        continue;
+      }
       if (e && e.event === "result" && e.result?.usage) { // antigravity
         const r = e.result.usage;
         // Antigravity's input_tokens already includes the cached part (total = input + output).
@@ -151,7 +182,10 @@ export class Jobs {
     const t = new Promise((res) => { timer = setTimeout(() => res(null), timeoutS * 1000); });
     const out = await Promise.race([r.done, t]);
     clearTimeout(timer);
-    return out || this.get(id);
+    const j = out || this.get(id);
+    // Follow a job that was moved to another worker.
+    if (j.movedTo) return this.wait(j.movedTo, timeoutS);
+    return j;
   }
 
   diff(id) {

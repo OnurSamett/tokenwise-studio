@@ -28,7 +28,26 @@ function check() {
     gemini: agy
       ? { installed: true, signedIn: !!agyModels(), via: "antigravity" }
       : { installed: gemini, signedIn: !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENAI_USE_VERTEXAI), needs: "api-key" },
+    local: localCheck(),
+    free: freeCheck(),
   };
+}
+
+// Local model via Ollama (driven by Codex CLI's --oss mode): ready when the server answers and the model is pulled.
+function localCheck() {
+  const model = process.env.TOKENWISE_LOCAL_MODEL || "gpt-oss:20b";
+  if (!installed("ollama")) return { installed: false, signedIn: false, model, fix: "brew install ollama" };
+  const r = run("ollama", ["list"]);
+  if (!r || r.code !== 0) return { installed: true, signedIn: false, model, fix: "brew services start ollama" };
+  const has = r.out.split("\n").some((l) => l.split(/\s+/)[0] === model || l.startsWith(model + " "));
+  return { installed: true, signedIn: has, model, fix: has ? null : `ollama pull ${model}` };
+}
+
+// Free-tier chat API (read-only). Configured by a key; used only after the user opts in.
+function freeCheck() {
+  const via = process.env.OPENROUTER_API_KEY ? "openrouter" : process.env.GROQ_API_KEY ? "groq" : null;
+  const optIn = process.env.TOKENWISE_ALLOW_FREE === "1";
+  return { installed: !!via, signedIn: !!via && optIn, via, optIn, fix: !via ? "set OPENROUTER_API_KEY or GROQ_API_KEY" : optIn ? null : "TOKENWISE_ALLOW_FREE=1" };
 }
 
 let cache = null;

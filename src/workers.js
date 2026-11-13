@@ -1,8 +1,11 @@
 // Worker adapters: turn {agent, model, effort, write} into a headless CLI command.
 import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { findAgy, agySlug } from "./antigravity.js";
 
-export const AGENTS = ["codex", "claude", "gemini"];
+export const AGENTS = ["codex", "claude", "gemini", "local", "free"];
+const FREECHAT = path.join(path.dirname(fileURLToPath(import.meta.url)), "freechat.js");
 const EFFORTS = ["low", "medium", "high", "xhigh"];
 
 let codexCatalog = null;
@@ -26,7 +29,7 @@ function codexSlug(model) {
 /** Validate and normalise a request; throws with a readable message on policy violations. */
 export function resolve({ agent, model, effort }) {
   if (!AGENTS.includes(agent)) throw new Error(`agent must be one of ${AGENTS.join(", ")}`);
-  const defaults = { codex: "medium", claude: "low", gemini: "medium" };
+  const defaults = { codex: "medium", claude: "low", gemini: "medium", local: "medium", free: "medium" };
   const eff = effort || defaults[agent];
   if (eff === "max" || eff === "ultra") throw new Error("effort max/ultra is not allowed from tokenwise-studio; use up to xhigh");
   if (!EFFORTS.includes(eff)) throw new Error(`effort must be one of ${EFFORTS.join(", ")}`);
@@ -38,6 +41,10 @@ export function resolve({ agent, model, effort }) {
     }
   } else if (agent === "claude") {
     m = model || process.env.TOKENWISE_CLAUDE_MODEL || "haiku";
+  } else if (agent === "local") {
+    m = model || process.env.TOKENWISE_LOCAL_MODEL || "gpt-oss:20b";
+  } else if (agent === "free") {
+    m = model || process.env.TOKENWISE_FREE_MODEL || "auto";
   } else if (agent === "gemini" && findAgy() && !process.env.GEMINI_API_KEY) {
     // Prefer Antigravity (personal Google account); fall back to Gemini CLI when an API key is set.
     m = agySlug(model, eff);
@@ -55,6 +62,21 @@ export function command({ agent, model, effort, via }, { task, cwd, write, lastF
     // commands, but only inside Antigravity's terminal sandbox, like Codex's workspace-write sandbox.
     if (write) args.push("--sandbox", "--settings", JSON.stringify({ permissions: { allow: ["write_file(*)", "command(*)"] } }));
     return { cmd: findAgy(), args };
+  }
+  if (agent === "local") {
+    // Codex CLI driving a local Ollama model: a full agent with Codex's sandbox, no plan limits.
+    return {
+      cmd: "codex",
+      args: ["exec", "--json", "--oss", "--local-provider", "ollama", "--skip-git-repo-check", "-C", cwd,
+        "--sandbox", write ? "workspace-write" : "read-only",
+        "-m", model, "-c", `model_reasoning_effort="${effort}"`,
+        "-o", lastFile, task],
+    };
+  }
+  if (agent === "free") {
+    if (write) throw new Error("the free API worker is read-only");
+    const env = model && model !== "auto" ? { TOKENWISE_FREE_MODEL: model } : {};
+    return { cmd: process.execPath, args: [FREECHAT, task], env };
   }
   if (agent === "codex") {
     return {
@@ -85,6 +107,8 @@ export function textOf(evt) {
   if (!evt || typeof evt !== "object") return null;
   if (typeof evt.result === "string") return evt.result; // claude final
   if (evt.event === "result" && evt.result) return evt.result.response || null; // antigravity final
+  if (evt.type === "free.message") return evt.text || null; // free API answer
+  if (evt.type === "free.error") return null;
   const item = evt.item || evt.msg || evt;
   if (typeof item.text === "string") return item.text;
   if (typeof item.message === "string") return item.message;

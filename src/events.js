@@ -113,8 +113,14 @@ export function normalize(agent, entry, base) {
     return [{ kind: /error|fail|denied/i.test(l) ? "error" : "meta", text: short(l, 400) }];
   }
   let e; try { e = JSON.parse(entry.line); } catch { return [{ kind: "say", text: entry.line }]; }
-  if (agent === "codex") return codex(e, base);
+  if (agent === "codex" || agent === "local") return codex(e, base);
   if (agent === "claude") return claude(e, base);
   if (e.event) return antigravity(e, base);
+  if (typeof e.type === "string" && e.type.startsWith("free.")) {
+    if (e.type === "free.init") return [{ kind: "meta", text: `free API · ${e.provider} · ${e.model}` }];
+    if (e.type === "free.message") return [{ kind: "say", text: e.text }];
+    if (e.type === "free.usage") return [{ kind: "usage", text: `${e.usage?.prompt_tokens ?? 0} in · ${e.usage?.completion_tokens ?? 0} out` }];
+    if (e.type === "free.error") return [{ kind: "error", text: e.message }];
+  }
   return gemini(e);
 }
