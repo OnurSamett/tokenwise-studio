@@ -8,6 +8,7 @@
 //   files in its worktree; opt-in (TOKENWISE_ALLOW_FREE=1) because free tiers may use prompts for training.
 import { doctor } from "./doctor.js";
 import { limits } from "./limits.js";
+import { loadTeam } from "./team.js";
 
 export const RATE_LIMIT = /rate.?limit|usage limit|quota|\b429\b|too many requests|limit (?:reached|exceeded)|exceeded your|out of credits/i;
 
@@ -25,10 +26,10 @@ export function nearLimit(agent, home) {
   return null;
 }
 
-export function available(agent, { write }) {
+export function available(agent, { write }, home) {
   const d = doctor()[agent];
   if (!d || !d.installed || !d.signedIn) return false;
-  if (agent === "free") return process.env.TOKENWISE_ALLOW_FREE === "1";
+  if (agent === "free") return process.env.TOKENWISE_ALLOW_FREE === "1" && (!home || loadTeam(home).allow.free !== false);
   return true;
 }
 
@@ -36,7 +37,7 @@ export function available(agent, { write }) {
 export function nextAgent({ tried, write, home }) {
   for (const a of chain()) {
     if (tried.includes(a)) continue;
-    if (!available(a, { write })) continue;
+    if (!available(a, { write }, home)) continue;
     if (nearLimit(a, home)) continue;
     return a;
   }

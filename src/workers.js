@@ -27,7 +27,7 @@ function codexSlug(model) {
 }
 
 /** Validate and normalise a request; throws with a readable message on policy violations. */
-export function resolve({ agent, model, effort }) {
+export function resolve({ agent, model, effort, allowAstra = false }) {
   if (!AGENTS.includes(agent)) throw new Error(`agent must be one of ${AGENTS.join(", ")}`);
   const defaults = { codex: "medium", claude: "low", gemini: "medium", local: "medium", free: "medium" };
   const eff = effort || defaults[agent];
@@ -36,7 +36,7 @@ export function resolve({ agent, model, effort }) {
   let m = model;
   if (agent === "codex") {
     m = codexSlug(model);
-    if (m.includes("astra") && process.env.TOKENWISE_CODEX_ASTRA !== "1") {
+    if (m.includes("astra") && process.env.TOKENWISE_CODEX_ASTRA !== "1" && !allowAstra) {
       throw new Error("Codex astra is blocked (it drains ChatGPT limits fast). Use sol, or set TOKENWISE_CODEX_ASTRA=1.");
     }
   } else if (agent === "claude") {

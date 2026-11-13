@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadTeam, teamGuide } from "./team.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -63,11 +64,12 @@ export class Chats {
     fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: { "tokenwise-studio": {
       command: process.execPath, args: [MCP], env: { TOKENWISE_REPO: this.jobs.repo, TOKENWISE_PARENT: id },
     } } }));
+    const tg = teamGuide(loadTeam(this.jobs.home));
     const args = ["-p", message, "--model", model, "--effort", effort,
       "--output-format", "stream-json", "--verbose",
       "--mcp-config", mcpFile, "--strict-mcp-config",
       "--permission-mode", "default", "--disallowedTools", "Edit", "Write", "MultiEdit", "NotebookEdit",
-      "--append-system-prompt", GUIDE,
+      "--append-system-prompt", tg ? GUIDE + "\n\n" + tg : GUIDE,
       "--allowedTools", ...ALLOWED];
     if (c.sessionId) args.push("--resume", c.sessionId);
 

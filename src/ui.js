@@ -12,6 +12,7 @@ import { Chats } from "./orchestrator.js";
 import { normalize } from "./events.js";
 import { limits } from "./limits.js";
 import { doctor } from "./doctor.js";
+import { loadTeam, saveTeam, teamOptions } from "./team.js";
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
 let repo, jobs, chats; // current project; replaced by POST /api/project
@@ -29,7 +30,8 @@ function openProject(p) {
   repo = p; jobs = new Jobs(repo); chats = new Chats(jobs);
   remember(repo);
 }
-const state = () => ({ repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(), jobs: jobs.list() });
+const state = () => ({ repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(), jobs: jobs.list(),
+  team: (({ mode, preset }) => ({ mode, preset }))(loadTeam(jobs.home)) });
 
 const gitIn = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const staged = () => { try { return gitIn("diff", "--cached", "--name-only").split("\n").filter(Boolean); } catch { return []; } };
@@ -101,6 +103,7 @@ const handler = async (req, res) => {
       if (what === "state") return send(res, 200, state());
       if (what === "staged") return send(res, 200, { files: staged() });
       if (what === "doctor") return send(res, 200, doctor());
+      if (what === "team") return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions() });
       if (what === "limits") return send(res, 200, limits(jobs.home));
       if (what === "chatlog") return send(res, 200, chatTimeline(id, from));
       if (what === "log") return send(res, 200, jobTimeline(id, from));
@@ -108,6 +111,7 @@ const handler = async (req, res) => {
     }
     if (req.method === "POST") {
       const b = await readBody(req);
+      if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
       if (what === "chat") return send(res, 200, chats.send(b));
       if (what === "stop") return send(res, 200, chats.stop(id));
       if (what === "merge") return send(res, 200, jobs.merge(id, b.files));

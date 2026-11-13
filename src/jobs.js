@@ -3,6 +3,7 @@ import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { command, resolve, textOf } from "./workers.js";
+import { loadTeam } from "./team.js";
 import { RATE_LIMIT, available, nearLimit, nextAgent } from "./fallback.js";
 
 // Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
@@ -54,15 +55,17 @@ export class Jobs {
 
   start({ agent, model, effort, task, write = false, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
     tried = [], movedFrom = null, noFallback = false }) {
+    const team = loadTeam(this.home);
+    if (agent === "free" && team.allow.free === false) throw new Error("free workers are disabled in the team settings");
     // Before starting: if this plan is near its limit or the worker isn't usable, pick the next one in the chain.
     if (!noFallback) {
-      const why = nearLimit(agent, this.home) || (!available(agent, { write }) ? `${agent} not available` : null);
+      const why = nearLimit(agent, this.home) || (!available(agent, { write }, this.home) ? `${agent} not available` : null);
       if (why) {
         const alt = nextAgent({ tried: [...tried, agent], write, home: this.home });
         if (alt) { movedFrom = movedFrom || { agent, reason: why }; tried = [...tried, agent]; agent = alt; model = undefined; }
       }
     }
-    const spec = resolve({ agent, model, effort });
+    const spec = resolve({ agent, model, effort, allowAstra: team.allow.astra === true });
     const id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
     let cwd = this.repo, branch = null;
     if (write) {

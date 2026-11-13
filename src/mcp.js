@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { Jobs } from "./jobs.js";
+import { loadTeam, teamGuide } from "./team.js";
 
 const repo = process.env.TOKENWISE_REPO || process.cwd();
 const jobs = new Jobs(repo);
@@ -29,7 +30,7 @@ server.registerTool("delegate", {
     "The worker cannot see this conversation: put every detail it needs in `task` (files, constraints, done-condition).",
     "Dispatch independent tasks in parallel, then job_wait each.",
     "If a worker's plan is near its usage limit or it hits a rate limit, the job is automatically moved to the next worker (codex → gemini → claude → free → local); job_wait follows the move.",
-  ].join(" "),
+  ].join(" ") + (teamGuide(loadTeam(jobs.home)) ? "\n\n" + teamGuide(loadTeam(jobs.home)) : ""),
   inputSchema: {
     agent: z.enum(["codex", "claude", "gemini", "local", "free"]),
     task: z.string().min(10),
