@@ -37,9 +37,18 @@ Companion to [tokenwise](https://github.com/OnurSamett/tokenwise): tokenwise dec
 
 ## Setup
 
+The simplest start, from inside your project folder (opens the studio in your browser):
+
+```bash
+npx github:OnurSamett/tokenwise-studio
+```
+
+Or from a clone:
+
 ```bash
 git clone https://github.com/OnurSamett/tokenwise-studio.git
 cd tokenwise-studio && npm install
+node src/cli.js /path/to/project   # options: --port N, --no-open
 ```
 
 Register the MCP server with Claude Code (once, for all projects):
@@ -48,7 +57,7 @@ Register the MCP server with Claude Code (once, for all projects):
 claude mcp add tokenwise-studio --scope user -- node "$PWD/src/mcp.js"
 ```
 
-The server works on the project Claude Code is opened in. Start the UI for that project:
+The server works on the project Claude Code is opened in. To start only the UI (no browser) for that project:
 
 ```bash
 node /path/to/tokenwise-studio/src/ui.js /path/to/your/project

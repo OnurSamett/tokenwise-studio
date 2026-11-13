@@ -116,6 +116,27 @@ export class Chats {
     return c;
   }
 
+  rename(id, title) {
+    const t = String(title || "").trim();
+    if (!t || t.length > 120) throw new Error("title must be 1-120 characters");
+    const c = this.get(id);
+    c.title = t;
+    return this.save(c);
+  }
+
+  /** Delete a chat. Its unapplied jobs (running or done) are discarded first. */
+  remove(id) {
+    const c = this.get(id);
+    this.stop(c.id);
+    for (const j of this.jobs.list()) {
+      if (j.parent === id && (j.status === "running" || j.status === "done")) {
+        try { this.jobs.discard(j.id); } catch {}
+      }
+    }
+    for (const ext of ["json", "jsonl", "mcp.json"]) fs.rmSync(this.f(id, ext), { force: true });
+    return { ok: true };
+  }
+
   log(id, from = 0) {
     const f = this.f(id, "jsonl");
     if (!fs.existsSync(f)) return { entries: [], next: 0 };

@@ -5,6 +5,7 @@
   "type": "module",
   "license": "MIT",
   "bin": {
+    "tokenwise-studio": "src/cli.js",
     "tokenwise-studio-mcp": "src/mcp.js",
     "tokenwise-studio-ui": "src/ui.js"
   },

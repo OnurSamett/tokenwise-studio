@@ -15,6 +15,24 @@
     --codex: #5ccfa8; --claude: #e8a07a; --gemini: #84a9ff;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
     --radius: 12px;
+    --add-fg: #a6e9c0; --del-fg: #f5b0b4; --shadow: rgba(0,0,0,.4);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: #fafafa; --s1: #ffffff; --s2: #f4f4f5; --s3: #ebebee; --line: #e5e5ea; --line2: #d6d6dd;
+    --text: #18181b; --muted: #55555f; --dim: #8b8b95; --accent: #5b5fe0; --accent-soft: rgba(91,95,224,.10);
+    --ok: #2f9e62; --bad: #d64550; --warn: #b7791f; --codex: #13906a; --claude: #c2633a; --gemini: #3a6fd8;
+    --add-fg: #1f7a46; --del-fg: #b4232f; --shadow: rgba(20,20,40,.12);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme]) {
+      --bg: #fafafa; --s1: #ffffff; --s2: #f4f4f5; --s3: #ebebee; --line: #e5e5ea; --line2: #d6d6dd;
+      --text: #18181b; --muted: #55555f; --dim: #8b8b95; --accent: #5b5fe0; --accent-soft: rgba(91,95,224,.10);
+      --ok: #2f9e62; --bad: #d64550; --warn: #b7791f; --codex: #13906a; --claude: #c2633a; --gemini: #3a6fd8;
+      --add-fg: #1f7a46; --del-fg: #b4232f; --shadow: rgba(20,20,40,.12);
+      color-scheme: light;
+    }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -121,7 +139,8 @@
   .btn { border-radius: 9px; padding: 8px 14px; font-weight: 550; font-size: 14px; border: 1px solid var(--line2); background: var(--s2); white-space: nowrap; flex: none; }
   .btn:hover { background: var(--s3); }
   .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
-  .btn.primary:hover { background: #d6d6dc; }
+  .btn.primary:hover { opacity: .88; }
+  .btn.danger { color: var(--bad); }
   .btn:disabled { opacity: .4; cursor: default; }
   .composer { background: var(--s1); border: 1px solid var(--line2); border-radius: 16px; padding: 12px 12px 10px 16px; transition: border-color .15s; }
   .composer:focus-within { border-color: #44444f; }
@@ -138,9 +157,9 @@
 
   /* ---------- drawer ---------- */
   .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.45); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20; }
-  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 100vw); background: var(--s1); border-left: 1px solid var(--line2); transform: translateX(100%); transition: transform .22s ease; z-index: 21; display: flex; flex-direction: column; box-shadow: -20px 0 50px rgba(0,0,0,.35); }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 100vw); background: var(--s1); border-left: 1px solid var(--line2); transform: translateX(100%); transition: transform .22s ease; z-index: 21; display: flex; flex-direction: column; visibility: hidden; transition: transform .22s ease, visibility 0s .22s; }
   body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
-  body.drawer-open .drawer { transform: none; }
+  body.drawer-open .drawer { transform: none; visibility: visible; transition: transform .22s ease; box-shadow: -20px 0 50px var(--shadow); }
   .d-head { padding: 18px 22px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
   .d-head h3 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.2px; }
   .d-head .meta { color: var(--dim); font-size: 13px; margin-top: 2px; }
@@ -162,7 +181,7 @@
   .plus { color: var(--ok); font: 12.5px var(--mono); } .minus { color: var(--bad); font: 12.5px var(--mono); }
   .diff { font: 12.5px/1.6 var(--mono); overflow: auto; }
   .diff span { display: block; padding: 0 14px; white-space: pre; }
-  .diff .a { background: rgba(92,201,138,.10); color: #a6e9c0; } .diff .d { background: rgba(240,113,120,.10); color: #f5b0b4; } .diff .h { color: var(--dim); padding-top: 6px; }
+  .diff .a { background: rgba(92,201,138,.12); color: var(--add-fg); } .diff .d { background: rgba(240,113,120,.12); color: var(--del-fg); } .diff .h { color: var(--dim); padding-top: 6px; }
   .tech { margin-top: 6px; } .tech summary { cursor: pointer; color: var(--dim); font-size: 13px; }
   .modal-form { display: grid; gap: 10px; }
   .modal-form select, .modal-form input, .modal-form textarea { background: var(--bg); border: 1px solid var(--line2); color: var(--text); border-radius: 9px; padding: 9px 11px; font: inherit; width: 100%; }
@@ -186,6 +205,37 @@
   .toast.bad { border-color: rgba(240,113,120,.5); } .toast .ti { color: var(--ok); } .toast.bad .ti { color: var(--bad); }
   @keyframes tin { from { opacity: 0; transform: translateY(6px); } }
   .hint { font-size: 12px; color: var(--dim); }
+  .chatitem { position: relative; }
+  .chatitem .more { display: none; background: none; border: 0; color: var(--dim); padding: 0 4px; font-size: 15px; line-height: 1; flex: none; }
+  .chatitem:hover .more, .chatitem.on .more { display: inline; }
+  .chatitem:hover .when, .chatitem:hover .rv { display: none; }
+  .more:hover { color: var(--text); }
+  .pop { position: fixed; z-index: 30; background: var(--s1); border: 1px solid var(--line2); border-radius: 10px; padding: 5px; min-width: 190px; box-shadow: 0 12px 34px var(--shadow); display: flex; flex-direction: column; }
+  .pop button, .pop a { background: none; border: 0; text-align: left; padding: 7px 10px; border-radius: 7px; font-size: 13.5px; color: var(--text); }
+  .pop button:hover { background: var(--s2); }
+  .pop .sep { height: 1px; background: var(--line); margin: 4px 2px; }
+  .pop .ph { font-size: 11.5px; color: var(--dim); padding: 6px 10px 2px; }
+  .pop .path { font-size: 11.5px; color: var(--dim); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+  .pop input { margin: 4px 6px 6px; background: var(--bg); border: 1px solid var(--line2); color: var(--text); border-radius: 7px; padding: 6px 9px; font: 13px inherit; }
+  .projbtn { background: none; border: 0; font-size: 15px; font-weight: 600; letter-spacing: -.2px; padding: 4px 8px; margin-left: -8px; border-radius: 8px; display: inline-flex; gap: 6px; align-items: center; }
+  .projbtn:hover { background: var(--s1); }
+  .projbtn .car { color: var(--dim); font-size: 11px; }
+  .cost { font-size: 12.5px; color: var(--dim); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .cost b { color: var(--muted); font-weight: 550; }
+  .doctor { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+  .doc { font-size: 12.5px; border: 1px solid var(--line); background: var(--s1); border-radius: 999px; padding: 3px 11px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+  .doc i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .doc.off i { background: var(--dim); } .doc.warn i { background: var(--warn); }
+  .doc code { font-size: 11.5px; }
+  .footrow { display: flex; gap: 2px; }
+  .footrow .ghost { width: auto; flex: 1; }
+  .icon-btn { background: none; border: 0; color: var(--dim); border-radius: 8px; padding: 6px 9px; font-size: 14px; }
+  .icon-btn:hover { color: var(--text); background: var(--s1); }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 10px 18px; font-size: 14px; align-items: center; }
+  kbd { font: 12px var(--mono); background: var(--s2); border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px; color: var(--text); white-space: nowrap; }
+  .field { display: grid; gap: 6px; } .field label { font-size: 13px; color: var(--muted); }
+  .field input, .field textarea { background: var(--bg); border: 1px solid var(--line2); color: var(--text); border-radius: 9px; padding: 9px 11px; font: inherit; width: 100%; }
+  .filelist { font: 12.5px var(--mono); color: var(--muted); display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
 
   @media (max-width: 760px) {
     .side { position: fixed; inset: 0 auto 0 0; z-index: 22; background: var(--bg); transform: translateX(-100%); transition: transform .2s; }
@@ -204,13 +254,13 @@
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> New task</button>
   <div class="label">Recent</div>
   <div class="chats" id="chats"></div>
-  <div class="sidefoot"><div class="label">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="directbtn">Run a single worker…</button></div>
+  <div class="sidefoot"><div class="label">Plan limits</div><div class="usage" id="usage"></div><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
 </aside>
 
 <div class="main">
   <div class="top">
     <button class="menu-btn" id="menubtn" aria-label="Menu">☰</button>
-    <h1 id="project">project</h1>
+    <h1><button class="projbtn" id="project" title="Switch project"><span id="projname">project</span><span class="car">▾</span></button></h1>
     <span class="sub" id="chattitle"></span>
   </div>
   <div class="scroll" id="scroll"><div class="col" id="col"></div></div>
@@ -248,7 +298,7 @@ const h = (tag, attrs = {}, ...kids) => {
 };
 const set = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
 const api = async (p, body) => {
-  const r = await fetch("/api/" + p, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const r = await fetch("/api/" + p, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json", "x-tokenwise": "1" }, body: JSON.stringify(body) });
   const j = await r.json(); if (j.error) throw new Error(j.error); return j;
 };
 const clock = (a, b) => { const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
@@ -279,6 +329,31 @@ function md(text) {
   const d = document.createElement("div"); d.className = "say"; d.innerHTML = out.join(""); return d;
 }
 
+// ---------- popovers ----------
+let popEl = null;
+function closePop() { popEl?.remove(); popEl = null; }
+function popover(anchor, ...items) {
+  closePop();
+  const r = anchor.getBoundingClientRect();
+  popEl = h("div", { class: "pop" }, ...items);
+  document.body.append(popEl);
+  const w = popEl.offsetWidth;
+  popEl.style.top = Math.min(r.bottom + 6, innerHeight - popEl.offsetHeight - 8) + "px";
+  popEl.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
+  setTimeout(() => document.addEventListener("click", (e) => { if (popEl && !popEl.contains(e.target)) closePop(); }, { once: true }), 0);
+  return popEl;
+}
+
+// ---------- theme ----------
+const THEMES = ["auto", "light", "dark"];
+let theme = "auto"; try { theme = localStorage.getItem("tw-theme") || "auto"; } catch {}
+function applyTheme() {
+  if (theme === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme;
+  $("#themebtn").textContent = { auto: "◐", light: "☀", dark: "☾" }[theme];
+  $("#themebtn").title = `Theme: ${theme} (click to change)`;
+}
+function cycleTheme() { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; try { localStorage.setItem("tw-theme", theme); } catch {} applyTheme(); toast(`Theme: ${theme}`); }
+
 // ---------- state ----------
 let S = { repo: "", chats: [], jobs: [] };
 let chatId = null, chatFrom = 0, turns = [], drawer = null;
@@ -295,7 +370,15 @@ function renderSide() {
   const ago = (t) => { const m = Math.round((Date.now() - new Date(t)) / 60000); return m < 1 ? "now" : m < 60 ? m + "m" : m < 1440 ? Math.round(m / 60) + "h" : Math.round(m / 1440) + "d"; };
   if (!changed("side", [chatId, Math.floor(Date.now() / 60000), S.chats.map((c) => [c.id, c.title, c.status, rev(c)])])) return;
   set($("#chats"), S.chats.length ? S.chats.map((c) => h("button", { class: "chatitem" + (c.id === chatId ? " on" : ""), onclick: () => { openChat(c.id); document.body.classList.remove("side-open"); } },
-    h("span", { class: "t" }, c.title), c.status === "running" ? h("span", { class: "live", title: "working" }) : rev(c) ? h("span", { class: "rv" }, `${rev(c)} to review`) : h("span", { class: "when" }, ago(c.turns?.at(-1)?.started || c.created)))) : h("div", { class: "label" }, "No tasks yet"));
+    h("span", { class: "t" }, c.title), c.status === "running" ? h("span", { class: "live", title: "working" }) : rev(c) ? h("span", { class: "rv" }, `${rev(c)} to review`) : h("span", { class: "when" }, ago(c.turns?.at(-1)?.started || c.created)),
+    h("span", { class: "more", role: "button", title: "More", onclick: (e) => { e.stopPropagation(); chatMenu(e.currentTarget, c); } }, "⋯"))) : h("div", { class: "label" }, "No tasks yet"));
+}
+
+function chatMenu(anchor, c) {
+  popover(anchor,
+    h("button", { onclick: () => { closePop(); openDrawer("rename", c.id); } }, "Rename"),
+    h("div", { class: "sep" }),
+    h("button", { class: "danger", style: "color:var(--bad)", onclick: () => { closePop(); openDrawer("delete", c.id); } }, "Delete…"));
 }
 
 // ---------- conversation ----------
@@ -308,7 +391,22 @@ function welcome() {
   return h("div", { class: "welcome" }, h("img", { src: "/logo.png", alt: "" }),
     h("h2", {}, "What should the team work on?"),
     h("p", {}, "Describe a task. The orchestrator plans it and hands pieces to Codex, Claude or Gemini workers. Every change waits for your review."),
-    h("div", { class: "examples" }, ex.map(([t, s]) => h("button", { onclick: () => { $("#input").value = t; autosize(); $("#input").focus(); } }, t, h("small", {}, s)))));
+    h("div", { class: "examples" }, ex.map(([t, s]) => h("button", { onclick: () => { $("#input").value = t; autosize(); $("#send").disabled = false; $("#input").focus(); } }, t, h("small", {}, s)))),
+    doctorRow());
+}
+
+function doctorRow() {
+  const row = h("div", { class: "doctor" });
+  const fix = { claude: "claude auth login", codex: "codex login", gemini: "gemini" };
+  api("doctor").then((d) => {
+    set(row, ["claude", "codex", "gemini"].map((k) => {
+      const v = d[k] || {};
+      const cls = v.installed && v.signedIn ? "" : v.installed ? " warn" : " off";
+      const label = v.installed && v.signedIn ? "ready" : v.installed ? ["sign in: ", h("code", {}, fix[k])] : "not installed";
+      return h("span", { class: "doc" + cls, title: v.installed ? "" : `npm i -g ${k === "claude" ? "@anthropic-ai/claude-code" : k === "codex" ? "@openai/codex" : "@google/gemini-cli"}` }, h("i"), AGENT[k], " · ", label);
+    }));
+  }).catch(() => {});
+  return row;
 }
 
 // One DOM block per turn: user bubble, then orchestrator body (activity, team, replies).
@@ -320,11 +418,12 @@ function turnBlock(i) {
   const team = h("div", {});
   const replies = h("div", { class: "orch-body-replies", style: "display:flex;flex-direction:column;gap:12px" });
   const meta = h("div", { class: "orch-meta" });
+  const cost = h("div", { class: "cost", hidden: true });
   const user = h("div", { class: "you" });
   // The team card is inserted into the reply flow at the moment the first task is delegated.
-  const el = h("div", { class: "turn" }, user, h("div", { class: "orch" }, h("div", { class: "avatar" }, "✦"), h("div", { class: "orch-body" }, meta, activity, replies)));
+  const el = h("div", { class: "turn" }, user, h("div", { class: "orch" }, h("div", { class: "avatar" }, "✦"), h("div", { class: "orch-body" }, meta, activity, replies, cost)));
   $("#col").append(el);
-  return (turns[i] = { el, user, activity, label, steps, team, replies, meta, n: 0 });
+  return (turns[i] = { el, user, activity, label, steps, team, replies, meta, cost, n: 0 });
 }
 
 // Turn a timeline event into a short human sentence.
@@ -371,6 +470,15 @@ function renderTurnChrome() {
     const mine = jobs.filter((j) => j.created >= tr.started && (!end || j.created < end));
     if (changed("team" + chatId + i, mine.map((j) => [j.id, j.status, j.finished, j.status === "running" ? Math.floor(Date.now() / 1000) : 0]))) set(t.team, mine.length ? teamCard(mine) : null);
     if (mine.length && !t.team.isConnected) t.replies.append(t.team);
+    const done = !running && tr.finished;
+    if (done && changed("cost" + chatId + i, [tr.cost, mine.map((j) => [j.id, j.status, j.tokens])])) {
+      const tok = mine.reduce((n, j) => n + (j.tokens ? (j.tokens.input || 0) + (j.tokens.output || 0) : 0), 0);
+      const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
+      const byAgent = {}; for (const j of mine) { const k = `${AGENT[j.agent]} ${modelName(j.model)}`; byAgent[k] = (byAgent[k] || 0) + 1; }
+      t.cost.hidden = false;
+      set(t.cost, h("span", { title: "Orchestrator cost at API prices (on a subscription this is part of your plan usage)" }, h("b", {}, modelName(tr.model || c.model)), ` $${(tr.cost || 0).toFixed(2)}`),
+        mine.length ? [h("span", {}, "·"), h("span", {}, Object.entries(byAgent).map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(", ")), tok ? h("span", { title: "Tokens used by workers (on their own plans)" }, `· ${fmt(tok)} worker tokens`) : null] : null);
+    }
   });
 }
 
@@ -388,7 +496,12 @@ function teamCard(jobs) {
 function renderBanner() {
   const p = pending();
   const b = $("#banner");
-  if (!changed("banner", p.map((j) => [j.id, j.files]))) return;
+  if (!changed("banner", [p.map((j) => [j.id, j.files]), staged])) return;
+  if (!p.length && staged.length) {
+    b.hidden = false;
+    set(b, h("span", { class: "dot", style: "background:var(--ok)" }), h("span", { class: "txt" }, `${staged.length} file${staged.length > 1 ? "s" : ""} applied`, h("small", {}, "staged, not committed")), h("button", { class: "btn primary", onclick: () => openDrawer("commit") }, "Commit"));
+    return;
+  }
   if (!p.length) { b.hidden = true; return; }
   const files = p.reduce((n, j) => n + j.files.length, 0);
   b.hidden = false;
@@ -396,7 +509,7 @@ function renderBanner() {
 }
 
 function renderTop() {
-  $("#project").textContent = S.repo.split("/").filter(Boolean).pop() || "project";
+  $("#projname").textContent = S.project?.name || S.repo.split("/").filter(Boolean).pop() || "project";
   $("#project").title = S.repo;
   const c = curChat();
   $("#chattitle").textContent = c ? "· " + c.title : "";
@@ -498,6 +611,48 @@ async function renderDrawer(full) {
     count();
     return;
   }
+  if (drawer.kind === "rename" || drawer.kind === "delete") {
+    if (!full) return;
+    const c = S.chats.find((x) => x.id === drawer.id); if (!c) return closeDrawer();
+    if (drawer.kind === "rename") {
+      const inp = h("input", { value: c.title, maxlength: 120 });
+      const go = async () => { try { await api(`rename/${c.id}`, { title: inp.value }); closeDrawer(); await refresh(); toast("Renamed"); } catch (e) { toast(e.message, true); } };
+      inp.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+      set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Rename task")), h("button", { class: "x", onclick: closeDrawer }, "×")),
+        h("div", { class: "d-body" }, h("div", { class: "field" }, h("label", {}, "Title"), inp)),
+        h("div", { class: "d-foot" }, h("span", { class: "note" }), h("button", { class: "btn", onclick: closeDrawer }, "Cancel"), h("button", { class: "btn primary", onclick: go }, "Save")));
+      setTimeout(() => { inp.focus(); inp.select(); }, 50);
+    } else {
+      const open = S.jobs.filter((j) => j.parent === c.id && ["running", "done"].includes(j.status)).length;
+      set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Delete task?"), h("div", { class: "meta" }, c.title)), h("button", { class: "x", onclick: closeDrawer }, "×")),
+        h("div", { class: "d-body" }, h("p", { class: "muted", style: "margin:0" }, "The conversation is removed from the studio.", open ? ` ${open} worker${open > 1 ? "s" : ""} with unapplied changes will be stopped and discarded.` : "", " Changes you already applied stay in your project.")),
+        h("div", { class: "d-foot" }, h("span", { class: "note" }), h("button", { class: "btn", onclick: closeDrawer }, "Cancel"),
+          h("button", { class: "btn primary", style: "background:var(--bad);border-color:var(--bad);color:#fff", onclick: async () => {
+            try { await api(`delete/${c.id}`, {}); closeDrawer(); if (chatId === c.id) newTask(); await refresh(); toast("Task deleted"); } catch (e) { toast(e.message, true); }
+          } }, "Delete")));
+    }
+    return;
+  }
+  if (drawer.kind === "commit") {
+    if (!full) return;
+    const c = curChat();
+    const msg = h("textarea", { rows: 4 }); msg.value = c ? c.title : "Apply changes from tokenwise studio";
+    const go = async () => {
+      try { const r = await api("commit", { message: msg.value }); closeDrawer(); staged = []; await refresh(); toast(`Committed ${r.files} file${r.files === 1 ? "" : "s"} · ${r.sha}`); } catch (e) { toast(e.message, true); }
+    };
+    set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Commit changes"), h("div", { class: "meta" }, `${staged.length} staged file${staged.length === 1 ? "" : "s"} in ${S.project?.name || "this project"}`)), h("button", { class: "x", onclick: closeDrawer }, "×")),
+      h("div", { class: "d-body" }, h("div", { class: "field" }, h("label", {}, "Commit message"), msg), h("div", { class: "filelist" }, staged.map((f) => h("span", {}, f)))),
+      h("div", { class: "d-foot" }, h("span", { class: "note" }, "Uses your own git identity."), h("button", { class: "btn", onclick: closeDrawer }, "Cancel"), h("button", { class: "btn primary", onclick: go }, "Commit")));
+    setTimeout(() => msg.focus(), 50);
+    return;
+  }
+  if (drawer.kind === "keys") {
+    if (!full) return;
+    const rows = [["↵", "Send"], ["⇧ ↵", "New line"], ["⌘ K", "New task"], ["Esc", "Close panel"], ["?", "Show shortcuts"]];
+    set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Keyboard shortcuts")), h("button", { class: "x", onclick: closeDrawer }, "×")),
+      h("div", { class: "d-body" }, h("div", { class: "keys" }, rows.map(([k, v]) => [h("span", {}, k.split(" ").map((x) => h("kbd", {}, x))), h("span", { class: "muted" }, v)]))));
+    return;
+  }
   if (drawer.kind === "direct") {
     if (!full) return;
     const f = h("form", { class: "modal-form" },
@@ -544,6 +699,25 @@ async function renderLimits() {
   set($("#usage"), blocks.length ? blocks : h("div", { class: "none" }, "Shows up after the first run."));
 }
 
+let staged = [], stagedAt = 0;
+async function pollStaged() { if (Date.now() - stagedAt < 3000) return; stagedAt = Date.now(); try { staged = (await api("staged")).files || []; } catch { staged = []; } }
+
+function projectMenu() {
+  const inp = h("input", { placeholder: "Open folder: /path/to/project" });
+  const open = async (path) => {
+    closePop();
+    try { S = await api("project", { path }); newTask(); await refresh(); renderLimits(); toast(`Opened ${S.project?.name}`); } catch (e) { toast(e.message, true); }
+  };
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && inp.value.trim()) open(inp.value.trim()); });
+  const rec = (S.recents || []).filter((p) => p !== S.repo);
+  popover($("#project"),
+    h("div", { class: "ph" }, "Current"), h("button", { disabled: true, style: "opacity:1;cursor:default" }, S.project?.name, h("span", { class: "path" }, S.repo)),
+    rec.length ? [h("div", { class: "sep" }), h("div", { class: "ph" }, "Recent")] : null,
+    rec.map((p) => h("button", { onclick: () => open(p) }, p.split("/").filter(Boolean).pop(), h("span", { class: "path" }, p))),
+    h("div", { class: "sep" }), inp);
+  setTimeout(() => inp.focus(), 30);
+}
+
 function toast(text, bad = false) {
   const t = h("div", { class: "toast" + (bad ? " bad" : "") }, h("span", { class: "ti" }, bad ? "!" : "✓"), text);
   $("#toasts").append(t); setTimeout(() => t.remove(), 3800);
@@ -552,6 +726,7 @@ function toast(text, bad = false) {
 // ---------- loop ----------
 async function refresh() {
   S = await api("state");
+  await pollStaged();
   renderSide(); renderTop(); renderBanner(); renderTurnChrome();
   if (drawer) renderDrawer(false);
 }
@@ -568,6 +743,15 @@ $("#send").onclick = send;
 $("#stop").onclick = () => chatId && api(`stop/${chatId}`, {}).then(refresh);
 $("#newtask").onclick = newTask;
 $("#directbtn").onclick = openDirect;
+$("#keysbtn").onclick = () => openDrawer("keys");
+$("#themebtn").onclick = cycleTheme;
+$("#project").onclick = (e) => { e.stopPropagation(); projectMenu(); };
+document.addEventListener("keydown", (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+  if (e.key === "?" && !typing) { e.preventDefault(); openDrawer("keys"); }
+  if (e.key === "Escape") closePop();
+});
+applyTheme();
 $("#scrim").onclick = closeDrawer;
 $("#menubtn").onclick = () => document.body.classList.toggle("side-open");
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });

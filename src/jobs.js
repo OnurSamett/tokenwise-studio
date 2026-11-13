@@ -95,6 +95,7 @@ export class Jobs {
       const j = this.get(id);
       j.exitCode = code; j.finished = new Date().toISOString(); j.pid = null;
       if (j.status !== "discarded") j.status = code === 0 ? "done" : "failed";
+      Object.assign(j, this.usage(id));
       j.final = (fs.existsSync(lastFile) && fs.readFileSync(lastFile, "utf8").trim()) || lastText;
       if (write) {
         try {
@@ -113,6 +114,26 @@ export class Jobs {
     child.on("error", (e) => write1("meta", `spawn error: ${e.message}`));
     this.running.set(id, { child, done });
     return job;
+  }
+
+  /** Token/cost totals from this job's own log: Codex turn.completed lines are summed, Claude's final result line is used. */
+  usage(id) {
+    const f = this.file(id, "log");
+    const sum = { input: 0, cached: 0, output: 0 };
+    let found = false, claude = null, cost = null;
+    for (const l of fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n") : []) {
+      let e;
+      try { const o = JSON.parse(l); if (o.stream !== "out") continue; e = JSON.parse(o.line); } catch { continue; }
+      const u = e && e.usage;
+      if (!u) continue;
+      if (e.type === "turn.completed") {
+        sum.input += u.input_tokens || 0; sum.cached += u.cached_input_tokens || 0; sum.output += u.output_tokens || 0; found = true;
+      } else if (e.type === "result") {
+        claude = { input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0), cached: u.cache_read_input_tokens || 0, output: u.output_tokens || 0 };
+        cost = typeof e.total_cost_usd === "number" ? e.total_cost_usd : null;
+      }
+    }
+    return { tokens: claude || (found ? sum : null), cost };
   }
 
   async wait(id, timeoutS = 600) {

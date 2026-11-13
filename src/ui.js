@@ -3,20 +3,36 @@
 // Binds to 127.0.0.1 only.
 import http from "node:http";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Jobs } from "./jobs.js";
 import { Chats } from "./orchestrator.js";
 import { normalize } from "./events.js";
 import { limits } from "./limits.js";
+import { doctor } from "./doctor.js";
 
-const argv = process.argv.slice(2);
-const pi = argv.indexOf("--port");
-const port = pi >= 0 ? Number(argv[pi + 1]) : Number(process.env.PORT || 4777);
-const repo = path.resolve(argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--port") || process.env.TOKENWISE_REPO || process.cwd());
-const jobs = new Jobs(repo);
-const chats = new Chats(jobs);
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
+let repo, jobs, chats; // current project; replaced by POST /api/project
+
+const RECENTS = path.join(os.homedir(), ".tokenwise-studio", "recents.json");
+function recents() {
+  try { const r = JSON.parse(fs.readFileSync(RECENTS, "utf8")); return Array.isArray(r) ? r.filter((x) => typeof x === "string") : []; } catch { return []; }
+}
+function remember(p) {
+  const list = [p, ...recents().filter((x) => x !== p)].slice(0, 8);
+  try { fs.mkdirSync(path.dirname(RECENTS), { recursive: true }); fs.writeFileSync(RECENTS, JSON.stringify(list, null, 2)); } catch {}
+  return list;
+}
+function openProject(p) {
+  repo = p; jobs = new Jobs(repo); chats = new Chats(jobs);
+  remember(repo);
+}
+const state = () => ({ repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(), jobs: jobs.list() });
+
+const gitIn = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+const staged = () => { try { return gitIn("diff", "--cached", "--name-only").split("\n").filter(Boolean); } catch { return []; } };
 
 function jobTimeline(id, from = 0) {
   const j = jobs.get(id);
@@ -55,7 +71,21 @@ const send = (res, code, body, type = "application/json") => {
 };
 const readBody = (req) => new Promise((r) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { try { r(JSON.parse(b || "{}")); } catch { r({}); } }); });
 
-http.createServer(async (req, res) => {
+// Only answer requests addressed to this machine (blocks DNS rebinding), and require a custom
+// header plus a local Origin on every state-changing request (blocks CSRF from other websites:
+// browsers can't send a custom header cross-origin without a CORS preflight, which we never grant).
+const LOCAL_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
+function allowed(req) {
+  if (!LOCAL_HOST.test(req.headers.host || "")) return false;
+  if (req.method === "GET" || req.method === "HEAD") return true;
+  if (req.headers["x-tokenwise"] !== "1") return false;
+  const origin = req.headers.origin;
+  if (origin) { try { if (!LOCAL_HOST.test(new URL(origin).host)) return false; } catch { return false; } }
+  return true;
+}
+
+const handler = async (req, res) => {
+  if (!allowed(req)) return send(res, 403, { error: "forbidden" });
   const url = new URL(req.url, "http://x");
   const from = Number(url.searchParams.get("from") || 0);
   const m = url.pathname.match(/^\/api\/(\w+)(?:\/([\w-]+))?$/);
@@ -68,7 +98,9 @@ http.createServer(async (req, res) => {
     if (!m) return send(res, 404, { error: "not found" });
     const [, what, id] = m;
     if (req.method === "GET") {
-      if (what === "state") return send(res, 200, { repo, chats: chats.list(), jobs: jobs.list() });
+      if (what === "state") return send(res, 200, state());
+      if (what === "staged") return send(res, 200, { files: staged() });
+      if (what === "doctor") return send(res, 200, doctor());
       if (what === "limits") return send(res, 200, limits(jobs.home));
       if (what === "chatlog") return send(res, 200, chatTimeline(id, from));
       if (what === "log") return send(res, 200, jobTimeline(id, from));
@@ -80,10 +112,43 @@ http.createServer(async (req, res) => {
       if (what === "stop") return send(res, 200, chats.stop(id));
       if (what === "merge") return send(res, 200, jobs.merge(id, b.files));
       if (what === "discard") return send(res, 200, jobs.discard(id));
+      if (what === "rename") return send(res, 200, chats.rename(id, b.title));
+      if (what === "delete") return send(res, 200, chats.remove(id));
+      if (what === "commit") {
+        const message = String(b.message || "").trim();
+        if (!message) throw new Error("commit message is empty");
+        const files = staged();
+        if (!files.length) throw new Error("nothing is staged");
+        gitIn("commit", "-m", message);
+        return send(res, 200, { ok: true, sha: gitIn("rev-parse", "--short", "HEAD").trim(), files: files.length });
+      }
+      if (what === "project") {
+        const p = path.resolve(String(b.path || "").replace(/^~(?=$|[\\/])/, os.homedir()));
+        if (!fs.existsSync(p) || !fs.statSync(p).isDirectory()) throw new Error(`not a folder: ${p}`);
+        openProject(p);
+        return send(res, 200, state());
+      }
       if (what === "delegate") return send(res, 200, jobs.start({ ...b, parent: null }));
     }
     return send(res, 404, { error: "not found" });
   } catch (e) {
     return send(res, 400, { error: String(e.message || e) });
   }
-}).listen(port, "127.0.0.1", () => console.log(`tokenwise studio: http://127.0.0.1:${port}  (repo: ${repo})`));
+};
+
+export function startServer({ repo: start, port = 4777 } = {}) {
+  openProject(path.resolve(start || process.cwd()));
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(handler);
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => resolve(`http://127.0.0.1:${server.address().port}`));
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const argv = process.argv.slice(2);
+  const pi = argv.indexOf("--port");
+  const port = pi >= 0 ? Number(argv[pi + 1]) : Number(process.env.PORT || 4777);
+  const start = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--port") || process.env.TOKENWISE_REPO || process.cwd();
+  startServer({ repo: start, port }).then((url) => console.log(`tokenwise studio: ${url}  (repo: ${repo})`));
+}
