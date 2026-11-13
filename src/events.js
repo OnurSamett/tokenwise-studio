@@ -120,6 +120,7 @@ export function normalize(agent, entry, base) {
     if (e.type === "free.init") return [{ kind: "meta", text: `free API · ${e.provider} · ${e.model}` }];
     if (e.type === "free.skip") return [{ kind: "meta", text: `${e.provider} unavailable (${e.message}); trying the next free provider` }];
     if (e.type === "free.message") return [{ kind: "say", text: e.text }];
+    if (e.type === "free.tool") return [{ kind: e.error ? "error" : e.kind, text: e.error ? `${e.text}: ${e.error}` : e.text }];
     if (e.type === "free.usage") return [{ kind: "usage", text: `${e.usage?.prompt_tokens ?? 0} in · ${e.usage?.completion_tokens ?? 0} out` }];
     if (e.type === "free.error") return [{ kind: "error", text: e.message }];
   }

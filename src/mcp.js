@@ -22,7 +22,7 @@ server.registerTool("delegate", {
   description: [
     "Start a self-contained task on another AI agent CLI and return a job id immediately (it runs in the background).",
     "agent: 'codex' (models: terra, sol [default], or a full slug; astra is blocked unless the user opted in),",
-    "'local' (Ollama model via Codex, free and unlimited, can edit files), 'free' (free-tier chat API, read-only, opt-in),",
+    "'local' (Ollama model via Codex, free and unlimited, can edit files), 'free' (free hosted models like NVIDIA's Kimi/DeepSeek/GLM via a safe tool loop; can read and, with write=true, edit; opt-in),",
     "'claude' (haiku [default], sonnet, opus) or 'gemini' (via Google Antigravity: hydrogen [default, fast], argon [frontier, strongest]). effort: low|medium|high|xhigh.",
     "write=false: read-only answer. write=true: the worker edits files in its own git worktree branched from HEAD",
     "(uncommitted changes in the main tree are NOT visible to it); review with job_diff, then job_merge or job_discard.",

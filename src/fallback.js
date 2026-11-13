@@ -4,8 +4,8 @@
 // Order (override with TOKENWISE_FALLBACK, comma-separated):
 //   codex → gemini → claude → free → local
 // - "local" (Ollama) is free and unlimited and can edit files.
-// - "free" (free-tier chat API) is read-only text only and opt-in (TOKENWISE_ALLOW_FREE=1),
-//   because free tiers may use prompts for training.
+// - "free" (free-tier hosted APIs such as NVIDIA, driven by src/freeagent.js) can read and edit
+//   files in its worktree; opt-in (TOKENWISE_ALLOW_FREE=1) because free tiers may use prompts for training.
 import { doctor } from "./doctor.js";
 import { limits } from "./limits.js";
 
@@ -28,7 +28,7 @@ export function nearLimit(agent, home) {
 export function available(agent, { write }) {
   const d = doctor()[agent];
   if (!d || !d.installed || !d.signedIn) return false;
-  if (agent === "free") return !write && process.env.TOKENWISE_ALLOW_FREE === "1";
+  if (agent === "free") return process.env.TOKENWISE_ALLOW_FREE === "1";
   return true;
 }
 

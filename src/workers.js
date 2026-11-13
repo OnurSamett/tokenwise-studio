@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { findAgy, agySlug } from "./antigravity.js";
 
 export const AGENTS = ["codex", "claude", "gemini", "local", "free"];
-const FREECHAT = path.join(path.dirname(fileURLToPath(import.meta.url)), "freechat.js");
+const FREEAGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), "freeagent.js");
 const EFFORTS = ["low", "medium", "high", "xhigh"];
 
 let codexCatalog = null;
@@ -74,9 +74,10 @@ export function command({ agent, model, effort, via }, { task, cwd, write, lastF
     };
   }
   if (agent === "free") {
-    if (write) throw new Error("the free API worker is read-only");
+    // Free-tier chat APIs driven by our own small tool loop (src/freeagent.js): reads the repo,
+    // and in write mode edits files and runs allowlisted test commands inside the worktree.
     const env = model && model !== "auto" ? { TOKENWISE_FREE_MODEL: model } : {};
-    return { cmd: process.execPath, args: [FREECHAT, task], env };
+    return { cmd: process.execPath, args: [FREEAGENT, ...(write ? ["--write"] : []), task], env };
   }
   if (agent === "codex") {
     return {
