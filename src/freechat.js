@@ -42,10 +42,8 @@ export function freeProviders() {
 export const freeProvider = () => freeProviders()[0] || null;
 
 const picked = new Map();
-/** Up to 3 candidate models for this provider, best first. */
-export async function pickModels(p, first = false) {
-  const forced = process.env[`TOKENWISE_${p.name.toUpperCase()}_MODEL`] || (first ? process.env.TOKENWISE_FREE_MODEL : null);
-  if (forced) return [forced];
+/** All usable chat models for this provider, best first (cached per provider). */
+async function rankedModels(p) {
   if (picked.has(p.name)) return picked.get(p.name);
   const res = await fetch(`${p.base}/models`, { headers: { Authorization: `Bearer ${p.key}` }, signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw Object.assign(new Error(`models list failed (HTTP ${res.status})`), { status: res.status });
@@ -58,12 +56,32 @@ export async function pickModels(p, first = false) {
   const score = (id) => { const i = p.rank.findIndex((re) => re.test(id)); return i < 0 ? p.rank.length : i; };
   const size = (id) => Number((id.match(/(\d+(?:\.\d+)?)b\b/i) || [])[1] || 0);
   ids.sort((a, b) => score(a) - score(b) || size(b) - size(a));
-  const list = ids.slice(0, 3);
-  if (!list.length) throw new Error(`no usable model found on ${p.name}`);
-  picked.set(p.name, list);
-  return list;
+  if (!ids.length) throw new Error(`no usable model found on ${p.name}`);
+  picked.set(p.name, ids);
+  return ids;
+}
+
+/** Up to 3 candidate models for this provider, best first. */
+export async function pickModels(p, first = false) {
+  const forced = process.env[`TOKENWISE_${p.name.toUpperCase()}_MODEL`] || (first ? process.env.TOKENWISE_FREE_MODEL : null);
+  if (forced) return [forced];
+  return (await rankedModels(p)).slice(0, 3);
 }
 export const pickModel = async (p, first) => (await pickModels(p, first))[0];
+
+let freeList = null, freeListAt = 0;
+/** Selectable free models: up to 8 ranked per configured provider, as [{ id: "provider:model", provider, model }]. Cached 10 min, never throws. */
+export async function listFreeModels() {
+  try {
+    if (freeList && Date.now() - freeListAt < 10 * 60_000) return freeList;
+    const out = [];
+    for (const p of freeProviders()) {
+      try { for (const model of (await rankedModels(p)).slice(0, 8)) out.push({ id: `${p.name}:${model}`, provider: p.name, model }); } catch {}
+    }
+    if (out.length) { freeList = out; freeListAt = Date.now(); }
+    return out;
+  } catch { return []; }
+}
 
 const KEYS = ["NVIDIA_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "TOKENWISE_FREE_KEY"].map((k) => process.env[k]).filter(Boolean)
   // raw key, its JSON-escaped form, and every line fragment, so a malformed key can't leak through an error message

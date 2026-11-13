@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { findAgy, agySlug } from "./antigravity.js";
+import { freeProviders } from "./freechat.js";
 
 export const AGENTS = ["codex", "claude", "gemini", "local", "free"];
 const FREEAGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), "freeagent.js");
@@ -76,7 +77,14 @@ export function command({ agent, model, effort, via }, { task, cwd, write, lastF
   if (agent === "free") {
     // Free-tier chat APIs driven by our own small tool loop (src/freeagent.js): reads the repo,
     // and in write mode edits files inside the worktree (no commands; see freeagent.js).
-    const env = model && model !== "auto" ? { TOKENWISE_FREE_MODEL: model } : {};
+    let env = {};
+    const sel = model && model !== "auto" ? model.match(/^(nvidia|openrouter|groq|mistral|custom):(.+)$/) : null;
+    if (sel) {
+      // "provider:model": try that provider/model first, keep the other configured providers as fallback.
+      let others = [];
+      try { others = freeProviders().map((p) => p.name).filter((n) => n !== sel[1]); } catch {}
+      env = { TOKENWISE_FREE_PROVIDERS: [sel[1], ...others].join(","), [`TOKENWISE_${sel[1].toUpperCase()}_MODEL`]: sel[2] };
+    } else if (model && model !== "auto") env = { TOKENWISE_FREE_MODEL: model };
     return { cmd: process.execPath, args: [FREEAGENT, ...(write ? ["--write"] : []), task], env };
   }
   if (agent === "codex") {

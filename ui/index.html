@@ -260,6 +260,20 @@
   .toggle input { accent-color: var(--accent); width: 16px; height: 16px; margin-top: 2px; }
   .toggle small { display: block; color: var(--dim); font-size: 12.5px; }
   @media (max-width: 560px) { .rolerow .rl { flex-direction: column; gap: 2px; } .rolerow .rl small { text-align: left; } }
+  .goodat { font-size: 12.5px; color: var(--muted); margin-top: 6px; display: flex; gap: 6px; align-items: baseline; }
+  .goodat i { font-style: normal; color: var(--dim); }
+  .tier { font-size: 11px; border-radius: 999px; padding: 0 7px; line-height: 18px; border: 1px solid var(--line2); color: var(--muted); white-space: nowrap; }
+  .tier.fast { color: var(--ok); } .tier.balanced { color: var(--accent); } .tier.frontier { color: var(--warn); }
+  .mgroup { margin-bottom: 22px; }
+  .mgroup h4 { display: flex; align-items: center; gap: 8px; }
+  .mgroup h4 .badge { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; }
+  .mrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .mrow:last-child { border-bottom: 0; }
+  .mrow b { font-size: 14px; font-weight: 550; }
+  .mrow .good { grid-column: 1 / -1; font-size: 13.5px; color: var(--text); }
+  .mrow .note { grid-column: 1 / -1; font-size: 12.5px; color: var(--dim); }
+  .mrow.off { opacity: .55; }
+  .linkbtn { background: none; border: 0; color: var(--accent); font-size: 13px; padding: 0; }
   .filelist { font: 12.5px var(--mono); color: var(--muted); display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
 
   @media (max-width: 760px) {
@@ -279,7 +293,7 @@
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> New task</button>
   <div class="label">Recent</div>
   <div class="chats" id="chats"></div>
-  <div class="sidefoot"><div class="label">Plan limits</div><div class="usage" id="usage"></div><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
+  <div class="sidefoot"><div class="label">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
 </aside>
 
 <div class="main">
@@ -379,6 +393,17 @@ function applyTheme() {
   $("#themebtn").title = `Theme: ${theme} (click to change)`;
 }
 function cycleTheme() { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; try { localStorage.setItem("tw-theme", theme); } catch {} applyTheme(); toast(`Theme: ${theme}`); }
+
+// ---------- model catalog ----------
+let CATALOG = null;
+async function loadCatalog() { if (!CATALOG) { try { CATALOG = await api("models"); } catch { CATALOG = { catalog: [], available: {}, ready: {} }; } } return CATALOG; }
+function describeModel(agent, model) {
+  const list = (CATALOG?.catalog || []).filter((c) => c.agent === agent);
+  if (!model || model === "auto") return null;
+  const id = String(model).includes(":") ? String(model).split(":").slice(1).join(":") : String(model);
+  return list.find((c) => c.family && c.family === id) || list.find((c) => c.match && new RegExp(c.match, "i").test(id)) || null;
+}
+const TIER = { fast: "Fast", balanced: "Balanced", frontier: "Frontier" };
 
 // Mirrors the server presets so the panel can preview them before saving (the server validates on save).
 const PRESET_ROLES = {
@@ -686,7 +711,7 @@ async function renderDrawer(full) {
   }
   if (drawer.kind === "team") {
     if (!full) return;
-    let data; try { data = await api("team"); } catch (e) { toast(e.message, true); return closeDrawer(); }
+    let data; try { [data] = await Promise.all([api("team"), loadCatalog()]); } catch (e) { toast(e.message, true); return closeDrawer(); }
     const opt = data.options, t = JSON.parse(JSON.stringify(data.team));
     const RL = { code: "Writes code", quick: "Quick & mechanical work", review: "Reviews and second opinions", images: "Images" };
     const SUB = { code: "features, fixes, refactors", quick: "summaries, boilerplate, menus", review: "checks the work before you apply it", images: "icons, sprites, textures" };
@@ -712,8 +737,9 @@ async function renderDrawer(full) {
           h("div", { class: "rl" }, h("b", {}, RL[id] || id), h("small", {}, SUB[id] || "")),
           h("div", { class: "ctl" },
             sel(r.agent, agentOpts(id), (v) => { r.agent = v; r.model = (opt.agents[v]?.models || ["auto"])[0]; }, (v) => `${AGENT[v] || v}${opt.agents[v]?.ready ? "" : " · not ready"}`),
-            id === "images" ? h("span", { class: "fixed", title: "The image model is picked automatically" }, "Image model") : sel(r.model, models, (v) => { r.model = v; }, (v) => (v === "auto" ? "Auto" : modelName(v) || v)),
-            id === "images" ? h("span", { class: "fixed" }, "—") : sel(r.effort || "medium", ["low", "medium", "high", "xhigh"], (v) => { r.effort = v; }, (v) => v[0].toUpperCase() + v.slice(1))));
+            id === "images" ? h("span", { class: "fixed", title: "The image model is picked automatically" }, "Image model") : sel(r.model, models, (v) => { r.model = v; }, (v) => (v === "auto" ? (r.agent === "free" ? "Auto (best available)" : "Auto") : a.labels?.[v] || describeModel(r.agent, v)?.label || modelName(v) || v)),
+            id === "images" ? h("span", { class: "fixed" }, "—") : sel(r.effort || "medium", ["low", "medium", "high", "xhigh"], (v) => { r.effort = v; }, (v) => v[0].toUpperCase() + v.slice(1))),
+          (() => { const m = id === "images" ? null : describeModel(r.agent, r.model); return m ? h("div", { class: "goodat" }, h("span", { class: "tier " + m.tier }, TIER[m.tier] || m.tier), h("span", {}, "Good at: ", m.goodAt)) : r.model === "auto" && id !== "images" ? h("div", { class: "goodat" }, h("i", {}, r.agent === "free" ? "Picks the strongest free model available and moves on if one is rate limited." : "Picks the model for each piece by the tokenwise rules.")) : null; })());
       });
       const freeOk = opt.agents.free?.ready || opt.agents.free?.optIn;
       set(body,
@@ -728,13 +754,40 @@ async function renderDrawer(full) {
     };
     draw();
     set(d,
-      h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Team"), h("div", { class: "meta" }, `Who does the work in ${S.project?.name || "this project"}`)), h("button", { class: "x", onclick: closeDrawer, "aria-label": "Close" }, "×")),
+      h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Team"), h("div", { class: "meta" }, `Who does the work in ${S.project?.name || "this project"} · `, h("button", { class: "linkbtn", onclick: () => openDrawer("models") }, "Model guide"))), h("button", { class: "x", onclick: closeDrawer, "aria-label": "Close" }, "×")),
       body,
       h("div", { class: "d-foot" }, h("span", { class: "note" }, "Saved per project. Applies to new tasks."),
         h("button", { class: "btn", onclick: closeDrawer }, "Cancel"),
         h("button", { class: "btn primary", onclick: async () => {
           try { await api("team", t); closeDrawer(); await refresh(); toast(t.mode === "auto" ? "Team: automatic" : `Team saved${t.preset ? " · " + t.preset : ""}`); } catch (e) { toast(e.message, true); }
         } }, "Save")));
+    return;
+  }
+  if (drawer.kind === "models") {
+    if (!full) return;
+    const M = await loadCatalog();
+    const groups = [["codex", "ChatGPT Codex"], ["claude", "Claude"], ["gemini", "Gemini (via Antigravity)"], ["free", "Free hosted models (NVIDIA and others)"]];
+    const avail = (agent, c) => {
+      const list = M.available?.[agent] || [];
+      if (agent === "free") return list.some((id) => new RegExp(c.match, "i").test(id));
+      return !c.family || list.length === 0 || list.includes(c.family);
+    };
+    set(d,
+      h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Model guide"), h("div", { class: "meta" }, "What each model is good at. Pick them in Team, or let Automatic mode decide.")), h("button", { class: "x", onclick: closeDrawer, "aria-label": "Close" }, "×")),
+      h("div", { class: "d-body" },
+        groups.map(([agent, title]) => {
+          const items = (M.catalog || []).filter((c) => c.agent === agent);
+          if (!items.length) return null;
+          const ready = M.ready?.[agent];
+          return h("div", { class: "mgroup" },
+            h("h4", {}, h("span", { class: "badge " + agent }, BADGE[agent]), title, h("span", { class: "tier " + (ready ? "fast" : "") }, ready ? "ready" : "not set up")),
+            items.map((c) => h("div", { class: "mrow" + (avail(agent, c) ? "" : " off") },
+              h("b", {}, c.label), h("span", { class: "tier " + c.tier }, TIER[c.tier] || c.tier),
+              h("div", { class: "good" }, "Good at: ", c.goodAt),
+              h("div", { class: "note" }, c.notes, c.source === "vendor description" ? "" : " (tokenwise default)", avail(agent, c) ? "" : " · not offered on your account right now"))));
+        }),
+        h("p", { class: "muted", style: "font-size:12.5px" }, "Descriptions come from each provider's catalog where available; others reflect how tokenwise uses the model. Free models may use prompts for training.")),
+      h("div", { class: "d-foot" }, h("span", { class: "note" }), h("button", { class: "btn", onclick: () => openDrawer("team") }, "Open Team"), h("button", { class: "btn primary", onclick: closeDrawer }, "Done")));
     return;
   }
   if (drawer.kind === "keys") {
@@ -838,6 +891,7 @@ $("#newtask").onclick = newTask;
 $("#directbtn").onclick = openDirect;
 $("#keysbtn").onclick = () => openDrawer("keys");
 $("#teambtn").onclick = () => openDrawer("team");
+$("#modelsbtn").onclick = () => openDrawer("models");
 $("#themebtn").onclick = cycleTheme;
 $("#project").onclick = (e) => { e.stopPropagation(); projectMenu(); };
 document.addEventListener("keydown", (e) => {

@@ -5,6 +5,7 @@ import path from "node:path";
 import { doctor } from "./doctor.js";
 import { agyModels } from "./antigravity.js";
 import { freeProviders } from "./freechat.js";
+import { CATALOG, describe } from "./models.js";
 
 export const ROLES = ["code", "quick", "review", "images"];
 const LABELS = { code: "Writes code", quick: "Quick & mechanical work", review: "Reviews and second opinions", images: "Images" };
@@ -36,7 +37,8 @@ export const DEFAULT_TEAM = { mode: "auto", preset: null, roles: clone(PRESETS.b
 
 const AGENTS = ["codex", "claude", "gemini", "free"];
 const EFFORTS = ["low", "medium", "high", "xhigh"];
-const MODEL = /^[\w.:\/-]{1,80}$/;
+const MODEL = /^[\w.\/:-]{1,120}$/;
+const FREE_MODEL = /^(nvidia|openrouter|groq|mistral|custom):[\w.\/:-]{1,120}$/;
 const isObj = (x) => x && typeof x === "object" && !Array.isArray(x);
 
 /** Validate strictly; unknown keys are dropped. Missing roles/fields fall back to the defaults. */
@@ -67,6 +69,7 @@ function normalize(input) {
     const out = { agent: src.agent };
     if (src.model !== undefined) {
       if (typeof src.model !== "string" || !MODEL.test(src.model)) throw new Error(`role '${r}': invalid model`);
+      if (src.agent === "free" && src.model !== "auto" && !FREE_MODEL.test(src.model)) throw new Error(`role '${r}': free model must be 'auto' or provider:model (nvidia|openrouter|groq|mistral|custom)`);
       if (/astra/i.test(src.model) && !allow.astra) throw new Error(`role '${r}': astra models need allow.astra`);
       out.model = src.model;
     }
@@ -93,7 +96,7 @@ export function saveTeam(home, input) {
   return team;
 }
 
-function geminiFamilies() {
+export function geminiFamilies() {
   try {
     const fams = new Set();
     for (const id of agyModels() || []) {
@@ -106,18 +109,20 @@ function geminiFamilies() {
 }
 
 /** What the UI can offer. Never throws. */
-export function teamOptions() {
+export function teamOptions(freeModels = []) {
   let d = {};
   try { d = doctor() || {}; } catch {}
   const ready = (a) => !!(d[a] && d[a].installed && d[a].signedIn);
   let providers = [];
   try { providers = freeProviders().map((p) => p.name); } catch {}
+  const fam = (agent) => Object.fromEntries(CATALOG.filter((c) => c.agent === agent).map((c) => [c.family, c.label]));
+  const freeIds = (freeModels || []).map((m) => m.id);
   return {
     agents: {
-      codex: { ready: ready("codex"), models: ["luna", "terra", "sol", "astra"] },
-      claude: { ready: ready("claude"), models: ["haiku", "sonnet", "opus"] },
-      gemini: { ready: ready("gemini"), models: geminiFamilies() },
-      free: { ready: providers.length > 0, models: ["auto"], providers, optIn: process.env.TOKENWISE_ALLOW_FREE === "1" },
+      codex: { ready: ready("codex"), models: ["luna", "terra", "sol", "astra"], labels: fam("codex") },
+      claude: { ready: ready("claude"), models: ["haiku", "sonnet", "opus"], labels: fam("claude") },
+      gemini: { ready: ready("gemini"), models: geminiFamilies(), labels: fam("gemini") },
+      free: { ready: providers.length > 0, models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: process.env.TOKENWISE_ALLOW_FREE === "1" },
     },
     roles: ROLES.map((id) => ({ id, label: LABELS[id] })),
     presets: Object.keys(PRESETS),

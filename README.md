@@ -76,6 +76,17 @@ Just ask your orchestrator, e.g. in Claude Code on Opus:
 
 Per project you choose how the orchestrator picks workers. **Auto** (default) lets it decide by its own guide. **Manual** fixes an agent, model and effort for each role (code, quick work, reviews, images); start from a preset (quality, balanced or cheap) and adjust. The choice is stored in `.tokenwise-studio/team.json`. The orchestrator follows it and only deviates when a plan is out of quota. You can also forbid the free workers or allow Codex astra there.
 
+### Models
+
+| Agent | fast | balanced | frontier |
+|---|---|---|---|
+| Codex | Codex Luna | Codex Terra, Codex Sol | Codex Astra |
+| Claude | Claude Haiku | Claude Sonnet | Claude Opus |
+| Gemini (Antigravity) | Gemini Flash | Gemini Hydrogen | Gemini Argon |
+| Free (NVIDIA) | Laguna XS 2.1, Nemotron 3.5 Lightning | DeepSeek V4.1 Flash, GLM 5.3 Flash, MiniMax M3.1 Flash, GPT-OSS | Kimi K3.1 Pro, Mistral Large 4, Nemotron 3 Ultra, Step 5 Preview |
+
+Free NVIDIA models can be picked individually in the Team panel.
+
 ### MCP tools
 
 | Tool | What it does |

@@ -13,7 +13,10 @@ import { Chats } from "./orchestrator.js";
 import { normalize } from "./events.js";
 import { limits } from "./limits.js";
 import { doctor } from "./doctor.js";
-import { loadTeam, saveTeam, teamOptions } from "./team.js";
+import { loadTeam, saveTeam, teamOptions, geminiFamilies } from "./team.js";
+import { CATALOG } from "./models.js";
+import { listFreeModels } from "./freechat.js";
+
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
 let repo, jobs, chats; // current project; replaced by POST /api/project
@@ -105,7 +108,15 @@ const handler = async (req, res) => {
       if (what === "state") return send(res, 200, state());
       if (what === "staged") return send(res, 200, { files: staged() });
       if (what === "doctor") return send(res, 200, doctor());
-      if (what === "team") return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions() });
+      if (what === "team") return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions(await listFreeModels()) });
+      if (what === "models") {
+        const d = doctor(), ok = (a) => !!(d[a] && d[a].installed && d[a].signedIn);
+        return send(res, 200, {
+          catalog: CATALOG,
+          available: { codex: ["luna", "terra", "sol", "astra"], claude: ["haiku", "sonnet", "opus"], gemini: geminiFamilies(), free: (await listFreeModels()).map((m) => m.id) },
+          ready: { codex: ok("codex"), claude: ok("claude"), gemini: ok("gemini"), free: ok("free") },
+        });
+      }
       if (what === "limits") return send(res, 200, limits(jobs.home));
       if (what === "chatlog") return send(res, 200, chatTimeline(id, from));
       if (what === "log") return send(res, 200, jobTimeline(id, from));
