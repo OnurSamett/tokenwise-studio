@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { loadTeam, teamGuide } from "./team.js";
 import { RATE_LIMIT, available, nearLimit } from "./fallback.js";
 import { resolve } from "./workers.js";
+import { notify, turnNotice, handoffNotice } from "./notify.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -162,7 +163,13 @@ export class Chats {
       w("meta", `orchestrator exited (${code})`);
       log.end();
       this.save(cur);
+      const failed = cur.status === "failed";
+      let readyJobs = 0;
+      try { readyJobs = this.jobs.list().filter((j) => j.parent === id && j.write && j.status === "done" && j.created >= turn.started).length; } catch {}
+      const n = turnNotice({ turn: cur.turns[ti], chatTitle: cur.title, failed, stopped: stopped || cur.status === "stopped", readyJobs });
+      if (n) notify({ ...n, key: `turn:${id}:${ti}` });
     };
+    if (turn.handoff) { const n = handoffNotice(turn.handoff.reason); notify({ ...n, subtitle: c.title, key: `handoff:${id}:${ti}` }); }
 
     const run = (agent) => {
       const t = c.turns[ti];
@@ -226,6 +233,7 @@ export class Chats {
           w("meta", `Claude ${reason}; continuing this turn on Codex`);
           w("handoff", JSON.stringify({ from: "claude", to: "codex", reason }));
           this.save(c);
+          { const n = handoffNotice(reason); notify({ ...n, subtitle: c.title, key: `handoff:${id}:${ti}` }); }
           run("codex");
           return;
         }

@@ -334,7 +334,7 @@
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> New task</button>
   <div class="label">Recent</div>
   <div class="chats" id="chats"></div>
-  <div class="sidefoot"><div class="label">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
+  <div class="sidefoot"><div class="label">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
 </aside>
 
 <div class="main">
@@ -433,6 +433,16 @@ function applyTheme() {
   $("#themebtn").textContent = { auto: "◐", light: "☀", dark: "☾" }[theme];
   $("#themebtn").title = `Theme: ${theme} (click to change)`;
 }
+// ---------- notifications ----------
+let notifOn = true;
+const BELL = (off) => `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px${off ? ";opacity:.5" : ""}"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>${off ? '<path d="M3 3l18 18"/>' : ""}</svg>`;
+function applyNotif() { const b = $("#notifbtn"); b.innerHTML = BELL(!notifOn); b.title = `Notifications: ${notifOn ? "on" : "off"} (click to turn ${notifOn ? "off" : "on"})`; }
+async function toggleNotif() {
+  try { const s = await api("settings", { notifications: !notifOn }); notifOn = s.notifications; applyNotif(); toast(`Notifications ${notifOn ? "on" : "off"}`); }
+  catch (e) { toast(String(e.message || e), true); }
+}
+applyNotif();
+api("settings").then((s) => { notifOn = s.notifications !== false; applyNotif(); }).catch(() => {});
 function cycleTheme() { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; try { localStorage.setItem("tw-theme", theme); } catch {} applyTheme(); toast(`Theme: ${theme}`); }
 
 // Model makers (our own neutral badges, not company logos): initials + a recognisable colour.
@@ -1020,6 +1030,7 @@ $("#keysbtn").onclick = () => openDrawer("keys");
 $("#teambtn").onclick = () => openDrawer("team");
 $("#modelsbtn").onclick = () => openDrawer("models");
 $("#themebtn").onclick = cycleTheme;
+$("#notifbtn").onclick = toggleNotif;
 $("#project").onclick = (e) => { e.stopPropagation(); projectMenu(); };
 document.addEventListener("keydown", (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);

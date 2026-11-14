@@ -5,6 +5,7 @@ import path from "node:path";
 import { command, resolve, textOf } from "./workers.js";
 import { loadTeam } from "./team.js";
 import { RATE_LIMIT, available, nearLimit, nextAgent } from "./fallback.js";
+import { notify, jobNotice } from "./notify.js";
 
 // Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
 const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/node_modules/**", "**/.DS_Store",
@@ -141,6 +142,10 @@ export class Jobs {
       log.end();
       this.save(j);
       this.running.delete(id);
+      if (!j.parent && (j.status === "done" || j.status === "failed")) {
+        const n = jobNotice(j, write ? j.files.length : undefined);
+        if (n) notify({ ...n, subtitle: path.basename(this.repo), key: `job:${id}:${j.status}` });
+      }
       res(j);
     }));
     child.on("error", (e) => write1("meta", `spawn error: ${e.message}`));

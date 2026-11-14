@@ -16,6 +16,7 @@ import { doctor } from "./doctor.js";
 import { loadTeam, saveTeam, teamOptions, geminiFamilies } from "./team.js";
 import { CATALOG } from "./models.js";
 import { listFreeModels } from "./freechat.js";
+import { loadSettings, saveSettings } from "./notify.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
@@ -151,6 +152,7 @@ const handler = async (req, res) => {
           benchmarks: loadBenchmarks(),
         });
       }
+      if (what === "settings") return send(res, 200, loadSettings());
       if (what === "limits") return send(res, 200, limits(jobs.home));
       if (what === "orchestrator") return send(res, 200, orchestratorNow(url.searchParams.get("model"), url.searchParams.get("effort")));
       if (what === "chatlog") return send(res, 200, chatTimeline(id, from));
@@ -159,6 +161,10 @@ const handler = async (req, res) => {
     }
     if (req.method === "POST") {
       const b = await readBody(req);
+      if (what === "settings") {
+        if (typeof b.notifications !== "boolean") throw new Error("notifications must be true or false");
+        return send(res, 200, saveSettings({ notifications: b.notifications }));
+      }
       if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
       if (what === "chat") return send(res, 200, chats.send(b));
       if (what === "stop") return send(res, 200, chats.stop(id));
