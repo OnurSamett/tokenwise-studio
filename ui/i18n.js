@@ -754,6 +754,21 @@ export const DICT = {
     "ws.lines": "{n} lines",
     "ws.loading": "Loading…",
     "ws.lineRefTitle": "Open {path} at line {line}",
+
+    // Non-git project setup
+    "git.noRepoNotice": "Workers can't change files here because this folder isn't a git project",
+    "git.setupBtn": "Set up git (git init + first commit)",
+    "git.settingUp": "Setting up git…",
+    "git.confirmTitle": "Set up git in {name}?",
+    "git.confirmBody.one": "This will run git init and make an initial commit of {n} file in this folder. {gitignore}",
+    "git.confirmBody.other": "This will run git init and make an initial commit of {n} files in this folder. {gitignore}",
+    "git.confirmGitignoreCreate": "A .gitignore file with .tokenwise-studio/ will be created.",
+    "git.confirmGitignoreAppend": ".tokenwise-studio/ will be added to .gitignore.",
+    "git.confirmGitignoreKeep": ".gitignore already ignores .tokenwise-studio/.",
+    "git.confirmBtn": "Initialize git & commit",
+    "git.cancelBtn": "Cancel",
+    "git.setupDone": "Git is ready ({sha})",
+    "git.writeDisabledHint": "Read-only only: this folder is not a git project yet.",
   },
 
   tr: {
@@ -1508,6 +1523,21 @@ export const DICT = {
     "ws.lines": "{n} satır",
     "ws.loading": "Yükleniyor…",
     "ws.lineRefTitle": "{path} dosyasını {line}. satırda aç",
+
+    // Non-git project setup
+    "git.noRepoNotice": "Bu klasör bir git projesi olmadığı için çalışanlar burada dosya değiştiremez",
+    "git.setupBtn": "Git kur (git init + ilk commit)",
+    "git.settingUp": "Git kuruluyor…",
+    "git.confirmTitle": "{name} içinde git kurulsun mu?",
+    "git.confirmBody.one": "Bu işlem git init çalıştırıp bu klasördeki {n} dosyayla ilk commit'i oluşturacak. {gitignore}",
+    "git.confirmBody.other": "Bu işlem git init çalıştırıp bu klasördeki {n} dosyayla ilk commit'i oluşturacak. {gitignore}",
+    "git.confirmGitignoreCreate": "İçinde .tokenwise-studio/ olan bir .gitignore dosyası oluşturulacak.",
+    "git.confirmGitignoreAppend": ".gitignore dosyasına .tokenwise-studio/ eklenecek.",
+    "git.confirmGitignoreKeep": ".gitignore zaten .tokenwise-studio/ klasörünü yok sayıyor.",
+    "git.confirmBtn": "Git başlat ve commit'le",
+    "git.cancelBtn": "Vazgeç",
+    "git.setupDone": "Git hazır ({sha})",
+    "git.writeDisabledHint": "Yalnızca salt okunur: bu klasör henüz bir git projesi değil.",
   },
 };
 

@@ -165,6 +165,9 @@
   .banner-check { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
   .banner-check .crow2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
   .banner-check pre { margin: 0; max-height: 170px; overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .nongit { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--s1); border: 1px solid var(--line2); border-radius: var(--radius); padding: 10px 10px 10px 14px; }
+  .nongit .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+  .nongit .txt { flex: 1; min-width: 180px; font-size: 13.5px; color: var(--muted); }
   .btn { border-radius: 9px; padding: 8px 14px; font-weight: 550; font-size: 14px; border: 1px solid var(--line2); background: var(--s2); white-space: nowrap; flex: none; }
   .btn:hover { background: var(--s3); }
   .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
@@ -587,6 +590,7 @@
   <div class="dock"><div class="dock-in">
     <button class="jump" id="jump" hidden>↓ Latest</button>
     <div class="banner" id="banner" hidden></div>
+    <div class="nongit" id="nongit" hidden></div>
     <div class="composer">
       <div class="attachments" id="attachments"></div>
       <input type="file" id="imagefiles" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
@@ -1194,7 +1198,92 @@ async function runCombined() {
 }
 const combinedLabel = (s) => (hasKey(`banner.checkStatus.${s}`, lang) ? t(`banner.checkStatus.${s}`) : s);
 
+let gitSettingUp = false;
+async function openGitSetup(triggerBtn) {
+  if (gitSettingUp) return;
+  gitSettingUp = true;
+  if (triggerBtn) triggerBtn.disabled = true;
+  let preview;
+  try {
+    preview = await api("git-setup");
+  } catch (e) {
+    gitSettingUp = false;
+    if (triggerBtn) triggerBtn.disabled = false;
+    toast(e.message, true);
+    return;
+  }
+  gitSettingUp = false;
+  if (triggerBtn) triggerBtn.disabled = false;
+
+  const gitignore = !preview.hasGitignore
+    ? t("git.confirmGitignoreCreate")
+    : preview.needsGitignoreEntry
+      ? t("git.confirmGitignoreAppend")
+      : t("git.confirmGitignoreKeep");
+
+  const back = h("div", { class: "dialog-back" });
+  let busy = false;
+  const close = () => { if (busy) return; document.removeEventListener("keydown", onKey); back.remove(); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  back.addEventListener("click", (e) => { if (e.target === back) close(); });
+  document.addEventListener("keydown", onKey);
+
+  const errEl = h("div", { class: "err" });
+  const cancelBtn = h("button", { class: "btn", onclick: close }, t("git.cancelBtn"));
+  const confirmBtn = h("button", { class: "btn accent", onclick: async () => {
+    if (busy) return;
+    busy = true;
+    confirmBtn.disabled = true;
+    cancelBtn.disabled = true;
+    confirmBtn.textContent = t("git.settingUp");
+    errEl.textContent = "";
+    try {
+      const r = await api("git-setup", { confirm: true });
+      S = r.state || await api("state");
+      busy = false;
+      close();
+      renderSide(); renderTop(); renderBanner();
+      if (ws.open) { if (ws.tab === "changes") loadWsDiff(true); else loadWsDir(ws.cwd || ""); }
+      if (drawer && (drawer.kind === "team" || drawer.kind === "direct")) renderDrawer(true);
+      toast(t("git.setupDone", { sha: r.sha }));
+    } catch (e) {
+      busy = false;
+      confirmBtn.disabled = false;
+      cancelBtn.disabled = false;
+      confirmBtn.textContent = t("git.confirmBtn");
+      errEl.textContent = e.message;
+    }
+  } }, t("git.confirmBtn"));
+
+  back.append(h("div", { class: "dialog", role: "dialog", "aria-modal": "true" },
+    h("h3", {}, t("git.confirmTitle", { name: S.project?.name || "" })),
+    h("p", {}, tp("git.confirmBody", preview.fileCount, { gitignore })),
+    errEl,
+    h("div", { class: "d-actions" }, confirmBtn, cancelBtn)));
+  document.body.append(back);
+}
+
+function nonGitNoticeKids() {
+  const btn = h("button", { class: "btn accent", onclick: () => openGitSetup(btn) }, t("git.setupBtn"));
+  return [
+    h("span", { class: "dot" }),
+    h("span", { class: "txt" }, t("git.noRepoNotice")),
+    btn,
+  ];
+}
+
+function renderNonGit() {
+  const el = $("#nongit");
+  if (!el) return;
+  const nonGit = S.project?.isGit === false;
+  if (!changed("nongit", [nonGit, S.repo, lang])) return;
+  if (!nonGit) { el.hidden = true; set(el); return; }
+  el.hidden = false;
+  set(el, ...nonGitNoticeKids());
+}
+
 function renderBanner() {
+  renderNonGit();
   const p = pending();
   const b = $("#banner");
   const cc = S.combinedCheck || null;
@@ -1831,7 +1920,9 @@ async function renderDrawer(full) {
           })());
       });
       const freeOk = opt.agents.free?.ready || opt.agents.free?.optIn;
+      const nonGitBox = S.project?.isGit === false ? h("div", { class: "nongit", style: "margin-bottom:16px" }, ...nonGitNoticeKids()) : null;
       set(body,
+        nonGitBox,
         h("div", { class: "section" }, h("h4", {}, t("team.howChosen")), seg),
         tm.mode === "manual" ? h("div", { class: "section" }, h("h4", {}, t("team.preset")), presets) : null,
         tm.mode === "manual" ? h("div", { class: "section" }, h("h4", {}, t("team.roles")), rows) : h("div", { class: "section muted", style: "font-size:13.5px" }, t("team.autoInfo")),
@@ -2193,13 +2284,17 @@ async function renderDrawer(full) {
   }
   if (drawer.kind === "direct") {
     if (!full) return;
+    const isGit = S.project?.isGit !== false;
     const f = h("form", { class: "modal-form" },
       h("div", { class: "row" },
         h("select", { name: "agent" }, ["codex", "claude", "gemini"].map((a) => h("option", { value: a }, AGENT[a]))),
         h("input", { name: "model", placeholder: t("direct.modelPlaceholder") }),
         h("select", { name: "effort" }, ["medium", "low", "high", "xhigh"].map((e) => h("option", { value: e }, effortLabel(e))))),
       h("textarea", { name: "task", rows: 6, placeholder: t("direct.taskPlaceholder") }),
-      h("label", { class: "check" }, h("input", { type: "checkbox", name: "write" }), t("direct.writeLabel")),
+      h("label", { class: "check", title: isGit ? "" : t("git.writeDisabledHint") },
+        h("input", { type: "checkbox", name: "write", disabled: isGit ? null : true }),
+        t("direct.writeLabel")),
+      !isGit ? h("div", { class: "muted", style: "font-size:12.5px" }, t("git.writeDisabledHint")) : null,
       h("div", { class: "err", id: "derr" }));
     set(d,
       h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("direct.title")), h("div", { class: "meta" }, t("direct.meta"))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),

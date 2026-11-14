@@ -9,7 +9,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { saveUpload, resolveUpload, UPLOAD_BODY_LIMIT } from "./uploads.js";
-import { Jobs } from "./jobs.js";
+import { Jobs, gitSetupPreview, setupGit } from "./jobs.js";
 import { Chats, pickOrchestrator } from "./orchestrator.js";
 import { normalize } from "./events.js";
 import { limits } from "./limits.js";
@@ -65,7 +65,7 @@ function combinedCheckInfo() {
   const status = c.status === "running" && !running ? "error" : c.status;
   return { ...c, status, tail };
 }
-const state = () => ({ version: LOADED_VERSION, repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(),
+const state = () => ({ version: LOADED_VERSION, repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit() }, recents: recents(), chats: chats.list(),
   jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
   combinedCheck: combinedCheckInfo(),
   team: (({ mode, preset }) => ({ mode, preset }))(loadTeam(jobs.home)) });
@@ -312,6 +312,7 @@ export const handler = async (req, res) => {
         return res.end(fs.readFileSync(img.abs));
       }
       if (what === "worktree-diff") return send(res, 200, worktreeDiff(repo));
+      if (what === "git-setup") return send(res, 200, gitSetupPreview(repo));
     }
     if (req.method === "POST") {
       const b = await readBody(req, what === "upload" ? UPLOAD_BODY_LIMIT : undefined);
@@ -406,6 +407,7 @@ export const handler = async (req, res) => {
         return send(res, 200, state());
       }
       if (what === "delegate") return send(res, 200, jobs.start({ ...b, parent: null }));
+      if (what === "git-setup") return send(res, 200, { ...setupGit(repo), state: state() });
     }
     return send(res, 404, { error: "not found" });
   } catch (e) {

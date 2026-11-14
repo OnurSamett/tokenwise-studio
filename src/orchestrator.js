@@ -23,9 +23,10 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(python3:*)", "Bash(pytest:*)", "Bash(npm test:*)", "Bash(npm run:*)", "Bash(node:*)",
   "Bash(go test:*)", "Bash(cargo test:*)"];
 
-/** Orchestrator guide for a permission mode, plus (optional) the project's instructions file and the turn budget rule. */
-export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0 } = {}) {
+/** Orchestrator guide for a permission mode, plus (optional) the project's instructions file, turn budget rule, and non-git rule. */
+export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true } = {}) {
   const parts = [baseGuide(permissionMode)];
+  if (!isGit) parts.push("NON-GIT PROJECT: this folder is not a git repository. Write jobs (write=true) require git and will be rejected. Only use read-only jobs (write=false) here; if the user asks for file changes, explain that they can set up git from the studio UI (or run git init and make an initial commit) first.");
   if (turnBudget > 0) parts.push(`TURN TOKEN BUDGET: each turn has about ${fmtTokens(turnBudget)} tokens for you plus all workers. Keep tasks tight. When delegate answers that the budget is spent, start no more jobs: wrap up with what is done and what remains.`);
   const ig = instructionsGuide(instructions);
   if (ig) parts.push(ig);
@@ -124,6 +125,21 @@ function codexCommand({ repo, chatId, model, effort, thread, prompt, images = []
 }
 
 const NAME = { claude: "Claude", codex: "Codex" };
+
+function codexThreadCumulative(c, threadId) {
+  if (threadId && c.codexUsage?.[threadId]) return c.codexUsage[threadId];
+  const sum = { input: 0, cached: 0, output: 0 };
+  if (!threadId) return sum;
+  const start = c.compaction?.throughTurn || 0;
+  for (const pt of (c.turns || []).slice(start)) {
+    if (pt?.agent === "codex" && pt.tokens && (!pt.codexThread || pt.codexThread === threadId)) {
+      sum.input += pt.tokens.input || 0;
+      sum.cached += pt.tokens.cached || 0;
+      sum.output += pt.tokens.output || 0;
+    }
+  }
+  return sum;
+}
 
 /** Message plus, when this agent lacks context, a compacted summary and/or earlier turns handled elsewhere. */
 export function buildPrompt(c, ti, agent, message) {
@@ -299,7 +315,7 @@ export class Chats {
       this.running.set(id, child);
       const buf = { out: "", err: "" };
       const tail = []; // last ~50 lines of output, for rate-limit detection
-      let isError = false, spawnFailed = false;
+      let isError = false, spawnFailed = false, lastCallCtx = 0;
       const on = (s) => (chunk) => {
         buf[s] += chunk.toString(); let i;
         while ((i = buf[s].indexOf("\n")) >= 0) {
@@ -312,14 +328,22 @@ export class Chats {
             const e = JSON.parse(line);
             if (agent === "claude") {
               if (e.session_id && !c.sessionId) { c.sessionId = e.session_id; this.save(c); }
-              if (e.type === "assistant" && e.message?.id && e.message.usage) { // one entry per API call, repeated per content block
+              if (e.type === "assistant" && e.message?.usage) {
                 const u = e.message.usage;
-                claudeMsgs.set(e.message.id, (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.output_tokens || 0));
-                live.run = [...claudeMsgs.values()].reduce((a, b) => a + b, 0);
+                lastCallCtx = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+                if (e.message.id) { // one entry per API call, repeated per content block
+                  claudeMsgs.set(e.message.id, (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.output_tokens || 0));
+                  live.run = [...claudeMsgs.values()].reduce((a, b) => a + b, 0);
+                }
               }
               if (e.type === "result") {
                 if (e.usage) {
-                  t.tokens = { input: (e.usage.input_tokens || 0) + (e.usage.cache_creation_input_tokens || 0), cached: e.usage.cache_read_input_tokens || 0, output: e.usage.output_tokens || 0 };
+                  t.tokens = {
+                    input: (e.usage.input_tokens || 0) + (e.usage.cache_creation_input_tokens || 0),
+                    cached: e.usage.cache_read_input_tokens || 0,
+                    output: e.usage.output_tokens || 0,
+                    context: lastCallCtx,
+                  };
                   live.run = t.tokens.input + t.tokens.output;
                 }
                 t.cost = e.total_cost_usd || 0; c.cost = (c.cost || 0) + t.cost;
@@ -330,8 +354,28 @@ export class Chats {
               if (e.type === "thread.started" && e.thread_id) { c.codexThread = e.thread_id; this.save(c); }
               if (e.type === "item.completed" && e.item?.type === "agent_message" && e.item.text) t.reply = e.item.text;
               if (e.type === "turn.completed" && e.usage) {
-                t.tokens = { input: e.usage.input_tokens || 0, cached: e.usage.cached_input_tokens || 0, output: e.usage.output_tokens || 0 };
-                live.run += t.tokens.input + t.tokens.output;
+                const tid = c.codexThread || null;
+                const prev = codexThreadCumulative(c, tid);
+                const cum = {
+                  input: e.usage.input_tokens || 0,
+                  cached: e.usage.cached_input_tokens || 0,
+                  output: e.usage.output_tokens || 0,
+                };
+                const delta = {
+                  input: Math.max(0, cum.input - prev.input),
+                  cached: Math.max(0, cum.cached - prev.cached),
+                  output: Math.max(0, cum.output - prev.output),
+                };
+                t.tokens = {
+                  input: (t.tokens?.input || 0) + delta.input,
+                  cached: (t.tokens?.cached || 0) + delta.cached,
+                  output: (t.tokens?.output || 0) + delta.output,
+                };
+                if (tid) {
+                  t.codexThread = tid;
+                  c.codexUsage = { ...(c.codexUsage || {}), [tid]: cum };
+                }
+                live.run += delta.input + delta.output;
               }
               if (e.type === "turn.failed" || e.type === "error") isError = true;
             }
@@ -376,6 +420,7 @@ export class Chats {
         if (ac.signal.aborted || this.get(id).status === "stopped") return finish(1, true);
         c.sessionId = null;
         c.codexThread = null;
+        c.codexUsage = {};
         c.compaction = { summary, at: new Date().toISOString(), throughTurn: ti, method, tokens: prevTokens };
         this.save(c);
         w("compact", JSON.stringify({
@@ -420,6 +465,7 @@ export class Chats {
       const fresh = this.get(id);
       fresh.sessionId = null;
       fresh.codexThread = null;
+      fresh.codexUsage = {};
       fresh.compaction = { summary, at: new Date().toISOString(), throughTurn: fresh.turns.length, method, tokens };
       this.save(fresh);
       const turnIdx = fresh.turns.length - 1;

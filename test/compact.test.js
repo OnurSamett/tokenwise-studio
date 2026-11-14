@@ -8,6 +8,7 @@ import { PassThrough } from "node:stream";
 
 import { DEFAULTS, loadSettings, saveSettings } from "../src/settings.js";
 import {
+  COMPACT_MIN_TURNS,
   COMPACT_NOTICE,
   SUMMARY_MAX_CHARS,
   buildSummaryPrompt,
@@ -16,6 +17,7 @@ import {
   deterministicSummary,
   shouldCompact,
 } from "../src/compact.js";
+import { clearDoctorCache } from "../src/doctor.js";
 import { Jobs } from "../src/jobs.js";
 import { Chats, buildPrompt } from "../src/orchestrator.js";
 import { normalize } from "../src/events.js";
@@ -113,48 +115,86 @@ test("settings.js defaults and validates compactChats and compactThreshold", () 
 });
 
 test("contextTokens and shouldCompact threshold decision", () => {
+  assert.equal(COMPACT_MIN_TURNS, 3);
   assert.equal(contextTokens(null), 0);
-  assert.equal(contextTokens({ agent: "claude", tokens: { input: 2000, cached: 125_000, output: 500 } }), 127_500);
-  // Codex input_tokens already includes cached_input_tokens; must not double-count.
-  assert.equal(contextTokens({ agent: "codex", tokens: { input: 100_000, cached: 80_000, output: 1000 } }), 101_000);
+  // Only per-call context triggers; legacy Claude turns without context and Codex turns return 0.
+  assert.equal(contextTokens({ agent: "claude", tokens: { input: 2000, cached: 125_000, output: 500, context: 127_000 } }), 127_000);
+  assert.equal(contextTokens({ agent: "claude", tokens: { input: 2000, cached: 500_000, output: 500 } }), 0);
+  assert.equal(contextTokens({ agent: "codex", tokens: { input: 250_000, cached: 200_000, output: 1000 } }), 0);
+
+  // Fresh session (no sessionId and no codexThread) never compacts, even with high context.
+  const freshChat = {
+    sessionId: null,
+    codexThread: null,
+    turns: [
+      { agent: "claude", user: "hi", reply: "hello", tokens: { input: 1000, cached: 199_000, output: 500, context: 200_000 } },
+    ],
+  };
+  assert.equal(shouldCompact(freshChat, { compactChats: true, compactThreshold: 60_000 }), false);
 
   const chat = {
+    sessionId: "sess-1",
     turns: [
-      { agent: "claude", user: "hi", reply: "hello", tokens: { input: 1000, cached: 119_000, output: 0 } },
+      { agent: "claude", user: "hi", reply: "hello", tokens: { input: 1000, cached: 119_000, output: 0, context: 120_000 } },
     ],
   };
   // Exactly at threshold (120k) does not compact; strictly greater triggers.
   assert.equal(shouldCompact(chat, { compactChats: true, compactThreshold: 120_000 }), false);
   assert.equal(shouldCompact(chat, { compactChats: true, compactThreshold: 119_999 }), true);
   assert.equal(shouldCompact(chat, { compactChats: false, compactThreshold: 60_000 }), false);
-  assert.equal(shouldCompact({ turns: [] }, { compactChats: true, compactThreshold: 60_000 }), false);
+  assert.equal(shouldCompact({ sessionId: "sess-1", turns: [] }, { compactChats: true, compactThreshold: 60_000 }), false);
+
+  // Codex cumulative never triggers compaction.
+  const codexChat = {
+    codexThread: "thr-1",
+    turns: [
+      { agent: "codex", user: "hi", reply: "ok", tokens: { input: 250_000, cached: 200_000, output: 2000 } },
+    ],
+  };
+  assert.equal(shouldCompact(codexChat, { compactChats: true, compactThreshold: 60_000 }), false);
 
   // Already compacted up through current turns: do not compact again before next turn completes.
   const already = {
-    turns: [{ agent: "claude", user: "hi", reply: "ok", tokens: { input: 150_000, cached: 0, output: 500 } }],
+    sessionId: "sess-2",
+    turns: [{ agent: "claude", user: "hi", reply: "ok", tokens: { input: 150_000, cached: 0, output: 500, context: 150_000 } }],
     compaction: { summary: "s", throughTurn: 1 },
   };
   assert.equal(shouldCompact(already, { compactChats: true, compactThreshold: 120_000 }), false);
 
   // New turn after compaction without usage (e.g. aborted/failed) must not re-trigger pre-compaction turn.
   const failedAfter = {
+    sessionId: "sess-2",
     turns: [
-      { agent: "claude", user: "t1", reply: "ok", tokens: { input: 150_000, cached: 0, output: 500 } },
+      { agent: "claude", user: "t1", reply: "ok", tokens: { input: 150_000, cached: 0, output: 500, context: 150_000 } },
       { agent: "claude", user: "t2", reply: null, tokens: null },
     ],
     compaction: { summary: "s", throughTurn: 1 },
   };
   assert.equal(shouldCompact(failedAfter, { compactChats: true, compactThreshold: 120_000 }), false);
 
-  // New turn after compaction exceeding threshold triggers again.
-  const grewAgain = {
+  // Big real context after compaction does NOT trigger within 3 turns of last compaction.
+  const oneAfter = {
+    sessionId: "sess-2",
     turns: [
-      { agent: "claude", user: "t1", reply: "ok", tokens: { input: 150_000, cached: 0, output: 500 } },
-      { agent: "claude", user: "t2", reply: "done", tokens: { input: 3000, cached: 125_000, output: 500 } },
+      { agent: "claude", user: "t1", reply: "ok", tokens: { context: 150_000 } },
+      { agent: "claude", user: "t2", reply: "done", tokens: { context: 130_000 } },
     ],
     compaction: { summary: "s", throughTurn: 1 },
   };
-  assert.equal(shouldCompact(grewAgain, { compactChats: true, compactThreshold: 120_000 }), true);
+  assert.equal(shouldCompact(oneAfter, { compactChats: true, compactThreshold: 120_000 }), false);
+
+  const twoAfter = {
+    ...oneAfter,
+    turns: [...oneAfter.turns, { agent: "claude", user: "t3", reply: "done", tokens: { context: 140_000 } }],
+  };
+  assert.equal(shouldCompact(twoAfter, { compactChats: true, compactThreshold: 120_000 }), false);
+
+  // At 3 new turns since last compaction, big real context triggers again.
+  const threeAfter = {
+    ...twoAfter,
+    turns: [...twoAfter.turns, { agent: "claude", user: "t4", reply: "done", tokens: { context: 145_000 } }],
+  };
+  assert.equal(shouldCompact(threeAfter, { compactChats: true, compactThreshold: 120_000 }), true);
 });
 
 test("compactChat uses stubbed Haiku runner and enforces output cap", async () => {
@@ -294,7 +334,7 @@ test("Chats.send auto-compacts when threshold exceeded, drops old session, and l
             started: new Date().toISOString(),
             finished: new Date().toISOString(),
             cost: 0.4,
-            tokens: { input: 2000, cached: 125_000, output: 500 },
+            tokens: { input: 2000, cached: 125_000, output: 500, context: 127_000 },
           },
         ],
       });
@@ -397,6 +437,128 @@ test("POST /api/compact/:id manually compacts chat and returns timeline notice",
       assert.equal(compactItem.method, "deterministic");
       assert.ok(compactItem.summary.includes("Manual compact test"));
     } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
+async function waitTurnDone(chats, cid) {
+  for (let i = 0; i < 100 && chats.get(cid).status === "running"; i++) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  for (let i = 0; i < 20 && !chats.log(cid).entries.some((e) => e.stream === "meta"); i++) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+}
+
+test("Claude tool-loop summed cache_read does not trigger compaction; last call context is used", async () => {
+  await withTempHome(async () => {
+    const repo = tmp("tw-repo-ctx-");
+    try {
+      saveSettings({ compactChats: true, compactThreshold: 120_000 });
+      const jobs = new Jobs(repo);
+      // Turn 1: 5 assistant calls each with ~50k context (summed result cache_read = 225k > 120k, but real context = 50k).
+      // Turn 2: follows without triggering compaction.
+      const { spawn } = fakeSpawn([
+        [
+          { type: "system", subtype: "init", session_id: "sess-loop-1" },
+          { type: "assistant", message: { id: "m1", content: [{ type: "text", text: "Step 1" }], usage: { input_tokens: 1000, cache_read_input_tokens: 40_000, cache_creation_input_tokens: 4000, output_tokens: 50 } } },
+          { type: "assistant", message: { id: "m2", content: [{ type: "text", text: "Step 2" }], usage: { input_tokens: 1200, cache_read_input_tokens: 44_000, cache_creation_input_tokens: 2000, output_tokens: 60 } } },
+          { type: "assistant", message: { id: "m3", content: [{ type: "text", text: "Done" }], usage: { input_tokens: 1500, cache_read_input_tokens: 46_000, cache_creation_input_tokens: 2500, output_tokens: 80 } } },
+          { type: "result", subtype: "success", session_id: "sess-loop-1", result: "Done", total_cost_usd: 0.05, usage: { input_tokens: 3700, cache_creation_input_tokens: 8500, cache_read_input_tokens: 230_000, output_tokens: 190 } },
+        ],
+        [
+          { type: "system", subtype: "init", session_id: "sess-loop-1" },
+          { type: "assistant", message: { id: "m4", content: [{ type: "text", text: "Second reply" }], usage: { input_tokens: 1600, cache_read_input_tokens: 48_000, cache_creation_input_tokens: 1000, output_tokens: 40 } } },
+          { type: "result", subtype: "success", session_id: "sess-loop-1", result: "Second reply", total_cost_usd: 0.02, usage: { input_tokens: 1600, cache_creation_input_tokens: 1000, cache_read_input_tokens: 48_000, output_tokens: 40 } },
+        ],
+      ]);
+      let compactRuns = 0;
+      const chats = new Chats(jobs, { summarize: async () => { compactRuns++; return "summary"; }, spawn });
+
+      const c0 = chats.send({ message: "Inspect files", force: "claude" });
+      await waitTurnDone(chats, c0.id);
+      const after1 = chats.get(c0.id);
+      assert.equal(after1.turns[0].tokens.context, 50_000);
+      assert.equal(after1.turns[0].tokens.cached, 230_000);
+      assert.equal(shouldCompact(after1, loadSettings()), false);
+
+      chats.send({ id: c0.id, message: "Follow up", force: "claude" });
+      await waitTurnDone(chats, c0.id);
+      const after2 = chats.get(c0.id);
+      assert.equal(compactRuns, 0);
+      assert.equal(after2.compaction, undefined);
+      assert.equal(after2.turns[1].tokens.context, 50_600);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
+test("Codex orchestrator stores per-turn deltas, leaves context unset, and never triggers compaction", async () => {
+  await withTempHome(async () => {
+    const repo = tmp("tw-repo-codex-");
+    const binDir = tmp("tw-bin-codex-");
+    const prevPath = process.env.PATH;
+    try {
+      const fakeCodex = path.join(binDir, "codex");
+      fs.writeFileSync(fakeCodex, [
+        "#!/bin/sh",
+        'if [ "$1" = "debug" ] && [ "$2" = "models" ]; then',
+        '  echo \'{"models":[{"slug":"gpt-5.4-sol","visibility":"list","priority":1}]}\'',
+        "else",
+        "  echo 'Logged in'",
+        "fi",
+        "",
+      ].join("\n"), { mode: 0o755 });
+      process.env.PATH = `${binDir}${path.delimiter}${prevPath}`;
+      clearDoctorCache();
+
+      saveSettings({ compactChats: true, compactThreshold: 60_000 });
+      const jobs = new Jobs(repo);
+      const { spawn } = fakeSpawn([
+        [
+          { type: "thread.started", thread_id: "thr-codex-1" },
+          { type: "item.completed", item: { type: "agent_message", text: "Turn 1 done" } },
+          { type: "turn.completed", usage: { input_tokens: 90_000, cached_input_tokens: 70_000, output_tokens: 1000 } },
+        ],
+        [
+          { type: "item.completed", item: { type: "agent_message", text: "Turn 2 done" } },
+          { type: "turn.completed", usage: { input_tokens: 165_000, cached_input_tokens: 130_000, output_tokens: 1800 } },
+        ],
+        [
+          { type: "item.completed", item: { type: "agent_message", text: "Turn 3 done" } },
+          { type: "turn.completed", usage: { input_tokens: 210_000, cached_input_tokens: 170_000, output_tokens: 2300 } },
+        ],
+      ]);
+      let compactRuns = 0;
+      const chats = new Chats(jobs, { summarize: async () => { compactRuns++; return "summary"; }, spawn });
+
+      const c0 = chats.send({ message: "First codex turn", force: "codex" });
+      await waitTurnDone(chats, c0.id);
+      const after1 = chats.get(c0.id);
+      assert.equal(after1.codexThread, "thr-codex-1");
+      assert.deepEqual(after1.turns[0].tokens, { input: 90_000, cached: 70_000, output: 1000 });
+      assert.equal(after1.turns[0].tokens.context, undefined);
+      assert.equal(shouldCompact(after1, loadSettings()), false);
+
+      chats.send({ id: c0.id, message: "Second codex turn", force: "codex" });
+      await waitTurnDone(chats, c0.id);
+      const after2 = chats.get(c0.id);
+      assert.deepEqual(after2.turns[1].tokens, { input: 75_000, cached: 60_000, output: 800 });
+      assert.equal(after2.turns[1].tokens.context, undefined);
+      assert.equal(shouldCompact(after2, loadSettings()), false);
+
+      chats.send({ id: c0.id, message: "Third codex turn", force: "codex" });
+      await waitTurnDone(chats, c0.id);
+      const after3 = chats.get(c0.id);
+      assert.deepEqual(after3.turns[2].tokens, { input: 45_000, cached: 40_000, output: 500 });
+      assert.equal(compactRuns, 0);
+      assert.equal(after3.compaction, undefined);
+    } finally {
+      process.env.PATH = prevPath;
+      clearDoctorCache();
+      fs.rmSync(binDir, { recursive: true, force: true });
       fs.rmSync(repo, { recursive: true, force: true });
     }
   });

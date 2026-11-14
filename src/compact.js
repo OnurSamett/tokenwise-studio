@@ -7,6 +7,7 @@ import { scrub } from "./export.js";
 export const COMPACT_MIN = 60_000;
 export const COMPACT_MAX = 400_000;
 export const COMPACT_DEFAULT = 120_000;
+export const COMPACT_MIN_TURNS = 3;
 export const COMPACT_NOTICE = "Earlier conversation compacted to save tokens";
 export const SUMMARY_MAX_CHARS = 3500;
 export const INPUT_MAX_CHARS = 24_000;
@@ -16,16 +17,10 @@ export const clip = (s, n) => {
   return str.length > n ? str.slice(0, n - 1).trimEnd() + "…" : str;
 };
 
-/** Orchestrator context tokens for one completed turn. */
+/** Orchestrator context tokens for one completed turn (per-call context only; legacy/codex return 0). */
 export function contextTokens(turn) {
-  const t = turn?.tokens;
-  if (!t || typeof t !== "object") return 0;
-  const input = Number(t.input) || 0;
-  const cached = Number(t.cached) || 0;
-  const output = Number(t.output) || 0;
-  // Codex includes cached_input_tokens inside input_tokens; Claude reports cache_read_input_tokens separately.
-  if ((turn.agent || "claude") === "codex") return Math.max(input, cached) + output;
-  return input + cached + output;
+  const ctx = turn?.tokens?.context;
+  return typeof ctx === "number" && Number.isFinite(ctx) && ctx > 0 ? ctx : 0;
 }
 
 /** Context tokens of the most recent turn with usage since the last compaction (or 0). */
@@ -41,8 +36,10 @@ export function lastContextTokens(chat) {
 export function shouldCompact(chat, settings) {
   if (!settings?.compactChats) return false;
   if (!chat || !Array.isArray(chat.turns) || chat.turns.length === 0) return false;
+  if (!chat.sessionId && !chat.codexThread) return false;
   const start = chat.compaction?.throughTurn || 0;
   if (start >= chat.turns.length) return false;
+  if (chat.compaction && chat.turns.length - start < COMPACT_MIN_TURNS) return false;
   const tokens = lastContextTokens(chat);
   if (!(tokens > 0)) return false;
   const threshold = Number(settings.compactThreshold) || COMPACT_DEFAULT;

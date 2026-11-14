@@ -48,6 +48,87 @@ export function listJsonCached(dir, pattern, cache) {
   return out;
 }
 
+const hasGitignoreTokenwise = (text) => /^\s*\.tokenwise-studio\/?\s*$/m.test(String(text || ""));
+
+function countProjectFiles(dir) {
+  let count = 0;
+  for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (d.name === ".git" || d.name === ".tokenwise-studio") continue;
+    if (d.isDirectory()) count += countProjectFiles(path.join(dir, d.name));
+    else count++;
+  }
+  return count;
+}
+
+export function isGitRepo(repo) {
+  try { git(repo, "rev-parse", "--is-inside-work-tree"); return true; } catch { return false; }
+}
+
+function ensureGitExclude(repo) {
+  try {
+    const ex = path.join(git(repo, "rev-parse", "--git-common-dir").trim(), "info", "exclude");
+    const abs = path.isAbsolute(ex) ? ex : path.join(repo, ex);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    const cur = fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : "";
+    if (!cur.includes(".tokenwise-studio/")) fs.appendFileSync(abs, (cur.endsWith("\n") || !cur ? "" : "\n") + ".tokenwise-studio/\n");
+  } catch {}
+}
+
+/** Preview git setup for a non-git folder: file count and .gitignore status. */
+export function gitSetupPreview(repo) {
+  const root = path.resolve(repo);
+  if (isGitRepo(root)) throw new Error("this folder is already a git repository");
+  const giPath = path.join(root, ".gitignore");
+  let hasGitignore = false;
+  let needsGitignoreEntry = true;
+  try {
+    const st = fs.lstatSync(giPath);
+    if (st.isSymbolicLink()) throw new Error(".gitignore is a symbolic link");
+    if (st.isFile()) {
+      hasGitignore = true;
+      needsGitignoreEntry = !hasGitignoreTokenwise(fs.readFileSync(giPath, "utf8"));
+    }
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
+  return { isGit: false, fileCount: countProjectFiles(root), hasGitignore, needsGitignoreEntry };
+}
+
+/** Initialize git, add .tokenwise-studio/ to .gitignore if missing, and create the initial commit. */
+export function setupGit(repo) {
+  const root = path.resolve(repo);
+  const preview = gitSetupPreview(root);
+  const giPath = path.join(root, ".gitignore");
+  let gitignoreUpdated = false;
+  if (!preview.hasGitignore) {
+    fs.writeFileSync(giPath, ".tokenwise-studio/\n");
+    gitignoreUpdated = true;
+  } else if (preview.needsGitignoreEntry) {
+    const cur = fs.readFileSync(giPath, "utf8");
+    const sep = cur && !cur.endsWith("\n") ? "\n" : "";
+    fs.writeFileSync(giPath, `${cur}${sep}.tokenwise-studio/\n`);
+    gitignoreUpdated = true;
+  }
+  git(root, "init", "-q");
+  ensureGitExclude(root);
+  git(root, "add", "-A");
+  const staged = git(root, "diff", "--cached", "--name-only").trim();
+  let hasName = false, hasEmail = false;
+  try { hasName = !!git(root, "config", "user.name").trim(); } catch {}
+  try { hasEmail = !!git(root, "config", "user.email").trim(); } catch {}
+  const idArgs = [
+    ...(hasName ? [] : ["-c", "user.name=tokenwise studio"]),
+    ...(hasEmail ? [] : ["-c", "user.email=studio@localhost"]),
+  ];
+  execFileSync(
+    "git",
+    ["-C", root, ...idArgs, "commit", "-q", "-m", "Initial commit", ...(staged ? [] : ["--allow-empty"])],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const sha = git(root, "rev-parse", "--short", "HEAD").trim();
+  return { ok: true, isGit: true, sha, fileCount: preview.fileCount, gitignoreUpdated };
+}
+
 export class Jobs {
   constructor(repo) {
     this.repo = path.resolve(repo);
@@ -59,15 +140,7 @@ export class Jobs {
     this._listCache = new Map(); // filename -> { mtimeMs, size, data }
     this._usageCache = new Map(); // id -> { offset, sum, found, claude, cost, model }
     // Keep our state folder out of the user's git status.
-    if (this.isGit()) {
-      try {
-        const ex = path.join(git(this.repo, "rev-parse", "--git-common-dir").trim(), "info", "exclude");
-        const abs = path.isAbsolute(ex) ? ex : path.join(this.repo, ex);
-        fs.mkdirSync(path.dirname(abs), { recursive: true });
-        const cur = fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : "";
-        if (!cur.includes(".tokenwise-studio/")) fs.appendFileSync(abs, (cur.endsWith("\n") || !cur ? "" : "\n") + ".tokenwise-studio/\n");
-      } catch {}
-    }
+    if (this.isGit()) ensureGitExclude(this.repo);
   }
 
   file(id, kind) {
@@ -91,7 +164,7 @@ export class Jobs {
       .sort((a, b) => a.created.localeCompare(b.created));
   }
 
-  isGit() { try { git(this.repo, "rev-parse", "--is-inside-work-tree"); return true; } catch { return false; } }
+  isGit() { return isGitRepo(this.repo); }
 
   start({ agent, model, effort, task, write = false, role = null, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
     tried = [], movedFrom = null, noFallback = false, images = [] }) {
