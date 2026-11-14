@@ -21,8 +21,10 @@ export function nearLimit(agent, home) {
   const plan = agent === "codex" ? L.codex : agent === "claude" ? L.claude : null;
   if (!plan) return null;
   const th = threshold();
-  if (plan.fiveHour?.pct >= th) return `5-hour limit at ${plan.fiveHour.pct}%`;
-  if (plan.week?.pct >= th) return `weekly limit at ${plan.week.pct}%`;
+  // Readings come from the last run; once a window's reset time has passed the reading is stale.
+  const live = (w) => w && typeof w.pct === "number" && !(w.resetsAt && w.resetsAt <= Date.now());
+  if (live(plan.fiveHour) && plan.fiveHour.pct >= th) return `5-hour limit at ${plan.fiveHour.pct}%`;
+  if (live(plan.week) && plan.week.pct >= th) return `weekly limit at ${plan.week.pct}%`;
   return null;
 }
 

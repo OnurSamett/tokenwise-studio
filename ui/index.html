@@ -68,6 +68,12 @@
   .meter .track i { display: block; height: 100%; border-radius: 4px; background: var(--muted); transition: width .4s; }
   .meter.hot .track i { background: var(--warn); } .meter.full .track i { background: var(--bad); }
   .usage .none { font-size: 12px; color: var(--dim); }
+  .orchnow { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border-radius: 9px; background: var(--s1); border: 1px solid var(--line); }
+  .orchnow .on { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .orchnow .on .plogo { width: 16px; height: 16px; }
+  .orchnow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok, #3fb950); margin-left: auto; flex: none; }
+  .orchnow.moved .dot { background: var(--warn); }
+  .orchnow .why { font-size: 11.5px; color: var(--dim); line-height: 1.35; }
   .ghost { background: none; border: 0; color: var(--dim); font-size: 13px; padding: 6px 10px; border-radius: 8px; width: 100%; text-align: left; }
   .ghost:hover { color: var(--text); background: var(--s1); }
 
@@ -950,6 +956,8 @@ async function act(what, id) {
 const until = (t) => { if (!t) return ""; const m = Math.round((t - Date.now()) / 60000); if (m <= 0) return "resetting"; if (m < 60) return `resets in ${m}m`; const hrs = Math.round(m / 60); return hrs < 48 ? `resets in ${hrs}h` : `resets in ${Math.round(hrs / 24)}d`; };
 function meter(label, w) {
   if (!w) return null;
+  // The reading is from the last run; after the reset time it no longer applies.
+  if (w.resetsAt && w.resetsAt <= Date.now()) return h("div", { class: "meter", title: "This window has reset since the last reading" }, h("span", {}, label, " · reset"), h("b", {}, "—"), h("span", { class: "track" }, h("i", { style: "width:0%" })));
   return h("div", { class: "meter" + (w.pct >= 95 ? " full" : w.pct >= 80 ? " hot" : ""), title: w.resetsAt ? "Resets " + new Date(w.resetsAt).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "" },
     h("span", {}, label, " · ", until(w.resetsAt)), h("b", {}, w.pct + "%"), h("span", { class: "track" }, h("i", { style: `width:${Math.min(100, w.pct)}%` })));
 }
@@ -957,7 +965,11 @@ async function renderLimits() {
   let L; try { L = await api("limits"); } catch { return; }
   const plan = (name, agent, d) => d ? h("div", { class: "plan" }, h("div", { class: "pname" }, agentLogo(agent) || h("span", { class: "badge " + agent }, BADGE[agent]), name), meter("5-hour", d.fiveHour), meter("Weekly", d.week)) : null;
   const blocks = [plan("Claude", "claude", L.claude), plan("ChatGPT Codex", "codex", L.codex)].filter(Boolean);
-  set($("#usage"), blocks.length ? blocks : h("div", { class: "none" }, "Shows up after the first run."));
+  let O = null; try { O = await api(`orchestrator?model=${$("#omodel").value}&effort=${$("#oeffort").value}`); } catch {}
+  const orch = O ? h("div", { class: "orchnow" + (O.agent === "codex" ? " moved" : ""), title: O.agent === "codex" ? "New messages go to Codex until Claude has room again. Workers are not affected." : "New messages are planned by Claude." },
+    h("div", { class: "on" }, agentLogo(O.agent), `${AGENT[O.agent] || O.agent} ${modelName(O.model)}`, h("span", { class: "dot" })),
+    h("div", { class: "why" }, O.agent === "codex" ? `Orchestrating instead of Claude · ${String(O.reason || "").replace(/^Claude /, "")}` : "Orchestrator · ready")) : null;
+  set($("#usage"), orch, blocks.length ? blocks : h("div", { class: "none" }, "Shows up after the first run."));
 }
 
 let staged = [], stagedAt = 0;
@@ -1023,6 +1035,7 @@ newTask();
 refresh().then(() => { if (S.chats[0]) openChat(S.chats[0].id); });
 setInterval(() => refresh().then(pollChat).catch(() => {}), 1200);
 renderLimits(); setInterval(renderLimits, 15000);
+$("#omodel").addEventListener("change", renderLimits); $("#oeffort").addEventListener("change", renderLimits);
 </script>
 </body>
 </html>

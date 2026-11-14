@@ -9,7 +9,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Jobs } from "./jobs.js";
-import { Chats } from "./orchestrator.js";
+import { Chats, pickOrchestrator } from "./orchestrator.js";
 import { normalize } from "./events.js";
 import { limits } from "./limits.js";
 import { doctor } from "./doctor.js";
@@ -96,6 +96,20 @@ function loadBenchmarks() {
   catch { return null; }
 }
 
+// Who would orchestrate the next message right now. pickOrchestrator runs CLI sign-in checks,
+// so the answer is cached briefly per model/effort.
+const orchCache = new Map();
+function orchestratorNow(model, effort) {
+  if (!["opus", "sonnet", "haiku"].includes(model)) model = "opus";
+  if (!["low", "medium", "high", "xhigh"].includes(effort)) effort = "medium";
+  const key = `${jobs.home}|${model}|${effort}`, hit = orchCache.get(key);
+  if (hit && Date.now() - hit.at < 30_000) return hit.v;
+  const p = pickOrchestrator(jobs.home, model, effort);
+  const v = { agent: p.agent, model: p.model, effort: p.effort, reason: p.reason || null };
+  orchCache.set(key, { at: Date.now(), v });
+  return v;
+}
+
 const handler = async (req, res) => {
   if (!allowed(req)) return send(res, 403, { error: "forbidden" });
   const url = new URL(req.url, "http://x");
@@ -138,6 +152,7 @@ const handler = async (req, res) => {
         });
       }
       if (what === "limits") return send(res, 200, limits(jobs.home));
+      if (what === "orchestrator") return send(res, 200, orchestratorNow(url.searchParams.get("model"), url.searchParams.get("effort")));
       if (what === "chatlog") return send(res, 200, chatTimeline(id, from));
       if (what === "log") return send(res, 200, jobTimeline(id, from));
       if (what === "diff") return send(res, 200, { files: splitDiff(jobs.diff(id)) });
