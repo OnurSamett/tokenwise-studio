@@ -28,6 +28,8 @@ import { currentVersion, installSource, latestVersion, cachedLatest, compareVers
 import { runAutoUpdate, readyFor, readUpdateState, needsAppSetup, runSetup, quitStudioServers, logUpdate } from "./autoupdate.js";
 import { parseStudioErrors, formatStudioPrompt } from "./studiolog.js";
 import { listRepoFiles, readRepoTextFile, resolveRepoImage, worktreeDiff, splitDiff } from "./workspace.js";
+import { prPreconditions, commitAndOpenPr, selectAppliedJobs, formatChangesBy } from "./pr.js";
+import { notify, prNotice } from "./notify.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
@@ -40,6 +42,7 @@ const LOADED_VERSION = currentVersion();
 export const hooks = { exit: (code) => process.exit(code) }; // replaced in tests
 let repo, jobs, chats; // current project; replaced by POST /api/project
 let serverChatOpts = {};
+let serverPrOpts = {};
 
 const RECENTS = path.join(os.homedir(), ".tokenwise-studio", "recents.json");
 function recents() {
@@ -197,8 +200,9 @@ export function startAutoUpdater({ firstDelayMs = 60_000, everyMs = 3600_000 } =
 // Exit after the response has been flushed (graceful: servers.json is cleaned by the exit hook).
 const exitSoon = (res) => { res.on?.("finish", () => setTimeout(() => hooks.exit(0), 100)); setTimeout(() => hooks.exit(0), 1500).unref?.(); };
 
-export function initServer({ repo: start, summarize, spawn } = {}) {
+export function initServer({ repo: start, summarize, spawn, exec } = {}) {
   serverChatOpts = { ...(summarize ? { summarize } : {}), ...(spawn ? { spawn } : {}) };
+  serverPrOpts = exec ? { exec } : {};
   openProject(path.resolve(start || process.cwd()));
 }
 
@@ -259,6 +263,13 @@ export const handler = async (req, res) => {
       }
       if (what === "instructions") return send(res, 200, instructionsInfo());
       if (what === "staged") return send(res, 200, { files: staged() });
+      if (what === "pr") {
+        const pre = await prPreconditions(repo, serverPrOpts);
+        const rawIds = url.searchParams.get("jobIds");
+        const jobIds = rawIds ? rawIds.split(",").map((s) => s.trim()).filter(Boolean) : null;
+        const applied = selectAppliedJobs(jobs.list(), pre.stagedFiles, jobIds);
+        return send(res, 200, { ...pre, changesBy: formatChangesBy(applied) });
+      }
       if (what === "doctor") return send(res, 200, doctor());
       if (what === "team") return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions(await listFreeModels()) });
       if (what === "models") {
@@ -361,12 +372,30 @@ export const handler = async (req, res) => {
       if (what === "compact") return send(res, 200, await chats.compact(id));
       if (what === "delete") return send(res, 200, chats.remove(id));
       if (what === "commit") {
+        if (b?.mode === "pr") {
+          const result = await commitAndOpenPr({
+            repo,
+            message: b.message,
+            branch: b.branch,
+            returnToOriginal: b.returnToOriginal === true,
+            jobs,
+            jobIds: Array.isArray(b.jobIds) ? b.jobIds : null,
+            ...serverPrOpts,
+          });
+          const n = prNotice({ branch: result.branch, prUrl: result.prUrl, compareUrl: result.compareUrl });
+          notify({ ...n, subtitle: path.basename(repo), repo, key: `pr:${result.branch}:${result.sha}` });
+          return send(res, 200, result);
+        }
         const message = String(b.message || "").trim();
         if (!message) throw new Error("commit message is empty");
         const files = staged();
         if (!files.length) throw new Error("nothing is staged");
         createSnapshot(repo, "commit", files);
         gitIn("commit", "-m", message);
+        const now = new Date().toISOString();
+        for (const j of selectAppliedJobs(jobs.list(), files)) {
+          try { jobs.save({ ...j, committedAt: now }); } catch {}
+        }
         return send(res, 200, { ok: true, sha: gitIn("rev-parse", "--short", "HEAD").trim(), files: files.length });
       }
       if (what === "project") {
@@ -380,7 +409,7 @@ export const handler = async (req, res) => {
     }
     return send(res, 404, { error: "not found" });
   } catch (e) {
-    return send(res, e?.status || 400, { error: String(e.message || e) });
+    return send(res, e?.status || 400, { error: String(e.message || e), ...(e?.details ? { details: e.details } : {}) });
   }
 };
 
@@ -416,8 +445,8 @@ function registerServer(repoPath, url) {
 }
 
 let activeServer = null;
-export function startServer({ repo: start, port = 4777, summarize, spawn } = {}) {
-  initServer({ repo: start, summarize, spawn });
+export function startServer({ repo: start, port = 4777, summarize, spawn, exec } = {}) {
+  initServer({ repo: start, summarize, spawn, exec });
   return new Promise((resolve, reject) => {
     const server = http.createServer(handler);
     server.once("error", reject);

@@ -404,6 +404,20 @@
   .conflict-bar .cb-err { font-size: 12.5px; color: var(--bad); }
   .btn.accent { background: var(--accent-soft); color: var(--accent); border-color: rgba(139,143,255,.45); }
   .btn.accent:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+  a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+  .pr-checks { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .pr-check { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--muted); }
+  .pr-check .ci { width: 14px; text-align: center; font-weight: 700; flex: none; }
+  .pr-check.ok .ci { color: var(--ok); }
+  .pr-check.bad .ci { color: var(--bad); }
+  .pr-check.info .ci { color: var(--accent); }
+  .pr-check .cm { color: var(--dim); font-size: 12px; margin-left: auto; text-align: right; }
+  .pr-confirm { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .pr-confirm p { margin: 0; font-size: 13.5px; color: var(--text); line-height: 1.45; }
+  .pr-confirm .pr-cact { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .pr-result { border: 1px solid rgba(92,201,138,.45); background: var(--bg); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .pr-urlrow { display: flex; align-items: center; gap: 8px; background: var(--s2); border: 1px solid var(--line2); border-radius: 9px; padding: 7px 10px; }
+  .pr-urlrow code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; padding: 0; color: var(--text); font-size: 12.5px; }
   .lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.82); display: grid; place-items: center; padding: 24px; cursor: zoom-out; }
   .lightbox img { min-width: min(60vmin, 420px); object-fit: contain; max-width: 100%; max-height: calc(100vh - 80px); border-radius: 8px; background: #fff2; box-shadow: 0 10px 50px rgba(0,0,0,.5); }
   .lightbox .cap { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; color: #ddd; font: 13px var(--mono); }
@@ -690,7 +704,9 @@ const h = (tag, attrs = {}, ...kids) => {
 const set = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false));
 const api = async (p, body) => {
   const r = await fetch("/api/" + p, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json", "x-tokenwise": "1" }, body: JSON.stringify(body) });
-  const j = await r.json(); if (j.error) throw new Error(j.error); return j;
+  const j = await r.json();
+  if (j.error) { const err = new Error(j.error); if (j.details) err.details = j.details; throw err; }
+  return j;
 };
 const kb = (n) => (n < 1024 ? t("unit.bytes", { n }) : t("unit.kb", { n: (n / 1024).toFixed(1) }));
 const clock = (a, b) => { const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
@@ -1544,14 +1560,228 @@ async function renderDrawer(full) {
   if (drawer.kind === "commit") {
     if (!full) return;
     const c = curChat();
-    const msg = h("textarea", { rows: 4 }); msg.value = c ? c.title : t("commit.defaultMsg");
-    const go = async () => {
-      try { const r = await api("commit", { message: msg.value }); closeDrawer(); staged = []; stagedAt = 0; lastAppliedIds = []; await refresh(); toast(tp("commit.toast", r.files, { sha: r.sha })); } catch (e) { toast(e.message, true); }
+    const trMap = { ç: "c", ğ: "g", ı: "i", İ: "i", ö: "o", ş: "s", ü: "u", Ç: "c", Ğ: "g", Ö: "o", Ş: "s", Ü: "u" };
+    const branchSlug = (text) => {
+      const first = String(text || "").split(/\r?\n/).find((l) => l.trim()) || "";
+      const ascii = first.replace(/[çğıİöşüÇĞÖŞÜ]/g, (ch) => trMap[ch] || ch).normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+      const slug = ascii.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/g, "");
+      return slug || "changes";
     };
-    set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("commit.title")), h("div", { class: "meta" }, tp("commit.meta", staged.length, { project: path0() }))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
-      h("div", { class: "d-body" }, h("div", { class: "field" }, h("label", {}, t("commit.label")), msg), h("div", { class: "filelist" }, staged.map((f) => h("span", {}, f)))),
-      h("div", { class: "d-foot" }, h("span", { class: "note" }, t("commit.note")), h("button", { class: "btn", onclick: closeDrawer }, t("drawer.cancel")), h("button", { class: "btn primary", onclick: go }, t("commit.action"))));
+    const safeExternalUrl = (u) => {
+      try { const p = new URL(String(u || "")); return p.protocol === "https:" || p.protocol === "http:" ? p.href : null; }
+      catch { return null; }
+    };
+
+    let mode = "direct";
+    let pre = null;
+    let preLoading = true;
+    let preErr = null;
+    let branchTouched = false;
+    let returnToOriginal = false;
+    let confirming = false;
+    let busy = false;
+    let result = null;
+    let errMsg = null;
+
+    const msg = h("textarea", { rows: 3 });
+    msg.value = c ? c.title : t("commit.defaultMsg");
+    const branchInp = h("input", { type: "text", spellcheck: "false", autocomplete: "off" });
+    branchInp.value = `tokenwise/${branchSlug(msg.value)}`;
+
+    let footActionBtn = null;
+    let confirmMsgEl = null;
+    const effectiveBranch = () => branchInp.value.trim() || `tokenwise/${branchSlug(msg.value)}`;
+    const syncControls = () => {
+      if (footActionBtn) {
+        if (mode === "direct") footActionBtn.disabled = busy || !msg.value.trim();
+        else footActionBtn.disabled = busy || preLoading || !pre?.canPush || !msg.value.trim() || !effectiveBranch();
+      }
+      if (confirmMsgEl && pre) {
+        confirmMsgEl.textContent = t(pre.ghReady ? "commit.pr.confirmText" : "commit.pr.confirmPushText", { branch: effectiveBranch() });
+      }
+    };
+
+    msg.addEventListener("input", () => {
+      if (!branchTouched) branchInp.value = `tokenwise/${branchSlug(msg.value)}`;
+      confirming = false;
+      syncControls();
+    });
+    branchInp.addEventListener("input", () => {
+      branchTouched = true;
+      confirming = false;
+      syncControls();
+    });
+
+    const runDirect = async () => {
+      if (busy) return;
+      busy = true; errMsg = null; drawCommit();
+      try {
+        const r = await api("commit", { message: msg.value });
+        closeDrawer(); staged = []; stagedAt = 0; lastAppliedIds = []; await refresh();
+        toast(tp("commit.toast", r.files, { sha: r.sha }));
+      } catch (e) {
+        busy = false; errMsg = e.message; drawCommit(); toast(e.message, true);
+      }
+    };
+
+    const runPr = async () => {
+      if (busy) return;
+      busy = true; errMsg = null; drawCommit();
+      try {
+        const r = await api("commit", {
+          mode: "pr",
+          message: msg.value,
+          branch: effectiveBranch(),
+          returnToOriginal,
+          jobIds: lastAppliedIds.length ? [...lastAppliedIds] : null,
+        });
+        staged = []; stagedAt = 0; lastAppliedIds = [];
+        await refresh();
+        result = r; busy = false; confirming = false;
+        drawCommit();
+        const targetUrl = safeExternalUrl(r.prUrl || r.compareUrl);
+        const toastOpts = targetUrl ? {
+          actionLabel: t(r.prUrl ? "commit.pr.open" : "commit.pr.openCompare"),
+          onAction: () => window.open(targetUrl, "_blank", "noopener,noreferrer"),
+        } : false;
+        toast(t(r.prUrl ? "commit.pr.toastOpened" : "commit.pr.toastPushed", { branch: r.branch }), toastOpts);
+      } catch (e) {
+        busy = false; confirming = false;
+        if (e.details?.committed) {
+          staged = []; stagedAt = 0; lastAppliedIds = [];
+          await refresh();
+          if (e.details.pushed && e.details.compareUrl) {
+            result = { ...e.details, errMsg: e.message };
+            drawCommit();
+            toast(t("commit.pr.pushedFallback", { branch: e.details.branch, sha: e.details.sha }), true);
+            return;
+          }
+        }
+        errMsg = e.message; drawCommit(); toast(e.message, true);
+      }
+    };
+
+    const checkRow = (kind, label, detail) => h("div", { class: `pr-check ${kind}` },
+      h("span", { class: "ci" }, kind === "ok" ? "✓" : kind === "bad" ? "✕" : "•"),
+      h("span", {}, label),
+      detail ? h("span", { class: "cm" }, detail) : null);
+
+    function drawCommit() {
+      if (drawer.kind !== "commit") return;
+      footActionBtn = null; confirmMsgEl = null;
+
+      if (result) {
+        const rawUrl = result.prUrl || result.compareUrl;
+        const safeUrl = safeExternalUrl(rawUrl);
+        set(d,
+          h("div", { class: "d-head" },
+            h("div", {}, h("h3", {}, t(result.prUrl ? "commit.pr.doneTitle" : "commit.pr.donePushTitle")),
+              h("div", { class: "meta" }, t("commit.pr.doneMeta", { branch: result.branch, sha: result.sha, current: result.currentBranch }))),
+            h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
+          h("div", { class: "d-body" },
+            h("div", { class: "pr-result" },
+              result.errMsg ? h("div", { class: "err" }, result.errMsg) : null,
+              safeUrl ? h("div", { class: "pr-urlrow" },
+                h("code", { title: safeUrl }, safeUrl),
+                h("a", { class: "btn primary", href: safeUrl, target: "_blank", rel: "noopener noreferrer" }, t(result.prUrl ? "commit.pr.open" : "commit.pr.openCompare")))
+                : h("div", { class: "muted", style: "font-size:13px" }, t("commit.pr.noCompareUrl")),
+              result.changesBy ? h("div", { class: "sline", style: "margin:0" }, result.changesBy) : null)),
+          h("div", { class: "d-foot" },
+            h("span", { class: "note" }),
+            h("button", { class: "btn primary", onclick: closeDrawer }, t("commit.pr.doneClose"))));
+        return;
+      }
+
+      msg.disabled = busy;
+      branchInp.disabled = busy;
+
+      const modeSeg = h("div", { class: "seg", style: "margin-bottom:16px" },
+        h("button", { class: mode === "direct" ? "on" : "", disabled: busy, onclick: () => { mode = "direct"; confirming = false; errMsg = null; drawCommit(); } },
+          h("b", {}, pre?.currentBranch ? t("commit.modeDirectBranch", { branch: pre.currentBranch }) : t("commit.modeDirect")),
+          h("span", {}, t("commit.modeDirectDesc"))),
+        h("button", { class: mode === "pr" ? "on" : "", disabled: busy, onclick: () => { mode = "pr"; confirming = false; errMsg = null; drawCommit(); } },
+          h("b", {}, t("commit.modePr")),
+          h("span", {}, t("commit.modePrDesc"))));
+
+      let prSection = null;
+      if (mode === "pr") {
+        let checksBody;
+        if (preLoading) {
+          checksBody = h("div", { class: "muted", style: "font-size:13px" }, t("commit.pr.checking"));
+        } else if (preErr) {
+          checksBody = h("div", { class: "err" }, preErr);
+        } else if (pre) {
+          checksBody = h("div", { class: "pr-checks" },
+            checkRow(pre.hasStaged ? "ok" : "bad", t("commit.pr.checkStaged"),
+              pre.hasStaged ? tp("commit.pr.checkStagedCount", pre.stagedFiles.length) : t("commit.pr.checkStagedNone")),
+            checkRow(!pre.detached && pre.hasHead ? "ok" : "bad", t("commit.pr.checkHead"),
+              pre.detached ? t("commit.pr.checkHeadDetached") : (pre.currentBranch ? t("commit.pr.checkHeadBranch", { branch: pre.currentBranch }) : t("commit.pr.checkHeadDetached"))),
+            checkRow(pre.hasOrigin ? "ok" : "bad", t("commit.pr.checkOrigin"),
+              pre.hasOrigin ? t("commit.pr.checkOriginReady") : t("commit.pr.checkOriginMissing")),
+            checkRow(pre.ghReady ? "ok" : "info", t("commit.pr.checkGh"),
+              pre.ghReady ? t("commit.pr.checkGhReady") : t(pre.ghInstalled ? "commit.pr.checkGhNoAuth" : "commit.pr.checkGhMissing")));
+        }
+
+        let confirmBox = null;
+        if (confirming && pre) {
+          confirmMsgEl = h("p", {}, t(pre.ghReady ? "commit.pr.confirmText" : "commit.pr.confirmPushText", { branch: effectiveBranch() }));
+          confirmBox = h("div", { class: "pr-confirm" },
+            confirmMsgEl,
+            h("div", { class: "pr-cact" },
+              h("button", { class: "btn", disabled: busy, onclick: () => { confirming = false; drawCommit(); } }, t("commit.pr.back")),
+              h("button", { class: "btn accent", disabled: busy, onclick: runPr },
+                busy ? [h("span", { class: "spin", style: "width:11px;height:11px;margin-right:6px" }), t(pre.ghReady ? "commit.pr.running" : "commit.pr.runningPush")] : t("commit.pr.confirmBtn"))));
+        }
+
+        prSection = [
+          h("div", { class: "section", style: "margin-top:16px;margin-bottom:14px" }, h("h4", {}, t("commit.pr.checksTitle")), checksBody),
+          h("div", { class: "field" },
+            h("label", {}, t("commit.pr.branchLabel")),
+            branchInp,
+            pre?.currentBranch ? h("div", { class: "hint" }, t("commit.pr.branchHint", { branch: pre.currentBranch })) : null),
+          h("label", { class: "toggle", style: "margin-top:8px" },
+            h("input", { type: "checkbox", checked: returnToOriginal ? true : null, disabled: busy, onchange: (e) => { returnToOriginal = e.target.checked; } }),
+            h("span", {}, t("commit.pr.returnTo", { branch: pre?.currentBranch || "HEAD" }), h("small", {}, t("commit.pr.returnToDesc")))),
+          pre?.changesBy ? h("div", { class: "sline", style: "margin-top:6px" }, t("commit.pr.changesByPreview", { line: pre.changesBy })) : null,
+          confirmBox,
+        ];
+      }
+
+      if (mode === "direct") {
+        footActionBtn = h("button", { class: "btn primary", disabled: busy, onclick: runDirect }, t("commit.action"));
+      } else if (!confirming) {
+        footActionBtn = h("button", {
+          class: "btn accent",
+          disabled: busy || preLoading || !pre?.canPush,
+          onclick: () => { errMsg = null; confirming = true; drawCommit(); },
+        }, t(pre?.ghReady ? "commit.pr.action" : "commit.pr.actionPushOnly"));
+      }
+
+      set(d,
+        h("div", { class: "d-head" },
+          h("div", {}, h("h3", {}, t("commit.title")), h("div", { class: "meta" }, tp("commit.meta", staged.length, { project: path0() }))),
+          h("button", { class: "x", onclick: () => { if (!busy) closeDrawer(); }, "aria-label": t("drawer.close") }, "×")),
+        h("div", { class: "d-body" },
+          modeSeg,
+          h("div", { class: "field" }, h("label", {}, t("commit.label")), msg),
+          prSection,
+          errMsg ? h("div", { class: "err", style: "margin-top:10px" }, errMsg) : null,
+          h("div", { class: "filelist" }, staged.map((f) => h("span", {}, f)))),
+        h("div", { class: "d-foot" },
+          h("span", { class: "note" }, t(mode === "pr" ? "commit.pr.note" : "commit.note")),
+          h("button", { class: "btn", disabled: busy, onclick: closeDrawer }, t("drawer.cancel")),
+          footActionBtn));
+      syncControls();
+    }
+
+    drawCommit();
     setTimeout(() => msg.focus(), 50);
+    const qs = lastAppliedIds.length ? `?jobIds=${encodeURIComponent(lastAppliedIds.join(","))}` : "";
+    api(`pr${qs}`).then((r) => {
+      pre = r; preLoading = false; drawCommit();
+    }).catch((e) => {
+      preErr = e.message; preLoading = false; drawCommit();
+    });
     return;
   }
   if (drawer.kind === "team") {

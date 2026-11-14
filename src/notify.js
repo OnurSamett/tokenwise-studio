@@ -102,3 +102,16 @@ export const handoffNotice = (reason, opts = {}) => {
   const clean = translateReason(reason || t("reason.unavailable", {}, l), l).replace(/^Claude\s+/i, "");
   return { title: t("notify.codexTookOver", {}, l), message: t("notify.claudeReason", { reason: clean }, l) };
 };
+
+export function prNotice({ branch, prUrl, compareUrl, lang, settings } = {}, opts = {}) {
+  const l = noticeLang({ lang: lang ?? opts.lang, settings: settings ?? opts.settings, env: opts.env, intlLocale: opts.intlLocale });
+  if (prUrl) {
+    return { title: t("notify.prOpened", {}, l), message: t("notify.prOpenedMsg", { branch, url: prUrl }, l) };
+  }
+  return {
+    title: t("notify.prPushed", {}, l),
+    message: compareUrl
+      ? t("notify.prOpenedMsg", { branch, url: compareUrl }, l)
+      : t("notify.prPushedMsg", { branch }, l),
+  };
+}
