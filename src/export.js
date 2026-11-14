@@ -43,7 +43,7 @@ export function chatData(jobs, chats, id) {
     if (!t || e.stream === "user") continue;
     for (const it of normalize(e.agent || "claude", e, jobs.repo)) {
       if (it.kind === "say" && it.text) t.replies.push(scrub(it.text));
-      else if (it.kind === "notice" && it.text) t.notices.push(scrub(it.text));
+      else if ((it.kind === "notice" || it.kind === "compact") && it.text) t.notices.push(scrub(it.text));
     }
   }
   turns.forEach((t, i) => { if (!t.replies.length && c.turns[i].reply) t.replies.push(scrub(c.turns[i].reply)); });

@@ -12,6 +12,7 @@ import { notify, turnNotice, handoffNotice } from "./notify.js";
 import { loadSettings } from "./settings.js";
 import { loadInstructions, instructionsGuide } from "./instructions.js";
 import { budgetDecision, turnTotal, writeBudgetState, fmtTokens } from "./budget.js";
+import { COMPACT_NOTICE, compactChat, lastContextTokens, shouldCompact } from "./compact.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard", "job_test"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -121,32 +122,47 @@ function codexCommand({ repo, chatId, model, effort, thread, prompt, images = []
 const clip = (s, n) => { s = String(s || "").trim(); return s.length > n ? s.slice(0, n) + "…" : s; };
 const NAME = { claude: "Claude", codex: "Codex" };
 
-/** Message plus, when this agent lacks context, the earlier turns handled elsewhere. */
+/** Message plus, when this agent lacks context, a compacted summary and/or earlier turns handled elsewhere. */
 export function buildPrompt(c, ti, agent, message) {
+  const compactEnd = c.compaction?.summary ? (c.compaction.throughTurn ?? 0) : 0;
   const prior = c.turns.slice(0, ti).map((t, i) => ({ ...t, i, agent: t.agent || "claude" }));
+  const after = prior.filter((t) => t.i >= compactEnd);
   const hasSession = agent === "claude" ? !!c.sessionId : !!c.codexThread;
   let missed;
   if (hasSession) {
-    let last = -1; prior.forEach((t) => { if (t.agent === agent) last = t.i; });
-    missed = prior.filter((t) => t.i > last && t.agent !== agent);
-  } else missed = prior;
-  if (!missed.length) return message;
-  const parts = missed.map((t) => `User: ${t.user}\nAssistant${hasSession ? "" : ` (${NAME[t.agent]})`}: ${t.reply ? clip(t.reply, 1500) : "(no reply)"}`);
-  let body = "";
-  for (let i = parts.length - 1; i >= 0; i--) { // keep the most recent turns within the cap
-    if (body.length + parts[i].length > 12000 && body) break;
-    body = parts[i] + (body ? "\n\n" : "") + body;
+    let last = -1; after.forEach((t) => { if (t.agent === agent) last = t.i; });
+    missed = after.filter((t) => t.i > last && t.agent !== agent);
+  } else missed = after;
+
+  const summaryBlock = !hasSession && c.compaction?.summary
+    ? `Earlier conversation summary:\n${c.compaction.summary}`
+    : "";
+
+  let handoffBlock = "";
+  if (missed.length) {
+    const parts = missed.map((t) => `User: ${t.user}\nAssistant${hasSession ? "" : ` (${NAME[t.agent]})`}: ${t.reply ? clip(t.reply, 1500) : "(no reply)"}`);
+    let body = "";
+    for (let i = parts.length - 1; i >= 0; i--) { // keep the most recent turns within the cap
+      if (body.length + parts[i].length > 12000 && body) break;
+      body = parts[i] + (body ? "\n\n" : "") + body;
+    }
+    const who = hasSession ? NAME[missed[0].agent] : [...new Set(missed.map((t) => NAME[t.agent]))].join(" and ");
+    handoffBlock = `${summaryBlock ? `Recent turns since summary (handled by ${who})` : `Earlier in this chat (handled by ${who})`}:\n${body}`;
   }
-  const who = hasSession ? NAME[missed[0].agent] : [...new Set(missed.map((t) => NAME[t.agent]))].join(" and ");
-  return `Earlier in this chat (handled by ${who}):\n${body}\n\nNew message:\n${message}`;
+
+  if (!summaryBlock && !handoffBlock) return message;
+  return [summaryBlock, handoffBlock, `New message:\n${message}`].filter(Boolean).join("\n\n");
 }
 
 export class Chats {
-  constructor(jobs) {
+  constructor(jobs, { summarize, spawn: spawnFn } = {}) {
     this.jobs = jobs;
     this.dir = path.join(jobs.home, "chats");
     fs.mkdirSync(this.dir, { recursive: true });
     this.running = new Map();
+    this.compacting = new Set();
+    this.summarizeRunner = summarize;
+    this.spawn = spawnFn || spawn;
   }
   f(id, ext) { return path.join(this.dir, `${id}.${ext}`); }
   save(c) { fs.writeFileSync(this.f(c.id, "json"), JSON.stringify(c, null, 2)); return c; }
@@ -172,10 +188,14 @@ export class Chats {
     if (id) {
       c = this.get(id);
       if (this.running.has(id)) throw new Error("the orchestrator is still working on the previous message");
+      if (this.compacting.has(id)) throw new Error("compaction is in progress");
     } else {
       id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
       c = { id, title: message.slice(0, 70) || "Attached images", created: new Date().toISOString(), sessionId: null, turns: [], cost: 0 };
     }
+    const compactNeeded = !!c.turns.length && shouldCompact(c, settings);
+    const prevTokens = compactNeeded ? lastContextTokens(c) : 0;
+    const chatSnapshot = compactNeeded ? { ...c, turns: c.turns.slice() } : null;
     c.model = model; c.effort = effort; c.status = "running";
     const ti = c.turns.length;
     let pick;
@@ -237,8 +257,9 @@ export class Chats {
       clearInterval(ticker); budgetTick();
       this.running.delete(id);
       const cur = this.get(id);
-      cur.sessionId = c.sessionId || cur.sessionId;
-      cur.codexThread = c.codexThread || cur.codexThread;
+      cur.sessionId = c.sessionId ?? null;
+      cur.codexThread = c.codexThread ?? null;
+      if (c.compaction) cur.compaction = c.compaction;
       cur.cost = c.cost; cur.turns = c.turns;
       cur.turns[ti].finished = new Date().toISOString();
       cur.status = cur.status === "stopped" ? "stopped" : code === 0 ? "idle" : "failed";
@@ -271,7 +292,7 @@ export class Chats {
           "--allowedTools", ...allowedTools];
         if (c.sessionId) args.push("--resume", c.sessionId);
       }
-      const child = spawn(cmd, args, { cwd: this.jobs.repo, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+      const child = this.spawn(cmd, args, { cwd: this.jobs.repo, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
       this.running.set(id, child);
       const buf = { out: "", err: "" };
       const tail = []; // last ~50 lines of output, for rate-limit detection
@@ -337,8 +358,87 @@ export class Chats {
         finish(code, stopped);
       });
     };
-    run(turn.agent);
+    if (compactNeeded) {
+      const ac = new AbortController();
+      this.running.set(id, { kill: () => ac.abort() });
+      const chatJobs = (() => { try { return this.jobs.list().filter((j) => j.parent === id); } catch { return []; } })();
+      compactChat({
+        chat: chatSnapshot,
+        jobs: chatJobs,
+        runner: this.summarizeRunner,
+        repo: this.jobs.repo,
+        home: this.jobs.home,
+        signal: ac.signal,
+      }).then(({ summary, method }) => {
+        if (ac.signal.aborted || this.get(id).status === "stopped") return finish(1, true);
+        c.sessionId = null;
+        c.codexThread = null;
+        c.compaction = { summary, at: new Date().toISOString(), throughTurn: ti, method, tokens: prevTokens };
+        this.save(c);
+        w("compact", JSON.stringify({
+          text: COMPACT_NOTICE,
+          summary,
+          method,
+          tokens: prevTokens,
+          threshold: settings.compactThreshold,
+          throughTurn: ti,
+        }));
+        run(turn.agent);
+      }).catch((err) => {
+        if (ac.signal.aborted || err?.name === "AbortError" || this.get(id).status === "stopped") return finish(1, true);
+        w("meta", `compaction error: ${err?.message || err}`);
+        run(turn.agent);
+      });
+    } else {
+      run(turn.agent);
+    }
     return c;
+  }
+
+  async compact(id, { runner } = {}) {
+    const c = this.get(id);
+    if (this.running.has(id) || c.status === "running") throw new Error("cannot compact while the orchestrator is running");
+    if (this.compacting.has(id)) throw new Error("compaction is already in progress");
+    if (!c.turns?.length) throw new Error("chat has no turns to compact");
+    if (c.compaction && (c.compaction.throughTurn ?? 0) >= c.turns.length && !c.sessionId && !c.codexThread) {
+      throw new Error("chat is already compacted");
+    }
+    this.compacting.add(id);
+    try {
+      const chatJobs = (() => { try { return this.jobs.list().filter((j) => j.parent === id); } catch { return []; } })();
+      const tokens = lastContextTokens(c);
+      const { summary, method } = await compactChat({
+        chat: c,
+        jobs: chatJobs,
+        runner: runner ?? this.summarizeRunner,
+        repo: this.jobs.repo,
+        home: this.jobs.home,
+      });
+      const fresh = this.get(id);
+      fresh.sessionId = null;
+      fresh.codexThread = null;
+      fresh.compaction = { summary, at: new Date().toISOString(), throughTurn: fresh.turns.length, method, tokens };
+      this.save(fresh);
+      const turnIdx = fresh.turns.length - 1;
+      const entry = {
+        t: Date.now(),
+        stream: "compact",
+        line: JSON.stringify({
+          text: COMPACT_NOTICE,
+          summary,
+          method,
+          tokens,
+          threshold: loadSettings().compactThreshold,
+          throughTurn: fresh.turns.length,
+        }),
+        turn: turnIdx,
+        agent: fresh.turns[turnIdx]?.agent || "claude",
+      };
+      fs.appendFileSync(this.f(id, "jsonl"), JSON.stringify(entry) + "\n");
+      return fresh;
+    } finally {
+      this.compacting.delete(id);
+    }
   }
 
   stop(id) {

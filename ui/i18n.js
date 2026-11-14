@@ -46,6 +46,9 @@ export const DICT = {
 
     // Chat menu & export
     "chat.rename": "Rename",
+    "chat.compact": "Compact now",
+    "chat.compacting": "Compacting conversation…",
+    "chat.compacted": "Conversation compacted",
     "chat.exportMd": "Export as Markdown",
     "chat.exportJson": "Export as JSON",
     "chat.delete": "Delete…",
@@ -428,6 +431,14 @@ export const DICT = {
     "settings.turnBudgetOff": "Off",
     "settings.turnBudgetTokens": "{n} tokens",
 
+    "settings.compactTitle": "Compact long chats",
+    "settings.compactHelp": "When an orchestrator chat grows past the context threshold, summarize earlier turns into a fresh session to save tokens. The full history stays visible in the chat.",
+    "settings.compactEnabled": "Compact long chats",
+    "settings.compactEnabledDesc": "Summarize with Claude Haiku (or a local fallback) before the next turn. On by default.",
+    "settings.compactThreshold": "Context threshold (k tokens)",
+    "settings.compactThresholdHelp": "Compact before the next turn once the last turn's orchestrator context exceeds this size (60k–400k).",
+    "settings.compactThresholdErr": "Threshold must be 60k–400k",
+
     "settings.testsTitle": "Tests",
     "settings.testsHelp": "A finished write job can run your project's tests in its own worktree before you apply it (Run tests button in the review). Network is not restricted: tests run with your normal permissions, so review changes to test files and package scripts first. Only files that are committed are in the worktree; dependencies are not installed there.",
     "settings.runTestsBeforeApply": "Run tests before Apply",
@@ -520,6 +531,9 @@ export const DICT = {
     "reason.forced": "forced by TOKENWISE_ORCH_FORCE",
     "notice.budgetReached": "Turn budget reached ({used} of {budget} tokens). No new jobs will start this turn; running jobs keep going.",
     "notice.budgetWarn": "Turn budget at {pct}% ({used} of {budget} tokens). New jobs stop at 100%.",
+    "notice.compacted": "Earlier conversation compacted to save tokens",
+    "compact.method.haiku": "Haiku summary",
+    "compact.method.deterministic": "local summary",
 
     // Model catalog descriptions
     "model.luna.goodAt": "easy, mechanical tasks",
@@ -610,6 +624,9 @@ export const DICT = {
 
     // Chat menu & export
     "chat.rename": "Yeniden adlandır",
+    "chat.compact": "Şimdi sıkıştır",
+    "chat.compacting": "Konuşma sıkıştırılıyor…",
+    "chat.compacted": "Konuşma sıkıştırıldı",
     "chat.exportMd": "Markdown olarak dışa aktar",
     "chat.exportJson": "JSON olarak dışa aktar",
     "chat.delete": "Sil…",
@@ -992,6 +1009,14 @@ export const DICT = {
     "settings.turnBudgetOff": "Kapalı",
     "settings.turnBudgetTokens": "{n} token",
 
+    "settings.compactTitle": "Uzun sohbetleri sıkıştır",
+    "settings.compactHelp": "Bir yönetici sohbeti bağlam eşiğini aştığında, token tasarrufu için önceki turları özetler ve yeni bir oturum başlatır. Tam geçmiş sohbette görünür kalır.",
+    "settings.compactEnabled": "Uzun sohbetleri sıkıştır",
+    "settings.compactEnabledDesc": "Sonraki turdan önce Claude Haiku (veya yerel yedek) ile özetle. Varsayılan olarak açıktır.",
+    "settings.compactThreshold": "Bağlam eşiği (k token)",
+    "settings.compactThresholdHelp": "Son turun yönetici bağlamı bu boyutu aştığında sonraki turdan önce sıkıştır (60k–400k).",
+    "settings.compactThresholdErr": "Eşik 60k–400k arasında olmalı",
+
     "settings.testsTitle": "Testler",
     "settings.testsHelp": "Tamamlanmış bir yazma işi, uygulamadan önce projendeki testleri kendi worktree'sinde çalıştırabilir (inceleme ekranındaki Testleri çalıştır düğmesi). Ağ kısıtlı değildir: testler normal izinlerinle çalışır, bu yüzden önce test dosyalarındaki ve paket betiklerindeki değişiklikleri incele. Worktree'de yalnızca commit edilmiş dosyalar bulunur; bağımlılıklar orada kurulu değildir.",
     "settings.runTestsBeforeApply": "Uygulamadan önce testleri çalıştır",
@@ -1084,6 +1109,9 @@ export const DICT = {
     "reason.forced": "TOKENWISE_ORCH_FORCE ile zorlandı",
     "notice.budgetReached": "Tur bütçesine ulaşıldı ({used} / {budget} token). Bu turda yeni iş başlatılmayacak; çalışan işler devam ediyor.",
     "notice.budgetWarn": "Tur bütçesi %{pct} seviyesinde ({used} / {budget} token). %100'de yeni işler durur.",
+    "notice.compacted": "Token tasarrufu için önceki konuşma sıkıştırıldı",
+    "compact.method.haiku": "Haiku özeti",
+    "compact.method.deterministic": "yerel özet",
 
     // Model catalog descriptions
     "model.luna.goodAt": "kolay, mekanik işler",
@@ -1194,6 +1222,9 @@ export function translateNotice(text, lang = "en") {
   }
   if ((m = s.match(/^Turn budget at (\d+)% \((.+?) of (.+?) tokens\)\./))) {
     return t("notice.budgetWarn", { pct: m[1], used: m[2], budget: m[3] }, lang);
+  }
+  if (/^Earlier conversation compacted to save tokens$/i.test(s)) {
+    return t("notice.compacted", {}, lang);
   }
   return s;
 }

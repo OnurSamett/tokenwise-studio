@@ -25,6 +25,8 @@ export const DEFAULTS = Object.freeze({
   updateCheck: true,
   runTestsBeforeApply: false, // run the project tests in a write job's worktree when it finishes
   turnBudget: 0, // tokens per orchestrator turn (orchestrator + its workers); 0 = off
+  compactChats: true, // summarize long chats and start a fresh session when context grows past threshold
+  compactThreshold: 120_000, // orchestrator context token threshold (60k–400k)
 });
 
 const cloneDefaults = () => ({ ...DEFAULTS, fallbackOrder: [...DEFAULTS.fallbackOrder] });
@@ -47,6 +49,8 @@ const VALIDATORS = {
   updateCheck: (v) => typeof v === "boolean" || "updateCheck must be true or false",
   runTestsBeforeApply: (v) => typeof v === "boolean" || "runTestsBeforeApply must be true or false",
   turnBudget: (v) => v === 0 || (Number.isInteger(v) && v >= 10_000 && v <= 50_000_000) || "turnBudget must be 0 (off) or a token count between 10000 and 50000000",
+  compactChats: (v) => typeof v === "boolean" || "compactChats must be true or false",
+  compactThreshold: (v) => (Number.isInteger(v) && v >= 60_000 && v <= 400_000) || "compactThreshold must be a token count between 60000 and 400000",
 };
 
 /** Load raw file settings merged with defaults (no env overrides). Never throws. */

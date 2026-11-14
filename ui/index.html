@@ -223,6 +223,17 @@
   .orch-meta .plogo { width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; }
   .moved.handoff { font-size: 12px; margin: 0 0 2px; }
   .moved.notice { font-size: 12px; margin: 4px 0; color: var(--warn, #d9a441); }
+  .compact-notice { background: var(--s1); border: 1px solid var(--line2); border-radius: 10px; padding: 8px 12px; font-size: 12.5px; color: var(--muted); }
+  .compact-notice summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; user-select: none; }
+  .compact-notice summary::-webkit-details-marker { display: none; }
+  .compact-notice summary:hover { color: var(--text); }
+  .compact-notice .chev { transition: transform .15s; display: inline-block; color: var(--accent); font-size: 13px; }
+  .compact-notice[open] .chev { transform: rotate(90deg); }
+  .compact-notice .c-badge { margin-left: auto; font-size: 11px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
+  .compact-summary { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--text); font-size: 13px; line-height: 1.55; max-height: 320px; overflow-y: auto; }
+  .compact-summary .say h4 { font-size: 12.5px; font-weight: 600; color: var(--accent); margin: 10px 0 4px; }
+  .compact-summary .say h4:first-child { margin-top: 0; }
+  .compact-summary .say p, .compact-summary .say ul { margin: 4px 0; }
   .field textarea.instr { font: 12.5px/1.55 var(--mono); min-height: 340px; resize: vertical; }
   .sline { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
   .sline code, .field code, .meta code { font: 12px var(--mono); background: var(--s3); border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
@@ -244,6 +255,8 @@
   .pop { position: fixed; z-index: 30; background: var(--s1); border: 1px solid var(--line2); border-radius: 10px; padding: 5px; min-width: 190px; box-shadow: 0 12px 34px var(--shadow); display: flex; flex-direction: column; }
   .pop button, .pop a { background: none; border: 0; text-align: left; padding: 7px 10px; border-radius: 7px; font-size: 13.5px; color: var(--text); }
   .pop button:hover { background: var(--s2); }
+  .pop button:disabled { opacity: .45; cursor: default; }
+  .pop button:disabled:hover { background: none; }
   .pop .sep { height: 1px; background: var(--line); margin: 4px 2px; }
   .pop .ph { font-size: 11.5px; color: var(--dim); padding: 6px 10px 2px; }
   .pop .path { font-size: 11.5px; color: var(--dim); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
@@ -783,9 +796,22 @@ async function exportChat(c, format) {
   } catch (e) { toast(e.message, true); }
 }
 
+async function compactChatNow(c) {
+  toast(t("chat.compacting"));
+  try {
+    await api(`compact/${c.id}`, {});
+    await refresh();
+    if (chatId === c.id) await pollChat();
+    toast(t("chat.compacted"));
+  } catch (e) { toast(e.message, true); }
+}
+
 function chatMenu(anchor, c) {
+  const alreadyCompacted = !!(c.compaction && (c.compaction.throughTurn ?? 0) >= (c.turns?.length || 0) && !c.sessionId && !c.codexThread);
+  const canCompact = c.status !== "running" && (c.turns?.length || 0) > 0 && !alreadyCompacted;
   popover(anchor,
     h("button", { onclick: () => { closePop(); openDrawer("rename", c.id); } }, t("chat.rename")),
+    h("button", { disabled: !canCompact, onclick: () => { closePop(); compactChatNow(c); } }, t("chat.compact")),
     h("button", { onclick: () => { closePop(); exportChat(c, "md"); } }, t("chat.exportMd")),
     h("button", { onclick: () => { closePop(); exportChat(c, "json"); } }, t("chat.exportJson")),
     h("div", { class: "sep" }),
@@ -875,6 +901,14 @@ function addItem(it) {
     return;
   }
   if (it.kind === "notice") { tb.replies.append(h("div", { class: "moved notice" }, "\u26a0 " + translateNotice(it.text, lang))); return; }
+  if (it.kind === "compact") {
+    const label = it.text ? translateNotice(it.text, lang) : t("notice.compacted");
+    const methodKey = it.method === "deterministic" ? "compact.method.deterministic" : "compact.method.haiku";
+    tb.replies.append(h("details", { class: "compact-notice" },
+      h("summary", {}, h("span", { class: "chev" }, "›"), h("span", {}, label), it.method ? h("span", { class: "c-badge" }, t(methodKey)) : null),
+      it.summary ? h("div", { class: "compact-summary" }, md(it.summary)) : null));
+    return;
+  }
   if (["meta", "usage", "done"].includes(it.kind)) return; // technical noise stays out of the conversation
   if (it.kind === "delegate" && !tb.team.isConnected) { tb.replies.append(tb.team); return; }
   if (it.kind === "delegate" || (it.kind === "tool" && /^job /.test(it.text))) return; // shown as the team card instead
@@ -1383,6 +1417,18 @@ async function renderDrawer(full) {
         range.value = v;
         applyPatch({ limitThreshold: v });
       });
+      const compactK = Math.round((s.compactThreshold || 120000) / 1000);
+      const cRange = h("input", { type: "range", min: 60, max: 400, step: 10, value: compactK, disabled: !!lock.compactThreshold });
+      const cNum = h("input", { type: "number", min: 60, max: 400, step: 1, value: compactK, disabled: !!lock.compactThreshold });
+      cRange.addEventListener("input", () => { cNum.value = cRange.value; });
+      cRange.addEventListener("change", () => applyPatch({ compactThreshold: Number(cRange.value) * 1000 }));
+      cNum.addEventListener("change", () => {
+        const v = Math.round(Number(cNum.value));
+        if (!Number.isFinite(v) || v < 60 || v > 400) { toast(t("settings.compactThresholdErr"), true); cNum.value = compactK; cRange.value = compactK; return; }
+        cNum.value = v;
+        cRange.value = v;
+        applyPatch({ compactThreshold: v * 1000 });
+      });
       set(body,
         h("div", { class: "section" },
           secHead(t("settings.langTitle"), "language"),
@@ -1442,6 +1488,16 @@ async function renderDrawer(full) {
           h("select", { disabled: !!lock.turnBudget, onchange: (e) => applyPatch({ turnBudget: Number(e.target.value) }) },
             [[0, t("settings.turnBudgetOff")], [50000, t("settings.turnBudgetTokens", { n: "50k" })], [100000, t("settings.turnBudgetTokens", { n: "100k" })], [250000, t("settings.turnBudgetTokens", { n: "250k" })], [500000, t("settings.turnBudgetTokens", { n: "500k" })], ...([0, 50000, 100000, 250000, 500000].includes(s.turnBudget) ? [] : [[s.turnBudget, t("settings.turnBudgetTokens", { n: s.turnBudget.toLocaleString(uiLocale()) })]])]
               .map(([v, l]) => h("option", { value: v, selected: s.turnBudget === v ? true : null }, l)))),
+        h("div", { class: "section" },
+          secHead(t("settings.compactTitle"), "compactChats"),
+          h("p", { class: "shelp" }, t("settings.compactHelp")),
+          h("label", { class: "toggle" + (lock.compactChats ? " disabled" : "") },
+            h("input", { type: "checkbox", checked: s.compactChats ? true : null, disabled: !!lock.compactChats, onchange: (e) => applyPatch({ compactChats: e.target.checked }) }),
+            h("span", {}, t("settings.compactEnabled"), h("small", {}, t("settings.compactEnabledDesc")))),
+          h("div", { class: "sfield", style: "margin-top:8px" },
+            h("label", {}, t("settings.compactThreshold"), envBadge("compactThreshold")),
+            h("p", { class: "shelp", style: "margin:0" }, t("settings.compactThresholdHelp")),
+            h("div", { class: "rangewrap" }, cRange, cNum))),
         h("div", { class: "section" },
           secHead(t("settings.testsTitle"), "runTestsBeforeApply"),
           h("p", { class: "shelp" }, t("settings.testsHelp")),

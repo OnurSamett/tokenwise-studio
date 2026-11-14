@@ -29,6 +29,7 @@ import { currentVersion, installSource, latestVersion, cachedLatest, compareVers
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
 const i18nPath = path.join(path.dirname(htmlPath), "i18n.js");
 let repo, jobs, chats; // current project; replaced by POST /api/project
+let serverChatOpts = {};
 
 const RECENTS = path.join(os.homedir(), ".tokenwise-studio", "recents.json");
 function recents() {
@@ -40,7 +41,7 @@ function remember(p) {
   return list;
 }
 function openProject(p) {
-  repo = p; jobs = new Jobs(repo); chats = new Chats(jobs);
+  repo = p; jobs = new Jobs(repo); chats = new Chats(jobs, serverChatOpts);
   remember(repo);
 }
 const state = () => ({ repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(), jobs: jobs.list().map(({ test, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
@@ -166,7 +167,12 @@ function versionInfo() {
   return { current, latest: c ? c.version : null, updateAvailable: !!c && compareVersions(c.version, current) > 0, source };
 }
 
-const handler = async (req, res) => {
+export function initServer({ repo: start, summarize, spawn } = {}) {
+  serverChatOpts = { ...(summarize ? { summarize } : {}), ...(spawn ? { spawn } : {}) };
+  openProject(path.resolve(start || process.cwd()));
+}
+
+export const handler = async (req, res) => {
   if (!allowed(req)) return send(res, 403, { error: "forbidden" });
   const url = new URL(req.url, "http://x");
   const from = Number(url.searchParams.get("from") || 0);
@@ -265,6 +271,7 @@ const handler = async (req, res) => {
       if (what === "merge") return send(res, 200, jobs.merge(id, b.files));
       if (what === "discard") return send(res, 200, jobs.discard(id));
       if (what === "rename") return send(res, 200, chats.rename(id, b.title));
+      if (what === "compact") return send(res, 200, await chats.compact(id));
       if (what === "delete") return send(res, 200, chats.remove(id));
       if (what === "commit") {
         const message = String(b.message || "").trim();
@@ -320,16 +327,28 @@ function registerServer(repoPath, url) {
   }
 }
 
-export function startServer({ repo: start, port = 4777 } = {}) {
-  openProject(path.resolve(start || process.cwd()));
+let activeServer = null;
+export function startServer({ repo: start, port = 4777, summarize, spawn } = {}) {
+  initServer({ repo: start, summarize, spawn });
   return new Promise((resolve, reject) => {
     const server = http.createServer(handler);
     server.once("error", reject);
     server.listen(port, "127.0.0.1", () => {
+      activeServer = server;
       const url = `http://127.0.0.1:${server.address().port}`;
       registerServer(path.resolve(start || process.cwd()), url);
       resolve(url);
     });
+  });
+}
+
+export function stopServer() {
+  return new Promise((resolve) => {
+    if (!activeServer) return resolve();
+    const s = activeServer;
+    activeServer = null;
+    s.closeAllConnections?.();
+    s.close(() => resolve());
   });
 }
 
