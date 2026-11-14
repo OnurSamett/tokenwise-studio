@@ -69,6 +69,15 @@ cd tokenwise-studio && npm install
 node src/cli.js /path/to/project
 ```
 
+## Updating
+
+```bash
+tokenwise-studio update --check   # just report whether a newer version exists
+tokenwise-studio update           # install it and rebuild the Mac app
+```
+
+`update` reinstalls the way you installed (npm or GitHub), then runs `tokenwise-studio setup` again so the Mac app matches the new version. Restart the app afterwards. Running from a git checkout? Use `git pull` instead. When a newer version exists, the sidebar shows a small "New version" note with the command to copy; nothing is ever installed from the browser. Release notes are in [CHANGELOG.md](CHANGELOG.md).
+
 ## Use
 
 Just ask your orchestrator, e.g. in Claude Code on Opus:

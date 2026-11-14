@@ -246,6 +246,13 @@
   .worker .badge.has-logo .plogo { width: 20px; height: 20px; }
   .usage .pname .plogo { width: 16px; height: 16px; }
   .footrow { display: flex; gap: 2px; }
+  .newver { background: none; border: 0; width: 100%; text-align: left; padding: 4px 10px 8px; font-size: 12px; color: var(--dim); }
+  .newver b { color: var(--accent); font-weight: 550; } .newver:hover b { text-decoration: underline; }
+  .pop.upd { padding: 12px; gap: 8px; width: 290px; font-size: 13px; color: var(--muted); }
+  .pop.upd .cmd { display: flex; align-items: center; gap: 8px; background: var(--s2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 6px 6px 10px; }
+  .pop.upd .cmd code { flex: 1; background: none; padding: 0; color: var(--text); }
+  .pop.upd .cmd button { padding: 4px 10px; border: 1px solid var(--line2); background: var(--s1); border-radius: 6px; font-size: 12.5px; }
+  .pop.upd .cmd button:hover { background: var(--s3); }
   .footrow .ghost { width: auto; flex: 1; }
   .icon-btn { background: none; border: 0; color: var(--dim); border-radius: 8px; padding: 6px 9px; font-size: 14px; }
   .icon-btn:hover { color: var(--text); background: var(--s1); }
@@ -334,7 +341,7 @@
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> New task</button>
   <div class="label">Recent</div>
   <div class="chats" id="chats"></div>
-  <div class="sidefoot"><div class="label">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
+  <div class="sidefoot"><button class="newver" id="newver" hidden></button><div class="label">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
 </aside>
 
 <div class="main">
@@ -1041,6 +1048,25 @@ applyTheme();
 $("#scrim").onclick = closeDrawer;
 $("#menubtn").onclick = () => document.body.classList.toggle("side-open");
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+
+// ---------- update notice ----------
+let ver = null;
+async function checkVersion() {
+  try { ver = await api("version"); } catch { return; }
+  const b = $("#newver");
+  b.hidden = !ver.updateAvailable;
+  if (ver.updateAvailable) set(b, [`New version ${ver.latest} · `, h("b", {}, "Update")]);
+  else if (!ver.latest) setTimeout(checkVersion, 4000); // first check runs in the background
+}
+$("#newver").onclick = (e) => {
+  e.stopPropagation();
+  const copy = h("button", { onclick: () => { navigator.clipboard?.writeText("tokenwise-studio update").then(() => { copy.textContent = "Copied"; setTimeout(() => (copy.textContent = "Copy"), 1500); }).catch(() => {}); } }, "Copy");
+  const pop = popover(e.currentTarget, h("div", {}, `Version ${ver.latest} is available (you have ${ver.current}). Run this in a terminal:`),
+    h("div", { class: "cmd" }, h("code", {}, "tokenwise-studio update"), copy),
+    h("div", { style: "font-size:12px;color:var(--dim)" }, "The app restarts after the update."));
+  pop.classList.add("upd");
+};
+checkVersion(); setInterval(checkVersion, 6 * 3600 * 1000);
 
 newTask();
 refresh().then(() => { if (S.chats[0]) openChat(S.chats[0].id); });

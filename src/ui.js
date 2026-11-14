@@ -17,6 +17,7 @@ import { loadTeam, saveTeam, teamOptions, geminiFamilies } from "./team.js";
 import { CATALOG } from "./models.js";
 import { listFreeModels } from "./freechat.js";
 import { loadSettings, saveSettings } from "./notify.js";
+import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
@@ -111,6 +112,15 @@ function orchestratorNow(model, effort) {
   return v;
 }
 
+// Update check for the sidebar: cached answer if fresh, else kick off a background check and answer latest:null.
+let versionCheck = null;
+function versionInfo() {
+  const current = currentVersion(), source = installSource();
+  const c = cachedLatest();
+  if (!c && !versionCheck) versionCheck = latestVersion().catch(() => null).finally(() => { versionCheck = null; });
+  return { current, latest: c ? c.version : null, updateAvailable: !!c && compareVersions(c.version, current) > 0, source };
+}
+
 const handler = async (req, res) => {
   if (!allowed(req)) return send(res, 403, { error: "forbidden" });
   const url = new URL(req.url, "http://x");
@@ -153,6 +163,7 @@ const handler = async (req, res) => {
         });
       }
       if (what === "settings") return send(res, 200, loadSettings());
+      if (what === "version") return send(res, 200, versionInfo());
       if (what === "limits") return send(res, 200, limits(jobs.home));
       if (what === "orchestrator") return send(res, 200, orchestratorNow(url.searchParams.get("model"), url.searchParams.get("effort")));
       if (what === "chatlog") return send(res, 200, chatTimeline(id, from));

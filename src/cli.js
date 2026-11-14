@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // tokenwise-studio [path] [--port N] [--no-open] [--browser] [--pick]
-// tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-app] | uninstall [--dry-run]
+// tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-app] | uninstall [--dry-run] | update [--check]
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 
 const SRC = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(SRC);
@@ -27,6 +27,8 @@ Usage:
                                                    register the MCP server with Claude Code (user scope)
                                                    and, on macOS, create ~/Applications/tokenwise studio.app
   tokenwise-studio uninstall [--dry-run]           undo what setup did
+  tokenwise-studio update [--check]                install the latest version and rebuild the Mac app
+                                                   (--check only reports whether one is available)
   tokenwise-studio --version | --help
 `;
 
@@ -243,6 +245,28 @@ function doUninstall() {
   console.log("\nTo finish, run: npm uninstall -g tokenwise-studio");
 }
 
+async function doUpdate() {
+  const { currentVersion, installSource, latestVersion, compareVersions } = await import("./version.js");
+  const cur = currentVersion(), source = installSource();
+  const latest = await latestVersion({ force: true });
+  console.log(`tokenwise studio ${cur} (installed from ${source})`);
+  if (!latest) { console.log("could not check for the latest version (offline?)"); if (has("--check")) return; }
+  else console.log(`latest: ${latest.version} (${latest.source})`);
+  const newer = latest && compareVersions(latest.version, cur) > 0;
+  if (latest && !newer) return console.log("you are up to date");
+  if (has("--check")) return console.log(newer ? "an update is available: run `tokenwise-studio update`" : "");
+  if (source === "dev") return console.log("this is a git checkout: update it with `git pull` (then `tokenwise-studio setup` to rebuild the Mac app)");
+  // npm records no install source, so a registry install looks like "github". If the registry has the package, use it.
+  const args = latest?.source === "npm" ? ["install", "-g", "tokenwise-studio@latest"] : ["install", "-g", "github:OnurSamett/tokenwise-studio"];
+  console.log(`\nnpm ${args.join(" ")}\n`);
+  try { execFileSync("npm", args, { stdio: "inherit" }); }
+  catch { console.error("\nupdate failed; nothing else was changed. Try the command above yourself (you may need different permissions)."); process.exit(1); }
+  console.log("\nrebuilding the Mac app with the new version ...\n");
+  const r = spawnSync(EXE, ["setup"], { stdio: "inherit" });
+  if (r.error || r.status) { console.error(`\nupdated, but \`${EXE} setup\` did not finish; run it yourself.`); process.exit(1); }
+  console.log("\nUpdated. Restart tokenwise studio (quit and reopen the app) to use the new version.");
+}
+
 function pickFolder() {
   if (process.platform !== "darwin") { console.error("tokenwise studio: --pick needs macOS. Pass a folder instead: tokenwise-studio /path/to/project"); process.exit(1); }
   try {
@@ -285,4 +309,5 @@ else if (has("--version") || has("-v")) console.log(pkg.version);
 else if (cmd === "doctor") await doDoctor();
 else if (cmd === "setup") await doSetup();
 else if (cmd === "uninstall") doUninstall();
+else if (cmd === "update") await doUpdate();
 else await startUi();
