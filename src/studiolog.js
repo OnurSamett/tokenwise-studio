@@ -90,6 +90,8 @@ function cleanSingleLine(s) {
 function stripStudioDecoration(rawLine) {
   let line = rawLine.trim();
   if (!line) return "";
+  // Collapse long whitespace runs first: the suffix regex below is quadratic on them.
+  line = line.replace(/\s{3,}/g, "  ");
   line = line.replace(TIMESTAMP_PREFIX_RE, "");
   line = line.replace(STUDIO_ORIGIN_SUFFIX_RE, "");
   return line.trim();

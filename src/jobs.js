@@ -203,8 +203,8 @@ export class Jobs {
         try {
           git(cwd, "add", "-A", "--", ".", ...ARTIFACTS.map((x) => `:(exclude,glob)${x}`));
           j.diffStat = git(cwd, "diff", "--cached", "--stat", "HEAD").trim() || "(no changes)";
-          j.files = git(cwd, "diff", "--cached", "--name-only", "HEAD").split("\n").filter(Boolean);
-          fs.writeFileSync(this.file(id, "diff"), git(cwd, "diff", "--cached", "--binary", "HEAD"));
+          j.files = git(cwd, "diff", "--cached", "--no-renames", "--name-only", "HEAD").split("\n").filter(Boolean);
+          fs.writeFileSync(this.file(id, "diff"), git(cwd, "diff", "--cached", "--no-renames", "--binary", "HEAD"));
         } catch (e) { j.diffStat = "diff failed: " + e.message; }
         // Generated images stay viewable after the worktree is gone (Apply or Discard).
         try { if (j.status === "done") j.images = captureImages(this, j, j.files); } catch {}
