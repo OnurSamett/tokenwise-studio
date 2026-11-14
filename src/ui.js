@@ -20,6 +20,9 @@ import { listFreeModels } from "./freechat.js";
 import { loadSettings, saveSettings, settingsInfo } from "./settings.js";
 import { exportChat, backupAll } from "./export.js";
 import { loadInstructions, instructionsPath, workerNotes, INSTRUCTIONS_CAP, INSTRUCTIONS_FILE } from "./instructions.js";
+import { aggregateUsage } from "./usage.js";
+import { resolveJobImage, imageType } from "./jobimages.js";
+import { runTests, testRunning, testTail, detectTestCommand, loadTestOverride, saveTestOverride } from "./testrun.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
 
 
@@ -39,7 +42,7 @@ function openProject(p) {
   repo = p; jobs = new Jobs(repo); chats = new Chats(jobs);
   remember(repo);
 }
-const state = () => ({ repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(), jobs: jobs.list(),
+const state = () => ({ repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(), jobs: jobs.list().map(({ test, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
   team: (({ mode, preset }) => ({ mode, preset }))(loadTeam(jobs.home)) });
 
 const gitIn = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -72,7 +75,13 @@ function splitDiff(raw) {
   return raw.split(/^(?=diff --git )/m).filter((p) => p.startsWith("diff --git")).map((patch) => {
     const m = patch.match(/^diff --git a\/(.+?) b\/(.+)$/m);
     const add = (patch.match(/^\+(?!\+\+)/gm) || []).length, del = (patch.match(/^-(?!--)/gm) || []).length;
-    return { path: m ? m[2] : "?", add, del, patch };
+    const p = m ? m[2] : "?";
+    // Binary files (generated images): keep the header only; the base85 body is useless in a review and can be huge.
+    if (/^GIT binary patch$|^Binary files /m.test(patch)) {
+      const head = patch.split("\n").filter((l) => /^(diff --git|new file mode|deleted file mode|similarity|rename )/.test(l)).join("\n");
+      return { path: p, add: 0, del: 0, binary: true, image: !!imageType(p), deleted: /^deleted file mode/m.test(patch), patch: head + "\n" };
+    }
+    return { path: p, add, del, patch };
   });
 }
 
@@ -188,6 +197,17 @@ const handler = async (req, res) => {
         const image = resolveUpload(repo, url.searchParams.get("path"));
         return send(res, 200, fs.readFileSync(image.abs), image.type);
       }
+      if (what === "usage") return send(res, 200, aggregateUsage({ chats: chats.list(), jobs: jobs.list(), days: Number(url.searchParams.get("days") || 14) }));
+      if (what === "jobimage") {
+        const img = resolveJobImage(jobs, url.searchParams.get("job"), url.searchParams.get("path"));
+        res.writeHead(200, { "content-type": img.type, "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'" });
+        return res.end(fs.readFileSync(img.abs));
+      }
+      if (what === "test") { const j = jobs.get(id); return send(res, 200, { test: j.test || null, running: testRunning(j), tail: testTail(jobs, id) || j.test?.tail || "" }); }
+      if (what === "testcmd") {
+        const d = detectTestCommand(repo);
+        return send(res, 200, { override: loadTestOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null });
+      }
       if (what === "state") return send(res, 200, state());
       if (what === "export") {
         const fmt = url.searchParams.get("format") === "json" ? "json" : "md";
@@ -235,6 +255,8 @@ const handler = async (req, res) => {
         fs.writeFileSync(f, b.text);
         return send(res, 200, instructionsInfo());
       }
+      if (what === "test") { const { job } = runTests(jobs, id); return send(res, 200, { test: { ...job.test, tail: undefined }, running: true }); }
+      if (what === "testcmd") { saveTestOverride(jobs.home, b.command); const d = detectTestCommand(repo); return send(res, 200, { override: loadTestOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null }); }
       if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
       if (what === "chat") return send(res, 200, chats.send(b));
       if (what === "stop") return send(res, 200, chats.stop(id));

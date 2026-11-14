@@ -340,6 +340,39 @@
   .linkbtn { background: none; border: 0; color: var(--accent); font-size: 13px; padding: 0; }
   .filelist { font: 12.5px var(--mono); color: var(--muted); display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
 
+  /* ---------- images, tests, usage ---------- */
+  .thumbs { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 10px 10px 54px; }
+  .thumbs.flat { padding: 0; }
+  .thumb { padding: 0; border: 1px solid var(--line2); border-radius: 9px; background: var(--bg); overflow: hidden; cursor: zoom-in; width: 96px; height: 80px; display: block; flex: none; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumbs.big .thumb { width: 150px; height: 120px; }
+  .wk-extra { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 0 10px 8px 54px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; line-height: 18px; border-radius: 999px; padding: 0 8px; border: 1px solid var(--line2); color: var(--muted); white-space: nowrap; }
+  .chip.pass { color: var(--ok); border-color: rgba(92,201,138,.45); } .chip.fail, .chip.error, .chip.timeout { color: var(--bad); border-color: rgba(240,113,120,.45); }
+  .chip.running { color: var(--accent); }
+  .lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.82); display: grid; place-items: center; padding: 24px; cursor: zoom-out; }
+  .lightbox img { min-width: min(60vmin, 420px); object-fit: contain; max-width: 100%; max-height: calc(100vh - 80px); border-radius: 8px; background: #fff2; box-shadow: 0 10px 50px rgba(0,0,0,.5); }
+  .lightbox .cap { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; color: #ddd; font: 13px var(--mono); }
+  .binfile { display: flex; gap: 12px; align-items: center; padding: 12px 14px; font-size: 13px; color: var(--muted); }
+  .testbox { border: 1px solid var(--line); border-radius: 10px; background: var(--bg); padding: 10px 12px; margin-bottom: 14px; }
+  .testbox .trow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+  .testbox .trow .grow { flex: 1; min-width: 0; }
+  .testbox pre { margin: 10px 0 0; max-height: 240px; overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); background: var(--s1); border-radius: 8px; padding: 8px 10px; }
+  .utotals { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .utotals div { background: var(--s2); border-radius: 10px; padding: 10px 12px; }
+  .utotals b { display: block; font-size: 19px; font-weight: 650; margin-top: 2px; }
+  .utotals span { font-size: 12px; color: var(--dim); }
+  .uchart { width: 100%; height: auto; display: block; }
+  .uchart text { fill: var(--dim); font: 10.5px var(--mono); }
+  .uchart .bar-o { fill: var(--accent); } .uchart .bar-w { fill: var(--ok); opacity: .85; } .uchart .grid { stroke: var(--line); stroke-width: 1; }
+  .ulegend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin: 6px 0 4px; }
+  .ulegend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
+  .utable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .utable th { text-align: left; font-size: 11.5px; color: var(--dim); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
+  .utable td { padding: 7px 8px; border-bottom: 1px solid var(--line); }
+  .utable .n { text-align: right; font-variant-numeric: tabular-nums; } .utable th.n { text-align: right; }
+  .utable tfoot td { font-weight: 650; border-bottom: 0; }
+
   /* ---------- settings & dialogs ---------- */
   .shead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
   .shead h4 { margin: 0; }
@@ -387,7 +420,7 @@
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> New task</button>
   <div class="label">Recent</div>
   <div class="chats" id="chats"></div>
-  <div class="sidefoot"><button class="newver" id="newver" hidden></button><div class="label">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="settingsbtn" title="Settings" aria-label="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
+  <div class="sidefoot"><button class="newver" id="newver" hidden></button><div class="label">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><button class="ghost" id="usagebtn">Usage</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="settingsbtn" title="Settings" aria-label="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
 </aside>
 
 <div class="main">
@@ -611,6 +644,48 @@ const curChat = () => S.chats.find((c) => c.id === chatId);
 const chatJobs = () => S.jobs.filter((j) => j.parent === chatId);
 const pending = () => chatJobs().filter((j) => j.write && j.status === "done" && (j.files || []).length);
 
+// ---------- generated images and test runs ----------
+const jobImageUrl = (j, p) => `/api/jobimage?job=${encodeURIComponent(j.id)}&path=${encodeURIComponent(p)}`;
+function lightbox(src, caption) {
+  const close = () => { document.removeEventListener("keydown", onKey); box.remove(); };
+  const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  const box = h("div", { class: "lightbox", role: "dialog", "aria-label": "Image preview", onclick: close }, h("img", { src, alt: caption || "Generated image" }), caption ? h("div", { class: "cap" }, caption) : null);
+  document.addEventListener("keydown", onKey); document.body.append(box);
+}
+const jobThumbs = (j, cls = "") => (j.images || []).length ? h("div", { class: "thumbs " + cls }, j.images.map((i) =>
+  h("button", { class: "thumb", title: i.path, "aria-label": `Open ${i.path}`, onclick: (e) => { e.stopPropagation(); lightbox(jobImageUrl(j, i.path), i.path); } },
+    h("img", { src: jobImageUrl(j, i.path), alt: i.path, loading: "lazy" })))) : null;
+const TEST_WORD = { running: "tests running", pass: "tests passed", fail: "tests failed", timeout: "tests timed out", error: "tests could not run" };
+const testChip = (j) => j.test ? h("span", { class: "chip " + j.test.status, title: j.test.command }, j.test.status === "running" ? h("span", { class: "spin", style: "width:9px;height:9px" }) : null, TEST_WORD[j.test.status] || j.test.status) : null;
+
+/** Run-tests box for a finished write job. Polls itself while a run is going and stops when it leaves the page. */
+function testPanel(j) {
+  const chip = h("span"), msg = h("span", { class: "grow muted" }), out = h("pre", { hidden: true }), btn = h("button", { class: "btn", onclick: start }, "Run tests");
+  let t = j.test || null, timer = null;
+  const draw = (tail) => {
+    const running = t?.status === "running";
+    set(chip, t ? h("span", { class: "chip " + t.status }, running ? h("span", { class: "spin", style: "width:9px;height:9px" }) : null, TEST_WORD[t.status] || t.status) : null);
+    msg.textContent = t ? `${t.command}${t.durationMs != null ? ` · ${(t.durationMs / 1000).toFixed(1)}s` : ""}${t.exitCode != null && t.status !== "pass" ? ` · exit ${t.exitCode}` : ""}` : "Runs the project's test command in this worker's worktree (no files in your project change).";
+    btn.disabled = running; btn.textContent = running ? "Running…" : t ? "Run again" : "Run tests";
+    out.hidden = !tail; out.textContent = tail || "";
+    if (tail) out.scrollTop = out.scrollHeight;
+  };
+  async function poll() {
+    if (!box.isConnected) return;
+    try { const r = await api(`test/${j.id}`); t = r.test; draw(r.tail); if (r.running) timer = setTimeout(poll, 1500); } catch (e) { toast(e.message, true); }
+  }
+  async function start() {
+    btn.disabled = true;
+    try { const r = await api(`test/${j.id}`, {}); t = r.test; draw(""); timer = setTimeout(poll, 700); } catch (e) { toast(e.message, true); draw(out.textContent); }
+  }
+  const box = h("div", { class: "testbox" }, h("div", { class: "trow" }, h("b", {}, "Tests"), chip, msg, btn), out);
+  draw("");
+  // Show the stored result / pick up a run already in progress, once the box is on the page.
+  const attach = (n) => { if (box.isConnected) { if (t) poll(); } else if (n < 30) setTimeout(() => attach(n + 1), 100); };
+  attach(0);
+  return box;
+}
+
 // ---------- sidebar ----------
 const drawn = {};
 const changed = (k, v) => { const j = JSON.stringify(v); if (drawn[k] === j) return false; drawn[k] = j; return true; };
@@ -769,12 +844,13 @@ function teamCard(jobs) {
   const live = jobs.filter((j) => j.status === "running").length;
   return h("div", { class: "team" },
     h("div", { class: "team-h" }, live ? h("span", { class: "spin" }) : h("span", { style: "color:var(--ok)" }, "✓"), live ? `${live} of ${jobs.length} working` : `Delegated ${jobs.length} task${jobs.length > 1 ? "s" : ""}`),
-    jobs.map((j) => h("button", { class: "worker", onclick: () => openJob(j.id) },
+    jobs.map((j) => h("div", { class: "wk" }, h("button", { class: "worker", onclick: () => openJob(j.id) },
       (() => { const lg = j.agent === "free" ? makerLogo(j.model) || logoImg("nvidia") : agentLogo(j.agent); return h("span", { class: "badge " + j.agent + (lg ? " has-logo" : "") }, lg || BADGE[j.agent] || "?"); })(),
       h("span", {}, h("div", { class: "w-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort), h("span", { class: "w-state " + j.status }, STATE[j.status] || j.status)), h("div", { class: "w-task" }, j.title),
         j.movedFrom ? h("div", { class: "moved", title: j.movedFrom.reason }, `↪ took over from ${AGENT[j.movedFrom.agent] || j.movedFrom.agent} · ${j.movedFrom.reason}`) : null),
       h("span", { class: "bar " + j.status }, h("i")),
-      h("span", { class: "w-time" }, clock(j.created, j.finished)))));
+      h("span", { class: "w-time" }, clock(j.created, j.finished))),
+      j.test ? h("div", { class: "wk-extra" }, testChip(j)) : null, jobThumbs(j))));
 }
 
 function renderBanner() {
@@ -895,6 +971,7 @@ function closeDrawer() { drawer = null; document.body.classList.remove("drawer-o
 const openJob = (id) => openDrawer("job", id);
 const openReview = () => openDrawer("review");
 const openDirect = () => openDrawer("direct");
+const path0 = () => S.project?.name || "this project";
 
 async function renderDrawer(full) {
   if (!drawer) return;
@@ -912,7 +989,9 @@ async function renderDrawer(full) {
         h("button", { class: "x", onclick: closeDrawer, "aria-label": "Close" }, "×")),
       h("div", { class: "d-body" },
         j.final ? h("div", { class: "section" }, h("h4", {}, "Result"), h("div", { class: "answer" }, md(j.final))) : j.status === "running" ? h("div", { class: "section muted" }, h("span", { class: "spin" }), "  Working on it…") : null,
-        files.length ? h("div", { class: "section" }, h("h4", {}, j.status === "merged" ? "Applied changes" : "Changes"), files.map((f) => fileBlock(f, null))) : null,
+        (j.images || []).length ? h("div", { class: "section" }, h("h4", {}, "Generated images"), jobThumbs(j, "flat big")) : null,
+        j.write && j.status === "done" && files.length ? testPanel(j) : null,
+        files.length ? h("div", { class: "section" }, h("h4", {}, j.status === "merged" ? "Applied changes" : "Changes"), files.map((f) => fileBlock(f, null, null, j))) : null,
         h("div", { class: "section" }, h("h4", {}, "Task"), h("div", { class: "muted", style: "white-space:pre-wrap;font-size:14px" }, j.task)),
         h("details", { class: "tech" }, h("summary", {}, `Technical log · ${steps.length} events`), h("div", { class: "steps", style: "margin-top:10px" }, steps.map((s) => s.kind === "think" ? thinkingRow(s.text) : h("div", { class: "step" + (s.kind === "error" ? " err" : "") }, s.text))))),
       j.write && j.status === "done" && files.length ? h("div", { class: "d-foot" }, h("span", { class: "note" }, "Applied changes are staged, not committed."),
@@ -927,10 +1006,11 @@ async function renderDrawer(full) {
     const blocks = [];
     for (const j of p) {
       const { files } = await api(`diff/${j.id}`);
+      blocks.push(h("div", { class: "section", style: "margin-bottom:8px" }, h("h4", {}, `${AGENT[j.agent]} · ${modelName(j.model)} · ${j.title}`), testPanel(j)));
       for (const f of files) {
         const cb = h("input", { type: "checkbox", checked: true, onclick: (e) => e.stopPropagation(), onchange: () => count() });
         cb.dataset.job = j.id; cb.dataset.path = f.path; boxes.push(cb);
-        blocks.push(fileBlock(f, cb, `${AGENT[j.agent]} · ${modelName(j.model)}`));
+        blocks.push(fileBlock(f, cb, `${AGENT[j.agent]} · ${modelName(j.model)}`, j));
       }
     }
     const applyBtn = h("button", { class: "btn primary", onclick: applySelected });
@@ -1107,10 +1187,66 @@ async function renderDrawer(full) {
       h("div", { class: "d-foot" }, h("span", { class: "note" }), h("button", { class: "btn", onclick: () => openDrawer("team") }, "Open Team"), h("button", { class: "btn primary", onclick: closeDrawer }, "Done")));
     return;
   }
+  if (drawer.kind === "usage") {
+    if (!full) return;
+    let U, L = null;
+    try { U = await api("usage?days=14"); } catch (e) { toast(e.message, true); return closeDrawer(); }
+    try { L = await api("limits"); } catch {}
+    drawer.metric = drawer.metric || "tokens";
+    const body = h("div", { class: "d-body" });
+    const fmtN = (n) => (n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(Math.round(n)));
+    const money = (c) => (c <= 0 ? "$0" : c < 0.01 ? "<$0.01" : "$" + c.toFixed(c < 10 ? 2 : 1));
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = (tag, attrs = {}, ...kids) => { const el = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); for (const k of kids.flat()) if (k != null) el.append(k instanceof Node ? k : document.createTextNode(String(k))); return el; };
+    const chart = () => {
+      const cost = drawer.metric === "cost", val = (o) => (cost ? o.cost : o.total);
+      const W = 560, H = 190, L0 = 40, B = 24, T = 8, n = U.byDay.length, step = (W - L0) / n, bw = Math.max(6, step * 0.62);
+      const max = Math.max(...U.byDay.map((d) => val(d)), cost ? 0.01 : 1), ph = H - B - T;
+      const f = (v) => (cost ? money(v) : fmtN(v));
+      const root = svg("svg", { class: "uchart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${cost ? "API-equivalent cost" : "Tokens"} per day, last ${U.days} days` });
+      for (const g of [0, 0.5, 1]) { const y = T + ph * (1 - g); root.append(svg("line", { class: "grid", x1: L0, x2: W, y1: y, y2: y }), svg("text", { x: L0 - 6, y: y + 3.5, "text-anchor": "end" }, f(max * g))); }
+      U.byDay.forEach((d, i) => {
+        const x = L0 + i * step + (step - bw) / 2, ho = (cost ? d.orch.cost : d.orch.total) / max * ph, hw = (cost ? d.workers.cost : d.workers.total) / max * ph;
+        const tip = svg("title", {}, `${d.date}: ${fmtN(d.total)} tokens, ${money(d.cost)}${d.estimated ? " (partly estimated)" : ""}\nOrchestrator ${fmtN(d.orch.total)} · workers ${fmtN(d.workers.total)}`);
+        const grp = svg("g", {}, tip);
+        if (hw > 0) grp.append(svg("rect", { class: "bar-w", x, y: T + ph - ho - hw, width: bw, height: hw, rx: 2 }));
+        if (ho > 0) grp.append(svg("rect", { class: "bar-o", x, y: T + ph - ho, width: bw, height: ho, rx: 2 }));
+        if (hw <= 0 && ho <= 0) grp.append(svg("rect", { class: "bar-o", x, y: T + ph - 1, width: bw, height: 1, opacity: .35 }));
+        grp.append(svg("rect", { x: L0 + i * step, y: T, width: step, height: ph, fill: "transparent" }));
+        root.append(grp);
+        if (n <= 14 || i % 2 === 0) root.append(svg("text", { x: x + bw / 2, y: H - 7, "text-anchor": "middle" }, d.date.slice(8)));
+      });
+      return root;
+    };
+    const t = U.totals, est = t.estimated > 0;
+    const rows = U.byModel.map((r) => h("tr", {}, h("td", {}, h("span", { style: "display:inline-flex;gap:7px;align-items:center" }, agentLogo(r.agent) || h("span", { class: "badge " + r.agent, style: "width:18px;height:18px;font-size:10px;border-radius:5px" }, BADGE[r.agent] || "?"), AGENT[r.agent] || r.agent)),
+      h("td", {}, modelName(r.model) || r.model), h("td", { class: "n" }, `${r.turns || 0} / ${r.jobs || 0}`), h("td", { class: "n" }, fmtN(r.total)), h("td", { class: "n" }, money(r.cost) + (r.estimated > 0 ? " ~" : ""))));
+    const draw = () => set(body,
+      h("div", { class: "utotals" },
+        h("div", {}, h("span", {}, "Tokens"), h("b", {}, fmtN(t.total))), h("div", {}, h("span", {}, "API-equivalent cost"), h("b", {}, money(t.cost) + (est ? " ~" : ""))),
+        h("div", {}, h("span", {}, "Orchestrator turns"), h("b", {}, t.turns)), h("div", {}, h("span", {}, "Worker jobs"), h("b", {}, t.jobs))),
+      h("div", { class: "section" },
+        h("div", { class: "shead" }, h("h4", {}, `Last ${U.days} days`), h("div", { class: "seg", style: "display:inline-grid;grid-template-columns:auto auto" }, [["tokens", "Tokens"], ["cost", "Cost"]].map(([k, l]) => h("button", { class: drawer.metric === k ? "on" : "", onclick: () => { drawer.metric = k; draw(); } }, h("b", {}, l))))),
+        chart(), h("div", { class: "ulegend" }, h("span", {}, h("i", { style: "background:var(--accent)" }), "Orchestrator"), h("span", {}, h("i", { style: "background:var(--ok)" }), "Workers"))),
+      h("div", { class: "section" }, h("h4", {}, "By agent and model"),
+        U.byModel.length ? h("div", { class: "tablewrap" }, h("table", { class: "utable" },
+          h("thead", {}, h("tr", {}, h("th", {}, "Agent"), h("th", {}, "Model"), h("th", { class: "n", title: "orchestrator turns / worker jobs" }, "Turns / jobs"), h("th", { class: "n" }, "Tokens"), h("th", { class: "n" }, "API cost"))),
+          h("tbody", {}, rows),
+          h("tfoot", {}, h("tr", {}, h("td", { colspan: 3 }, "Total"), h("td", { class: "n" }, fmtN(t.total)), h("td", { class: "n" }, money(t.cost) + (est ? " ~" : "")))))) : h("div", { class: "empty" }, "No usage recorded in this window yet.")),
+      h("div", { class: "section" }, h("h4", {}, "Plan limits now"),
+        L && (L.claude || L.codex) ? h("div", { class: "usage" }, [["Claude", "claude", L.claude], ["ChatGPT Codex", "codex", L.codex]].filter((x) => x[2]).map(([name, agent, d]) =>
+          h("div", { class: "plan" }, h("div", { class: "pname" }, agentLogo(agent) || h("span", { class: "badge " + agent }, BADGE[agent]), name), meter("5-hour", d.fiveHour), meter("Weekly", d.week)))) : h("div", { class: "muted", style: "font-size:13px" }, "Shows up after the first run.")),
+      h("p", { class: "shelp" }, "Subscription plans (Claude, ChatGPT Codex) are not billed per token: the cost here is what the same tokens would cost through the API, so it shows how much of your plan you use, not a bill. Claude costs come from Claude Code; other prices are rough estimates (marked ~). Free and local models cost nothing. Cached input is not counted in tokens. Days are in your local time."));
+    draw();
+    set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Usage"), h("div", { class: "meta" }, `${path0()} · orchestrator turns and worker jobs`)), h("button", { class: "x", onclick: closeDrawer, "aria-label": "Close" }, "×")), body);
+    return;
+  }
   if (drawer.kind === "settings") {
     if (!full) return;
     let data; try { data = await api("settings"); syncFromSettings(data); } catch (e) { toast(e.message, true); return closeDrawer(); }
     let inst = null; try { inst = await api("instructions"); } catch {}
+    let tcmd = null; try { tcmd = await api("testcmd"); } catch {}
+    const tin = h("input", { type: "text", value: tcmd?.override || "", placeholder: tcmd?.detected?.label || "e.g. npm run check", spellcheck: "false", style: "flex:1;min-width:0" });
     let backupInfo = null, backing = false;
     const body = h("div", { class: "d-body" });
     const envBadge = (key) => data.envLocked?.[key] ? h("span", { class: "envlock" }, "set by environment") : null;
@@ -1208,6 +1344,16 @@ async function renderDrawer(full) {
             [[0, "Off"], [50000, "50k tokens"], [100000, "100k tokens"], [250000, "250k tokens"], [500000, "500k tokens"], ...([0, 50000, 100000, 250000, 500000].includes(s.turnBudget) ? [] : [[s.turnBudget, `${s.turnBudget.toLocaleString()} tokens`]])]
               .map(([v, l]) => h("option", { value: v, selected: s.turnBudget === v ? true : null }, l)))),
         h("div", { class: "section" },
+          secHead("Tests", "runTestsBeforeApply"),
+          h("p", { class: "shelp" }, "A finished write job can run your project's tests in its own worktree before you apply it (Run tests button in the review). Network is not restricted: tests run with your normal permissions, so review changes to test files and package scripts first. Only files that are committed are in the worktree; dependencies are not installed there."),
+          h("label", { class: "toggle" + (lock.runTestsBeforeApply ? " disabled" : "") },
+            h("input", { type: "checkbox", checked: s.runTestsBeforeApply ? true : null, disabled: !!lock.runTestsBeforeApply, onchange: (e) => applyPatch({ runTestsBeforeApply: e.target.checked }) }),
+            h("span", {}, "Run tests before Apply", h("small", {}, "Run them automatically when a write job finishes and show the result as a chip. Off by default."))),
+          tcmd ? h("div", { class: "sfield", style: "margin-top:12px" },
+            h("label", {}, "Test command"),
+            h("p", { class: "shelp", style: "margin:0" }, tcmd.detected ? ["Detected: ", h("code", {}, tcmd.detected.label), ` (from ${tcmd.detected.source}). Leave empty to use it.`] : "Nothing detected (looks for an npm test script, pytest, go.mod or Cargo.toml). Set a command to enable the Run tests button."),
+            h("div", { class: "rangewrap" }, tin, h("button", { class: "btn", onclick: async () => { try { tcmd = await api("testcmd", { command: tin.value }); toast("Test command saved"); draw(); } catch (e) { toast(e.message, true); } } }, "Save"))) : null),
+        h("div", { class: "section" },
           h("div", { class: "shead" }, h("h4", {}, "Project instructions")),
           inst ? [
             h("p", { class: "sline" }, inst.loaded
@@ -1287,7 +1433,14 @@ async function renderDrawer(full) {
 
 // Files that can make code run later (CI, git hooks, package scripts, build files): flag them in review.
 const RUNS_CODE = /^(\.github\/workflows\/|\.husky\/|\.githooks\/|\.vscode\/)|(^|\/)(package\.json|Makefile|\.gitattributes|\.gitmodules|setup\.py|pyproject\.toml|Cargo\.toml|build\.rs|conftest\.py|\.pre-commit-config\.yaml)$/;
-function fileBlock(f, checkbox, tag) {
+function fileBlock(f, checkbox, tag, job) {
+  if (f.binary) {
+    return h("details", { class: "file", open: true },
+      h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "tag" }, f.deleted ? "binary · deleted" : "binary")),
+      h("div", { class: "binfile" }, f.image && job && !f.deleted
+        ? h("button", { class: "thumb", title: f.path, "aria-label": `Open ${f.path}`, onclick: (e) => { e.preventDefault(); lightbox(jobImageUrl(job, f.path), f.path); } }, h("img", { src: jobImageUrl(job, f.path), alt: f.path, loading: "lazy" })) : null,
+        h("span", {}, f.deleted ? "This file is deleted." : f.image ? "Generated image. Click it to enlarge. It is applied as a file like the others." : "Binary file: no text diff. It is applied as is.")));
+  }
   const lines = f.patch.split("\n").filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode)/.test(l));
   return h("details", { class: "file", open: true },
     h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), RUNS_CODE.test(f.path) ? h("span", { class: "tag", style: "color:var(--warn)", title: "This file can make code run later (CI, hooks, scripts). Review it carefully." }, "⚠ can run code") : null, tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "plus" }, "+" + f.add), h("span", { class: "minus" }, "−" + f.del)),
@@ -1376,6 +1529,7 @@ $("#settingsbtn").onclick = () => openDrawer("settings");
 $("#keysbtn").onclick = () => openDrawer("keys");
 $("#teambtn").onclick = () => openDrawer("team");
 $("#modelsbtn").onclick = () => openDrawer("models");
+$("#usagebtn").onclick = () => openDrawer("usage");
 $("#themebtn").onclick = cycleTheme;
 $("#notifbtn").onclick = toggleNotif;
 $("#project").onclick = (e) => { e.stopPropagation(); projectMenu(); };

@@ -8,6 +8,7 @@ import { Jobs } from "./jobs.js";
 import { loadTeam, teamGuide } from "./team.js";
 import { loadSettings } from "./settings.js";
 import { budgetGate } from "./budget.js";
+import { runTests, testRunning, testTail } from "./testrun.js";
 
 const repo = process.env.TOKENWISE_REPO || process.cwd();
 const jobs = new Jobs(repo);
@@ -16,6 +17,7 @@ const server = new McpServer({ name: "tokenwise-studio", version: "0.1.0" });
 const brief = (j) => ({
   id: j.id, status: j.status, agent: j.agent, model: j.model, effort: j.effort, write: j.write,
   title: j.title, diffStat: j.diffStat, files: j.files, movedFrom: j.movedFrom || null, movedTo: j.movedTo || null, final: j.final ? String(j.final).slice(0, 4000) : null,
+  images: (j.images || []).map((i) => i.path), tests: j.test ? j.test.status : null,
 });
 const ok = (obj) => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }] });
 const fail = (e) => ({ isError: true, content: [{ type: "text", text: String(e.message || e) }] });
@@ -76,6 +78,27 @@ server.registerTool("job_diff", {
   inputSchema: { id: z.string() },
 }, async ({ id }) => {
   try { const d = jobs.diff(id); return ok(d ? d.slice(0, 60000) : "(no changes)"); } catch (e) { return fail(e); }
+});
+
+server.registerTool("job_test", {
+  title: "Run a write job's tests",
+  description: [
+    "Run the project's test command (npm test, pytest -q, go test ./..., cargo test, or the one set in Settings) inside a finished write job's worktree and return pass/fail plus the tail of the output.",
+    "Use it to check a worker's changes before telling the user they are ready. It does not change any files in the project. Without rerun, an existing result (for example from the automatic run) is returned as is; a run in progress is waited for.",
+  ].join(" "),
+  inputSchema: { id: z.string(), rerun: z.boolean().optional(), timeout_s: z.number().int().min(10).max(700).optional() },
+}, async ({ id, rerun, timeout_s }) => {
+  try {
+    let j = jobs.get(id);
+    const give = (j) => ok({ id: j.id, status: j.test?.status || "not run", command: j.test?.command || null, exitCode: j.test?.exitCode ?? null,
+      durationMs: j.test?.durationMs ?? null, tail: (testTail(jobs, id, 3000) || j.test?.tail || "").slice(-3000) });
+    if (!testRunning(j) && !(j.test && j.test.status !== "running" && !rerun)) { j = (await runTests(jobs, id).done) || jobs.get(id); }
+    else if (testRunning(j)) {
+      const end = Date.now() + (timeout_s ?? 660) * 1000;
+      while (testRunning(j) && Date.now() < end) { await new Promise((r) => setTimeout(r, 1000)); j = jobs.get(id); }
+    }
+    return give(j);
+  } catch (e) { return fail(e); }
 });
 
 server.registerTool("job_merge", {

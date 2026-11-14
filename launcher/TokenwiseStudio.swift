@@ -100,13 +100,14 @@ func validate(repo: String?, url: String?) -> (repo: String, url: URL?)? {
 
 // MARK: - project window
 
-final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate {
+final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDelegate, NSWindowDelegate {
     let repo: String
     let window: NSWindow
     let web: WKWebView
     let spinner = NSProgressIndicator()
     let label = NSTextField(labelWithString: "Starting…")
     var onClose: ((String) -> Void)?
+    var downloadTargets: [ObjectIdentifier: URL] = [:]
 
     init(repo: String) {
         self.repo = repo
@@ -178,6 +179,8 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindow
     func webView(_ w: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
+        // <a download> (chat export, blob: URLs) and other explicit downloads: save them instead of navigating.
+        if action.shouldPerformDownload { decisionHandler(.download); return }
         let scheme = url.scheme ?? ""
         if scheme == "about" || scheme == "blob" || scheme == "data" { decisionHandler(.allow); return }
         if (scheme == "http" || scheme == "https") && isLocalHost(url.host) && action.targetFrame != nil {
@@ -185,6 +188,56 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindow
         }
         if scheme == "http" || scheme == "https" || scheme == "mailto" { NSWorkspace.shared.open(url) }
         decisionHandler(.cancel)
+    }
+
+    // responses the web view cannot show (or that the server marks as an attachment) become downloads too
+    func webView(_ w: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")?.lowercased() ?? ""
+        if !navigationResponse.canShowMIMEType || disposition.hasPrefix("attachment") { decisionHandler(.download); return }
+        decisionHandler(.allow)
+    }
+
+    func webView(_ w: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { download.delegate = self }
+    func webView(_ w: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { download.delegate = self }
+
+    // downloads: save to ~/Downloads under a name that does not overwrite anything, then show it in Finder
+    static func freeDownloadURL(_ suggested: String) -> URL {
+        let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory() + "/Downloads")
+        var name = (suggested as NSString).lastPathComponent
+            .replacingOccurrences(of: ":", with: "-").trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty || name == "." || name == ".." { name = "download" }
+        let ext = (name as NSString).pathExtension
+        let stem = (name as NSString).deletingPathExtension
+        var url = dir.appendingPathComponent(name)
+        var n = 1
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = dir.appendingPathComponent(ext.isEmpty ? "\(stem) (\(n))" : "\(stem) (\(n)).\(ext)")
+            n += 1
+        }
+        return url
+    }
+
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String,
+                  completionHandler: @escaping (URL?) -> Void) {
+        let url = StudioWindow.freeDownloadURL(suggestedFilename)
+        downloadTargets[ObjectIdentifier(download)] = url
+        completionHandler(url)
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        guard let url = downloadTargets.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        downloadTargets.removeValue(forKey: ObjectIdentifier(download))
+        let a = NSAlert()
+        a.messageText = "Download failed"
+        a.informativeText = error.localizedDescription
+        a.addButton(withTitle: "OK")
+        a.beginSheetModal(for: window, completionHandler: nil)
     }
 
     func webView(_ w: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,

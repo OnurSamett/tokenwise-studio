@@ -8,6 +8,9 @@ import { loadTeam } from "./team.js";
 import { RATE_LIMIT, available, nearLimit, nextAgent } from "./fallback.js";
 import { notify, jobNotice } from "./notify.js";
 import { withProjectNotes } from "./instructions.js";
+import { captureImages } from "./jobimages.js";
+import { runTests, stopTests } from "./testrun.js";
+import { loadSettings } from "./settings.js";
 
 // Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
 const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/node_modules/**", "**/.DS_Store",
@@ -20,6 +23,7 @@ export class Jobs {
     this.home = path.join(this.repo, ".tokenwise-studio");
     for (const d of ["jobs", "logs", "worktrees"]) fs.mkdirSync(path.join(this.home, d), { recursive: true });
     this.running = new Map(); // id -> { child, done: Promise }
+    this.testing = new Map(); // id -> test-run child process (see testrun.js)
     // Keep our state folder out of the user's git status.
     if (this.isGit()) {
       try {
@@ -142,11 +146,17 @@ export class Jobs {
           j.files = git(cwd, "diff", "--cached", "--name-only", "HEAD").split("\n").filter(Boolean);
           fs.writeFileSync(this.file(id, "diff"), git(cwd, "diff", "--cached", "--binary", "HEAD"));
         } catch (e) { j.diffStat = "diff failed: " + e.message; }
+        // Generated images stay viewable after the worktree is gone (Apply or Discard).
+        try { if (j.status === "done") j.images = captureImages(this, j, j.files); } catch {}
       }
       write1("meta", `exit ${code}`);
       log.end();
       this.save(j);
       this.running.delete(id);
+      // Optional: run the project's tests in the worktree as soon as a write job finishes (setting "Run tests before Apply").
+      if (write && j.status === "done" && j.files.length) {
+        try { if (loadSettings().runTestsBeforeApply) runTests(this, id).done.catch(() => {}); } catch {}
+      }
       if (!j.parent && (j.status === "done" || j.status === "failed")) {
         const n = jobNotice(j, write ? j.files.length : undefined);
         if (n) notify({ ...n, subtitle: path.basename(this.repo), repo: this.repo, key: `job:${id}:${j.status}` });
@@ -235,6 +245,7 @@ export class Jobs {
   }
 
   cleanup(j) {
+    stopTests(this, j.id);
     try { git(this.repo, "worktree", "remove", "--force", j.cwd); } catch {}
     try { git(this.repo, "branch", "-D", j.branch); } catch {}
   }

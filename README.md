@@ -106,6 +106,7 @@ Click the gear button in the sidebar footer to open **Settings** (stored in `~/.
 - **Orchestrator defaults & limits**: preselected model/effort, what happens when Claude reaches its limit (`switch automatically`, `ask me`, or `off`), fast mode (`--settings fastMode` for Claude, `service_tier="fast"` for Codex), limit threshold % (50–100), worker fallback order, and opting in to free hosted models.
 - **Notifications & updates**: desktop notification and update check toggles.
 - **Turn budget**: off by default, or 50k / 100k / 250k / 500k tokens per turn, counting the orchestrator and the workers it starts (see Turn budget below).
+- **Tests**: run tests before Apply, and the test command (see Tests below).
 - **Project instructions** and **Backup**: see below.
 
 ### Chat export and backup
@@ -121,6 +122,18 @@ Put rules for a project in `TOKENWISE.md` at its root (fallback: `.tokenwise-stu
 ### Turn budget
 
 Set **Turn budget** in Settings to cap the tokens one turn may use, orchestrator plus the jobs it starts in that turn (worker tokens are what their logs have reported so far). At 80% a notice appears in the chat. At 100% the `delegate` tool refuses new jobs with a clear message so the orchestrator wraps up, and a notice is shown; jobs already running keep going. The turn footer shows the turn's total tokens, and the share of the budget when one is set.
+
+### Usage screen
+
+The **Usage** entry in the sidebar footer opens a per-project view: tokens (or API-equivalent cost) per day for the last 14 days as a bar chart, split into orchestrator turns and worker jobs, a table by agent and model, totals, and your current Claude and Codex plan-limit readings. The same data is at `GET /api/usage?days=14`. Subscription plans are not billed per token, so the cost is what the same tokens would cost through the API. Claude Code reports its own cost; other prices are rough estimates (marked `~` in the screen; the rates are in `src/usage.js`). Free and local models count as $0. Cached input is shown separately and is not part of the token total.
+
+### Generated images
+
+When a write worker produces png, jpg, webp or gif files (for example Codex image generation, routed by the orchestrator to the `images` role), they appear as thumbnails in the job card and the job drawer; click one for a full-size lightbox. In the review they are listed as binary files with a thumbnail and are applied like any other file (checkbox, staged, not committed). Copies are kept in `.tokenwise-studio/artifacts/<job>/`, so thumbnails stay after Apply or Discard. Images are served only from a job's worktree or that folder, by image extension, never through symlinks, up to 15 MB each (24 per job).
+
+### Tests
+
+Studio detects a test command per project: an `npm test` script in `package.json` (the npm placeholder is ignored), else `pytest -q` (`pytest.ini` or pytest in `pyproject.toml`), `go test ./...` (`go.mod`), `cargo test` (`Cargo.toml`). Override it under **Settings, Tests**. For a finished write job, the review and the job drawer have a **Run tests** button: it runs the command in that job's worktree (argument array, no shell, 10 minute timeout, one run per job), streams the output, and shows pass or fail with the end of the output. Network is not restricted, and a worktree has only committed files (dependencies are not installed), so a project whose tests need `node_modules` may need a setup command in its test script. Turn on **Run tests before Apply** to run them automatically when a write job finishes; the result shows as a chip on the job card. The orchestrator can call `job_test` to check its workers' work (allowed in every permission mode, since it changes no project files).
 
 ### Models
 
@@ -142,6 +155,7 @@ Free NVIDIA models can be picked individually in the Team panel.
 | `job_status` | List jobs or inspect one |
 | `job_diff` | Full diff of a write job |
 | `job_merge` | Apply a job's diff to your working tree (staged, not committed) and clean up |
+| `job_test` | Run the project's tests in a finished write job's worktree; returns pass/fail and the end of the output |
 | `job_discard` | Stop and throw away a job |
 
 ### When a plan runs out
