@@ -4,8 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadSettings, saveSettings } from "./settings.js";
+import { t, tp, resolveLanguage, translateReason } from "../ui/i18n.js";
 
 export { loadSettings, saveSettings };
+
+const noticeLang = (opts = {}) => resolveLanguage(opts.lang ?? (opts.settings || loadSettings()).language, opts);
 
 const trunc = (s, n) => { s = String(s ?? "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
 /** Quote a string as an AppleScript literal (escape backslash, then double quote). */
@@ -68,30 +71,34 @@ export function agentLabel(agent, model) {
   return m && m !== "Auto" ? `${a} ${m}` : a;
 }
 
-const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
-
 /** What to say when a direct job (no parent chat) ends; null for nothing. fileCount may be undefined. */
-export function jobNotice(j, fileCount) {
+export function jobNotice(j, fileCount, opts = {}) {
   if (!j || j.parent) return null;
-  const who = agentLabel(j.agent, j.model), title = j.title || "job";
-  if (j.status === "failed") return { title: "Worker failed", message: `${who}: ${title}` };
+  const lang = noticeLang(opts);
+  const who = agentLabel(j.agent, j.model), title = j.title || t("notify.jobFallback", {}, lang);
+  if (j.status === "failed") return { title: t("notify.workerFailed", {}, lang), message: `${who}: ${title}` };
   if (j.status !== "done") return null; // moved, discarded, running
   if (j.write) {
     if (!j.diffStat || j.diffStat === "(no changes)" || j.diffStat.startsWith("diff failed") || fileCount === 0) {
-      return { title: "Worker finished", message: `${who}: ${title}` };
+      return { title: t("notify.workerFinished", {}, lang), message: `${who}: ${title}` };
     }
-    const n = typeof fileCount === "number" ? ` · ${plural(fileCount, "file")} changed` : "";
-    return { title: "Ready for review", message: `${who} finished: ${title}${n}` };
+    const files = typeof fileCount === "number" ? ` · ${tp("notify.filesChanged", fileCount, {}, lang)}` : "";
+    return { title: t("notify.readyForReview", {}, lang), message: t("notify.workerFinishedMsg", { who, title, files }, lang) };
   }
-  return { title: "Worker finished", message: `${who}: ${title}` };
+  return { title: t("notify.workerFinished", {}, lang), message: `${who}: ${title}` };
 }
 
 /** What to say when an orchestrator turn ends; null if the user stopped it. */
-export function turnNotice({ turn, chatTitle, failed, stopped, readyJobs = 0 }) {
+export function turnNotice({ turn, chatTitle, failed, stopped, readyJobs = 0, lang, settings } = {}, opts = {}) {
   if (stopped) return null;
-  const first = String(turn?.reply || "").split("\n").map((l) => l.trim()).find(Boolean) || "Turn complete";
-  const prefix = readyJobs > 0 ? `${plural(readyJobs, "job")} ready for review · ` : "";
-  return { title: failed ? "Orchestrator needs you" : "Orchestrator finished", message: trunc(prefix + trunc(first, 150), 180), subtitle: chatTitle || "" };
+  const l = noticeLang({ lang: lang ?? opts.lang, settings: settings ?? opts.settings, env: opts.env, intlLocale: opts.intlLocale });
+  const first = String(turn?.reply || "").split("\n").map((line) => line.trim()).find(Boolean) || t("notify.turnComplete", {}, l);
+  const prefix = readyJobs > 0 ? tp("notify.jobsReady", readyJobs, {}, l) : "";
+  return { title: t(failed ? "notify.orchNeedsYou" : "notify.orchFinished", {}, l), message: trunc(prefix + trunc(first, 150), 180), subtitle: chatTitle || "" };
 }
 
-export const handoffNotice = (reason) => ({ title: "Codex took over", message: `Claude ${String(reason || "is unavailable").replace(/^Claude /, "")}` });
+export const handoffNotice = (reason, opts = {}) => {
+  const l = noticeLang(opts);
+  const clean = translateReason(reason || t("reason.unavailable", {}, l), l).replace(/^Claude\s+/i, "");
+  return { title: t("notify.codexTookOver", {}, l), message: t("notify.claudeReason", { reason: clean }, l) };
+};

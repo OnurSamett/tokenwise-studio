@@ -9,8 +9,10 @@ export const PERMISSION_MODES = ["ask", "auto-apply", "plan-only"];
 export const ORCH_MODELS = ["opus", "sonnet", "haiku"];
 export const EFFORTS = ["low", "medium", "high", "xhigh"];
 export const ORCH_FALLBACK_MODES = ["auto", "ask", "off"];
+export const LANGUAGES = ["auto", "en", "tr"];
 
 export const DEFAULTS = Object.freeze({
+  language: "auto",
   permissionMode: "ask",
   defaultModel: "opus",
   defaultEffort: "medium",
@@ -30,6 +32,7 @@ const isObj = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
 const settingsFile = () => path.join(os.homedir(), ".tokenwise-studio", "settings.json");
 
 const VALIDATORS = {
+  language: (v) => LANGUAGES.includes(v) || `language must be one of ${LANGUAGES.join(", ")}`,
   permissionMode: (v) => PERMISSION_MODES.includes(v) || `permissionMode must be one of ${PERMISSION_MODES.join(", ")}`,
   defaultModel: (v) => ORCH_MODELS.includes(v) || `defaultModel must be one of ${ORCH_MODELS.join(", ")}`,
   defaultEffort: (v) => EFFORTS.includes(v) || `defaultEffort must be one of ${EFFORTS.join(", ")}`,

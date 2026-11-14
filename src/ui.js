@@ -27,6 +27,7 @@ import { currentVersion, installSource, latestVersion, cachedLatest, compareVers
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
+const i18nPath = path.join(path.dirname(htmlPath), "i18n.js");
 let repo, jobs, chats; // current project; replaced by POST /api/project
 
 const RECENTS = path.join(os.homedir(), ".tokenwise-studio", "recents.json");
@@ -172,6 +173,7 @@ const handler = async (req, res) => {
   const m = url.pathname.match(/^\/api\/(\w+)(?:\/([\w-]+))?$/);
   try {
     if (url.pathname === "/") return send(res, 200, fs.readFileSync(htmlPath, "utf8"), "text/html; charset=utf-8");
+    if (url.pathname === "/i18n.js") return send(res, 200, fs.readFileSync(i18nPath, "utf8"), "application/javascript; charset=utf-8");
     // Provider logos (unmodified lobe-icons SVGs, see assets/providers/NOTICE.md). Names are whitelisted by pattern.
     const lm = url.pathname.match(/^\/providers\/([a-z0-9-]{1,30})\.svg$/);
     if (lm) {
