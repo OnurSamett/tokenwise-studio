@@ -22,7 +22,8 @@ import { exportChat, backupAll } from "./export.js";
 import { loadInstructions, instructionsPath, workerNotes, INSTRUCTIONS_CAP, INSTRUCTIONS_FILE } from "./instructions.js";
 import { aggregateUsage } from "./usage.js";
 import { resolveJobImage, imageType } from "./jobimages.js";
-import { runTests, testRunning, testTail, detectTestCommand, loadTestOverride, saveTestOverride } from "./testrun.js";
+import { runTests, testRunning, testTail, detectTestCommand, loadTestOverride, loadLintOverride, saveTestConfig, runCombinedCheck, loadCombinedCheck, combinedCheckRunning, combinedTail } from "./testrun.js";
+import { createSnapshot } from "./snapshots.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
 
 
@@ -45,7 +46,17 @@ function openProject(p) {
   repo = p; jobs = new Jobs(repo); chats = new Chats(jobs, serverChatOpts);
   remember(repo);
 }
-const state = () => ({ repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(), jobs: jobs.list().map(({ test, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
+function combinedCheckInfo() {
+  const c = loadCombinedCheck(jobs);
+  if (!c) return null;
+  const running = combinedCheckRunning(jobs);
+  const tail = combinedTail(jobs) || c.tail || "";
+  const status = c.status === "running" && !running ? "error" : c.status;
+  return { ...c, status, tail };
+}
+const state = () => ({ repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(),
+  jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
+  combinedCheck: combinedCheckInfo(),
   team: (({ mode, preset }) => ({ mode, preset }))(loadTeam(jobs.home)) });
 
 const gitIn = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -214,9 +225,10 @@ export const handler = async (req, res) => {
         return res.end(fs.readFileSync(img.abs));
       }
       if (what === "test") { const j = jobs.get(id); return send(res, 200, { test: j.test || null, running: testRunning(j), tail: testTail(jobs, id) || j.test?.tail || "" }); }
+      if (what === "combinedcheck") { const c = combinedCheckInfo(); return send(res, 200, { check: c, running: combinedCheckRunning(jobs), tail: c?.tail || "" }); }
       if (what === "testcmd") {
         const d = detectTestCommand(repo);
-        return send(res, 200, { override: loadTestOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null });
+        return send(res, 200, { override: loadTestOverride(jobs.home), lint: loadLintOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null });
       }
       if (what === "state") return send(res, 200, state());
       if (what === "export") {
@@ -266,11 +278,20 @@ export const handler = async (req, res) => {
         return send(res, 200, instructionsInfo());
       }
       if (what === "test") { const { job } = runTests(jobs, id); return send(res, 200, { test: { ...job.test, tail: undefined }, running: true }); }
-      if (what === "testcmd") { saveTestOverride(jobs.home, b.command); const d = detectTestCommand(repo); return send(res, 200, { override: loadTestOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null }); }
+      if (what === "combinedcheck") { const { check } = runCombinedCheck(jobs); return send(res, 200, { check, running: true }); }
+      if (what === "testcmd") {
+        saveTestConfig(jobs.home, {
+          ...(b.command !== undefined ? { command: b.command } : {}),
+          ...(b.lint !== undefined ? { lint: b.lint } : {}),
+        });
+        const d = detectTestCommand(repo);
+        return send(res, 200, { override: loadTestOverride(jobs.home), lint: loadLintOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null });
+      }
       if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
       if (what === "chat") return send(res, 200, chats.send(b));
       if (what === "stop") return send(res, 200, chats.stop(id));
-      if (what === "merge") return send(res, 200, jobs.merge(id, b.files));
+      if (what === "merge") return send(res, 200, jobs.merge(id, b.files, { autoCheck: b.autoCheck !== false }));
+      if (what === "undo") return send(res, 200, jobs.undo(id));
       if (what === "discard") return send(res, 200, jobs.discard(id));
       if (what === "rename") return send(res, 200, chats.rename(id, b.title));
       if (what === "compact") return send(res, 200, await chats.compact(id));
@@ -280,6 +301,7 @@ export const handler = async (req, res) => {
         if (!message) throw new Error("commit message is empty");
         const files = staged();
         if (!files.length) throw new Error("nothing is staged");
+        createSnapshot(repo, "commit", files);
         gitIn("commit", "-m", message);
         return send(res, 200, { ok: true, sha: gitIn("rev-parse", "--short", "HEAD").trim(), files: files.length });
       }

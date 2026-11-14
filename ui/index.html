@@ -149,17 +149,22 @@
   .bar i { position: absolute; inset: 0; border-radius: 4px; }
   .bar.running i { width: 40%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: slide 1.4s ease-in-out infinite; }
   @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
-  .bar.done i, .bar.merged i { background: var(--ok); } .bar.failed i { background: var(--bad); } .bar.discarded i { background: var(--dim); }
+  .bar.done i, .bar.merged i { background: var(--ok); } .bar.failed i { background: var(--bad); } .bar.discarded i, .bar.undone i { background: var(--dim); }
   .w-time { font: 12.5px var(--mono); color: var(--dim); text-align: right; }
   .w-state { font-size: 12px; color: var(--dim); font-weight: 500; }
-  .w-state.done { color: var(--ok); } .w-state.failed { color: var(--bad); } .w-state.merged { color: var(--accent); }
+  .w-state.done { color: var(--ok); } .w-state.failed { color: var(--bad); } .w-state.merged { color: var(--accent); } .w-state.undone { color: var(--muted); }
 
   /* review banner + composer */
   .dock { flex: none; padding: 0 24px 20px; }
   .dock-in { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
-  .banner { display: flex; align-items: center; gap: 12px; background: var(--s1); border: 1px solid var(--line2); border-radius: var(--radius); padding: 10px 10px 10px 16px; }
+  .banner { display: flex; flex-direction: column; gap: 8px; background: var(--s1); border: 1px solid var(--line2); border-radius: var(--radius); padding: 10px 10px 10px 16px; }
+  .banner-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .banner .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
-  .banner .txt { flex: 1; font-size: 14px; } .banner .txt small { color: var(--dim); margin-left: 6px; }
+  .banner .txt { flex: 1; min-width: 160px; font-size: 14px; } .banner .txt small { color: var(--dim); margin-left: 6px; }
+  .banner-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .banner-check { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .banner-check .crow2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+  .banner-check pre { margin: 0; max-height: 170px; overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
   .btn { border-radius: 9px; padding: 8px 14px; font-weight: 550; font-size: 14px; border: 1px solid var(--line2); background: var(--s2); white-space: nowrap; flex: none; }
   .btn:hover { background: var(--s3); }
   .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
@@ -258,6 +263,9 @@
   .dock-in { position: relative; }
   .toasts { position: fixed; top: 66px; right: 24px; display: flex; align-items: flex-end; flex-direction: column; gap: 8px; z-index: 40; pointer-events: none; }
   .toast { background: var(--s3); border: 1px solid var(--line2); border-radius: 10px; padding: 9px 14px; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.4); animation: tin .2s ease; display: flex; gap: 8px; align-items: center; }
+  .toast.has-action { pointer-events: auto; }
+  .toast-act { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); border-radius: 7px; padding: 3px 9px; font-size: 12.5px; font-weight: 550; margin-left: 4px; }
+  .toast-act:hover { background: var(--accent); color: var(--bg); }
   .toast.bad { border-color: rgba(240,113,120,.5); } .toast .ti { color: var(--ok); } .toast.bad .ti { color: var(--bad); }
   @keyframes tin { from { opacity: 0; transform: translateY(6px); } }
   .hint { font-size: 12px; color: var(--dim); }
@@ -990,19 +998,70 @@ function teamCard(jobs) {
     }));
 }
 
+let lastAppliedIds = [];
+function undoableBannerJobs() {
+  const valid = (id) => S.jobs.find((j) => j.id === id && j.status === "merged" && j.applySnapshot);
+  const picked = lastAppliedIds.filter(valid);
+  if (picked.length) return [...picked].reverse();
+  const latest = chatJobs().filter((j) => j.status === "merged" && j.applySnapshot).sort((a, b) => String(b.finished || b.created).localeCompare(String(a.finished || a.created)))[0];
+  return latest ? [latest.id] : [];
+}
+async function undoApplyJobs(ids) {
+  if (!ids?.length) return;
+  try {
+    for (const id of ids) await api(`undo/${id}`, {});
+    lastAppliedIds = lastAppliedIds.filter((x) => !ids.includes(x));
+    stagedAt = 0;
+    await refresh();
+    if (drawer) renderDrawer(true);
+    toast(t("job.toastUndone"));
+  } catch (e) { toast(e.message, true); }
+}
+async function runCombined() {
+  try {
+    const r = await api("combinedcheck", {});
+    S.combinedCheck = r.check;
+    renderBanner();
+    await refresh();
+  } catch (e) { toast(e.message, true); }
+}
+const combinedLabel = (s) => (hasKey(`banner.checkStatus.${s}`, lang) ? t(`banner.checkStatus.${s}`) : s);
+
 function renderBanner() {
   const p = pending();
   const b = $("#banner");
-  if (!changed("banner", [p.map((j) => [j.id, j.files]), staged])) return;
-  if (!p.length && staged.length) {
+  const cc = S.combinedCheck || null;
+  const undoIds = undoableBannerJobs();
+  if (!changed("banner", [p.map((j) => [j.id, j.files]), staged, undoIds, cc ? [cc.status, cc.command, cc.durationMs, cc.exitCode, cc.tail] : null])) return;
+  if (!p.length && (staged.length || cc?.status === "running")) {
     b.hidden = false;
-    set(b, h("span", { class: "dot", style: "background:var(--ok)" }), h("span", { class: "txt" }, tp("banner.applied", staged.length), h("small", {}, t("banner.stagedNote"))), h("button", { class: "btn primary", onclick: () => openDrawer("commit") }, t("banner.commit")));
+    const running = cc?.status === "running";
+    const dotStyle = cc?.status === "pass" ? "background:var(--ok)" : ["fail", "timeout", "error"].includes(cc?.status) ? "background:var(--bad)" : running ? "background:var(--accent)" : "background:var(--ok)";
+    const checkBox = cc ? h("div", { class: "banner-check" },
+      h("div", { class: "crow2" },
+        h("span", { class: "chip " + cc.status }, running ? h("span", { class: "spin", style: "width:9px;height:9px" }) : null, combinedLabel(cc.status)),
+        h("span", {}, `${cc.command}${cc.durationMs != null ? ` · ${(cc.durationMs / 1000).toFixed(1)}s` : ""}${cc.exitCode != null && cc.status !== "pass" ? t("test.exitCode", { code: cc.exitCode }) : ""}`)),
+      cc.tail ? h("pre", {}, cc.tail) : null) : null;
+    set(b,
+      h("div", { class: "banner-row" },
+        h("span", { class: "dot", style: dotStyle }),
+        h("span", { class: "txt" }, staged.length ? [tp("banner.applied", staged.length), h("small", {}, t("banner.stagedNote"))] : combinedLabel(cc.status)),
+        h("div", { class: "banner-actions" },
+          undoIds.length ? h("button", { class: "btn", onclick: () => undoApplyJobs(undoIds) }, t("banner.undoApply")) : null,
+          h("button", { class: "btn", disabled: running, onclick: runCombined }, running ? t("banner.checking") : cc ? t("banner.checkAgain") : t("banner.checkCombined")),
+          staged.length ? h("button", { class: "btn primary", onclick: () => openDrawer("commit") }, t("banner.commit")) : null)),
+      checkBox);
+    const pre = b.querySelector(".banner-check pre");
+    if (pre) pre.scrollTop = pre.scrollHeight;
     return;
   }
   if (!p.length) { b.hidden = true; return; }
   const files = p.reduce((n, j) => n + j.files.length, 0);
   b.hidden = false;
-  set(b, h("span", { class: "dot" }), h("span", { class: "txt" }, tp("banner.ready", files), h("small", {}, tp("banner.fromWorkers", p.length))), h("button", { class: "btn primary", onclick: openReview }, t("banner.review")));
+  set(b, h("div", { class: "banner-row" },
+    h("span", { class: "dot" }),
+    h("span", { class: "txt" }, tp("banner.ready", files), h("small", {}, tp("banner.fromWorkers", p.length))),
+    h("button", { class: "btn primary", onclick: openReview }, t("banner.review"))));
 }
 
 function renderTop() {
@@ -1134,6 +1193,8 @@ async function renderDrawer(full) {
         h("details", { class: "tech" }, h("summary", {}, tp("job.techLog", steps.length)), h("div", { class: "steps", style: "margin-top:10px" }, steps.map((s) => s.kind === "think" ? thinkingRow(s.text) : h("div", { class: "step" + (s.kind === "error" ? " err" : "") }, s.text))))),
       j.write && j.status === "done" && files.length ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.stagedFoot")),
         h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.discard")), h("button", { class: "btn primary", onclick: () => act("merge", j.id) }, t("job.apply"))) :
+      j.write && j.status === "merged" && j.applySnapshot ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.stagedFoot")),
+        h("button", { class: "btn", onclick: () => undoApplyJobs([j.id]) }, t("job.undoApply"))) :
       j.status === "running" ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.worktreeFoot")), h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.stop"))) : null);
     return;
   }
@@ -1156,12 +1217,22 @@ async function renderDrawer(full) {
     async function applySelected() {
       applyBtn.disabled = true;
       try {
+        const applied = [];
         for (const j of p) {
           const sel = boxes.filter((b) => b.dataset.job === j.id && b.checked).map((b) => b.dataset.path);
-          if (sel.length) await api(`merge/${j.id}`, { files: sel }); else await api(`discard/${j.id}`, {});
+          if (sel.length) {
+            await api(`merge/${j.id}`, { files: sel, autoCheck: false });
+            applied.push(j.id);
+          } else {
+            await api(`discard/${j.id}`, {});
+          }
         }
+        if (applied.length && appSettings?.settings?.checkAfterApply) api("combinedcheck", {}).catch(() => {});
+        lastAppliedIds = applied;
+        stagedAt = 0;
         closeDrawer(); await refresh();
-        const n = boxes.filter((b) => b.checked).length; toast(tp("review.appliedToast", n));
+        const n = boxes.filter((b) => b.checked).length;
+        toast(tp("review.appliedToast", n), applied.length ? { actionLabel: t("job.undoApply"), onAction: () => undoApplyJobs([...applied].reverse()) } : false);
       } catch (e) { toast(e.message, true); applyBtn.disabled = false; }
     }
     set(d,
@@ -1199,7 +1270,7 @@ async function renderDrawer(full) {
     const c = curChat();
     const msg = h("textarea", { rows: 4 }); msg.value = c ? c.title : t("commit.defaultMsg");
     const go = async () => {
-      try { const r = await api("commit", { message: msg.value }); closeDrawer(); staged = []; await refresh(); toast(tp("commit.toast", r.files, { sha: r.sha })); } catch (e) { toast(e.message, true); }
+      try { const r = await api("commit", { message: msg.value }); closeDrawer(); staged = []; stagedAt = 0; lastAppliedIds = []; await refresh(); toast(tp("commit.toast", r.files, { sha: r.sha })); } catch (e) { toast(e.message, true); }
     };
     set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("commit.title")), h("div", { class: "meta" }, tp("commit.meta", staged.length, { project: path0() }))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
       h("div", { class: "d-body" }, h("div", { class: "field" }, h("label", {}, t("commit.label")), msg), h("div", { class: "filelist" }, staged.map((f) => h("span", {}, f)))),
@@ -1402,6 +1473,7 @@ async function renderDrawer(full) {
     let inst = null; try { inst = await api("instructions"); } catch {}
     let tcmd = null; try { tcmd = await api("testcmd"); } catch {}
     const tin = h("input", { type: "text", value: tcmd?.override || "", placeholder: tcmd?.detected?.label || t("settings.testCmdPlaceholder"), spellcheck: "false", style: "flex:1;min-width:0" });
+    const lin = h("input", { type: "text", value: tcmd?.lint || "", placeholder: t("settings.lintCmdPlaceholder"), spellcheck: "false", style: "flex:1;min-width:0" });
     let backupInfo = null, backing = false;
     const body = h("div", { class: "d-body" });
     const envBadge = (key) => data.envLocked?.[key] ? h("span", { class: "envlock" }, t("settings.envLocked")) : null;
@@ -1538,10 +1610,19 @@ async function renderDrawer(full) {
           h("label", { class: "toggle" + (lock.runTestsBeforeApply ? " disabled" : "") },
             h("input", { type: "checkbox", checked: s.runTestsBeforeApply ? true : null, disabled: !!lock.runTestsBeforeApply, onchange: (e) => applyPatch({ runTestsBeforeApply: e.target.checked }) }),
             h("span", {}, t("settings.runTestsBeforeApply"), h("small", {}, t("settings.runTestsBeforeApplyDesc")))),
-          tcmd ? h("div", { class: "sfield", style: "margin-top:12px" },
-            h("label", {}, t("settings.testCommand")),
-            h("p", { class: "shelp", style: "margin:0" }, tcmd.detected ? [t("settings.testCmdDetected1"), h("code", {}, tcmd.detected.label), t("settings.testCmdDetected2", { source: tcmd.detected.source })] : t("settings.testCmdNone")),
-            h("div", { class: "rangewrap" }, tin, h("button", { class: "btn", onclick: async () => { try { tcmd = await api("testcmd", { command: tin.value }); toast(t("settings.testCmdSaved")); draw(); } catch (e) { toast(e.message, true); } } }, t("drawer.save")))) : null),
+          h("label", { class: "toggle" + (lock.checkAfterApply ? " disabled" : "") },
+            h("input", { type: "checkbox", checked: s.checkAfterApply ? true : null, disabled: !!lock.checkAfterApply, onchange: (e) => applyPatch({ checkAfterApply: e.target.checked }) }),
+            h("span", {}, t("settings.checkAfterApply"), h("small", {}, t("settings.checkAfterApplyDesc")))),
+          tcmd ? [
+            h("div", { class: "sfield", style: "margin-top:12px" },
+              h("label", {}, t("settings.testCommand")),
+              h("p", { class: "shelp", style: "margin:0" }, tcmd.detected ? [t("settings.testCmdDetected1"), h("code", {}, tcmd.detected.label), t("settings.testCmdDetected2", { source: tcmd.detected.source })] : t("settings.testCmdNone")),
+              h("div", { class: "rangewrap" }, tin, h("button", { class: "btn", onclick: async () => { try { tcmd = await api("testcmd", { command: tin.value, lint: lin.value }); toast(t("settings.testCmdSaved")); draw(); } catch (e) { toast(e.message, true); } } }, t("drawer.save")))),
+            h("div", { class: "sfield", style: "margin-top:12px" },
+              h("label", {}, t("settings.lintCommand")),
+              h("p", { class: "shelp", style: "margin:0" }, t("settings.lintCmdHelp")),
+              h("div", { class: "rangewrap" }, lin, h("button", { class: "btn", onclick: async () => { try { tcmd = await api("testcmd", { command: tin.value, lint: lin.value }); toast(t("settings.testCmdSaved")); draw(); } catch (e) { toast(e.message, true); } } }, t("drawer.save"))))
+          ] : null),
         h("div", { class: "section" },
           h("div", { class: "shead" }, h("h4", {}, t("settings.instructionsTitle"))),
           inst ? [
@@ -1637,7 +1718,13 @@ function fileBlock(f, checkbox, tag, job) {
 }
 
 async function act(what, id) {
-  try { await api(`${what}/${id}`, {}); await refresh(); renderDrawer(true); toast(t(what === "merge" ? "job.toastApplied" : "job.toastDiscarded")); } catch (e) { toast(e.message, true); }
+  try {
+    await api(`${what}/${id}`, {});
+    if (what === "merge") { lastAppliedIds = [id]; stagedAt = 0; }
+    await refresh();
+    renderDrawer(true);
+    toast(t(what === "merge" ? "job.toastApplied" : "job.toastDiscarded"), what === "merge" ? { actionLabel: t("job.undoApply"), onAction: () => undoApplyJobs([id]) } : false);
+  } catch (e) { toast(e.message, true); }
 }
 
 // ---------- plan limits ----------
@@ -1681,9 +1768,16 @@ function projectMenu() {
   setTimeout(() => inp.focus(), 30);
 }
 
-function toast(text, bad = false) {
-  const t = h("div", { class: "toast" + (bad ? " bad" : "") }, h("span", { class: "ti" }, bad ? "!" : "✓"), text);
-  $("#toasts").append(t); setTimeout(() => t.remove(), 3800);
+function toast(text, opts = false) {
+  const bad = typeof opts === "boolean" ? opts : !!opts?.bad;
+  const actionLabel = typeof opts === "object" && opts ? opts.actionLabel : null;
+  const onAction = typeof opts === "object" && opts ? opts.onAction : null;
+  const el = h("div", { class: "toast" + (bad ? " bad" : "") + (actionLabel ? " has-action" : "") },
+    h("span", { class: "ti" }, bad ? "!" : "✓"),
+    text,
+    actionLabel && onAction ? h("button", { class: "toast-act", onclick: () => { el.remove(); onAction(); } }, actionLabel) : null);
+  $("#toasts").append(el);
+  setTimeout(() => el.remove(), actionLabel ? 7000 : 3800);
 }
 
 // ---------- loop ----------

@@ -24,6 +24,7 @@ export const DEFAULTS = Object.freeze({
   notifications: true,
   updateCheck: true,
   runTestsBeforeApply: false, // run the project tests in a write job's worktree when it finishes
+  checkAfterApply: false, // run combined tests and lint in the main working tree after every Apply
   turnBudget: 0, // tokens per orchestrator turn (orchestrator + its workers); 0 = off
   compactChats: true, // summarize long chats and start a fresh session when context grows past threshold
   compactThreshold: 120_000, // orchestrator context token threshold (60k–400k)
@@ -48,6 +49,7 @@ const VALIDATORS = {
   notifications: (v) => typeof v === "boolean" || "notifications must be true or false",
   updateCheck: (v) => typeof v === "boolean" || "updateCheck must be true or false",
   runTestsBeforeApply: (v) => typeof v === "boolean" || "runTestsBeforeApply must be true or false",
+  checkAfterApply: (v) => typeof v === "boolean" || "checkAfterApply must be true or false",
   turnBudget: (v) => v === 0 || (Number.isInteger(v) && v >= 10_000 && v <= 50_000_000) || "turnBudget must be 0 (off) or a token count between 10000 and 50000000",
   compactChats: (v) => typeof v === "boolean" || "compactChats must be true or false",
   compactThreshold: (v) => (Number.isInteger(v) && v >= 60_000 && v <= 400_000) || "compactThreshold must be a token count between 60000 and 400000",

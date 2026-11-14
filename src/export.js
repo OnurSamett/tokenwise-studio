@@ -5,7 +5,7 @@ import path from "node:path";
 import { normalize } from "./events.js";
 import { resolveUpload } from "./uploads.js";
 
-const STATE = { running: "working", done: "ready", failed: "failed", merged: "applied", discarded: "discarded", moved: "moved on" };
+const STATE = { running: "working", done: "ready", failed: "failed", merged: "applied", undone: "undone", discarded: "discarded", moved: "moved on" };
 const AGENT = { codex: "Codex", claude: "Claude", gemini: "Gemini", local: "Local", free: "Free API" };
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 

@@ -9,8 +9,9 @@ import { RATE_LIMIT, available, nearLimit, nextAgent } from "./fallback.js";
 import { notify, jobNotice } from "./notify.js";
 import { withProjectNotes } from "./instructions.js";
 import { captureImages } from "./jobimages.js";
-import { runTests, stopTests } from "./testrun.js";
+import { runTests, stopTests, runCombinedCheck, combinedCheckRunning } from "./testrun.js";
 import { loadSettings } from "./settings.js";
+import { createSnapshot, captureFileStates, restoreSnapshot } from "./snapshots.js";
 
 // Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
 const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/node_modules/**", "**/.DS_Store",
@@ -53,6 +54,7 @@ export class Jobs {
     for (const d of ["jobs", "logs", "worktrees"]) fs.mkdirSync(path.join(this.home, d), { recursive: true });
     this.running = new Map(); // id -> { child, done: Promise, discardTimer? }
     this.testing = new Map(); // id -> test-run child process (see testrun.js)
+    this.combinedChecking = null; // { active, child } for main-tree combined check
     this._listCache = new Map(); // filename -> { mtimeMs, size, data }
     this._usageCache = new Map(); // id -> { offset, sum, found, claude, cost, model }
     // Keep our state folder out of the user's git status.
@@ -313,20 +315,44 @@ export class Jobs {
 
   /** Apply the worker's changes (all files, or only `files`) to the main working tree as staged
    *  changes, then remove the worktree. Files not selected are dropped. */
-  merge(id, files) {
+  merge(id, files, { autoCheck = true } = {}) {
     const j = this.get(id);
     if (!j.write) throw new Error("read-only job: nothing to merge");
     if (j.status !== "done") throw new Error(`job is ${j.status}; only finished jobs can be applied`);
     const f = this.file(id, "diff");
-    if (fs.existsSync(f) && fs.statSync(f).size > 0) {
-      const pick = Array.isArray(files) && files.length ? files : null;
-      if (pick && pick.some((x) => !(j.files || []).includes(x))) throw new Error("unknown file in selection");
+    const hasDiff = fs.existsSync(f) && fs.statSync(f).size > 0;
+    const pick = hasDiff && Array.isArray(files) && files.length ? files : null;
+    if (pick && pick.some((x) => !(j.files || []).includes(x))) throw new Error("unknown file in selection");
+    const touched = hasDiff ? (pick || j.files || []) : [];
+
+    const snapshot = createSnapshot(this.repo, j.id, touched);
+    if (hasDiff) {
       const args = ["apply", "--3way", "--whitespace=nowarn", ...(pick ? pick.flatMap((x) => ["--include", x]) : []), f];
       git(this.repo, ...args);
-      j.applied = pick || j.files;
     }
+    j.applied = touched;
+    j.applySnapshot = snapshot.ref;
+    j.applyPost = captureFileStates(this.repo, touched);
     this.cleanup(j);
-    j.status = "merged"; return this.save(j);
+    j.status = "merged";
+    const saved = this.save(j);
+    if (autoCheck) {
+      try {
+        if (loadSettings().checkAfterApply && !combinedCheckRunning(this)) {
+          runCombinedCheck(this).done.catch(() => {});
+        }
+      } catch {}
+    }
+    return saved;
+  }
+
+  /** Restore the files touched by an applied job back to its pre-apply snapshot (index and working tree). */
+  undo(id) {
+    const j = this.get(id);
+    restoreSnapshot(this.repo, j);
+    j.status = "undone";
+    j.undoneAt = new Date().toISOString();
+    return this.save(j);
   }
 
   discard(id) {

@@ -4,9 +4,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { detectTestCommand, splitCommand, testCommandFor, saveTestOverride, runTests } from "../src/testrun.js";
+import { detectTestCommand, splitCommand, testCommandFor, saveTestOverride, saveLintOverride, lintCommandFor, runTests, runCombinedCheck, combinedCheckRunning } from "../src/testrun.js";
 import { Jobs } from "../src/jobs.js";
+import { DEFAULTS, loadSettings, saveSettings } from "../src/settings.js";
 import { resolveJobImage, safeRel, captureImages } from "../src/jobimages.js";
+import { handler, initServer } from "../src/ui.js";
+import { PassThrough } from "node:stream";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "tw-test-"));
 const put = (d, f, c = "") => { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), c); return d; };
@@ -99,4 +102,113 @@ test("runTests reports failure and times out", async () => {
   fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ scripts: { test: "node -e \"setTimeout(()=>{},60000)\"" } }));
   const t = await runTests(jobs, id, { timeoutMs: 400 }).done;
   assert.equal(t.test.status, "timeout");
+});
+
+test("runCombinedCheck reuses detection/override + lint in main tree and enforces single-run guard", async () => {
+  const { repo, jobs } = fixture();
+  try {
+    // 1. Reuses package.json detection in the MAIN working tree (not worktree).
+    const marker = path.join(repo, "cwd-marker.txt");
+    fs.writeFileSync(path.join(repo, "package.json"), JSON.stringify({
+      scripts: { test: "node -e \"require('fs').writeFileSync('cwd-marker.txt', process.cwd()); console.log('main-test-ok')\"" },
+    }));
+    const first = runCombinedCheck(jobs);
+    assert.equal(combinedCheckRunning(jobs), true);
+    // Single-run guard refuses concurrent start.
+    assert.throws(() => runCombinedCheck(jobs), /already running/);
+    const res1 = await first.done;
+    assert.equal(res1.status, "pass");
+    assert.equal(combinedCheckRunning(jobs), false);
+    assert.equal(fs.realpathSync(fs.readFileSync(marker, "utf8")), fs.realpathSync(repo));
+    assert.match(res1.tail, /main-test-ok/);
+
+    // 2. Settings test override + optional lint command both run in sequence.
+    saveTestOverride(jobs.home, 'node -e "console.log(\'override-ok\')"');
+    saveLintOverride(jobs.home, 'node -e "console.log(\'lint-ok\')"');
+    assert.equal(lintCommandFor(jobs.home).label, 'node -e "console.log(\'lint-ok\')"');
+    const res2 = await runCombinedCheck(jobs).done;
+    assert.equal(res2.status, "pass");
+    assert.match(res2.tail, /override-ok/);
+    assert.match(res2.tail, /lint-ok/);
+
+    // 3. Lint failure fails the combined check.
+    saveLintOverride(jobs.home, 'node -e "console.log(\'lint-bad\');process.exit(2)"');
+    const res3 = await runCombinedCheck(jobs).done;
+    assert.equal(res3.status, "fail");
+    assert.equal(res3.exitCode, 2);
+    assert.match(res3.tail, /lint-bad/);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("runCombinedCheck times out and kills process group", async () => {
+  const { repo, jobs } = fixture();
+  try {
+    saveTestOverride(jobs.home, 'node -e "setTimeout(()=>{},60000)"');
+    const res = await runCombinedCheck(jobs, { timeoutMs: 400 }).done;
+    assert.equal(res.status, "timeout");
+    assert.equal(combinedCheckRunning(jobs), false);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("checkAfterApply setting defaults to false, validates, and triggers combined check via API", async () => {
+  const prevHome = process.env.HOME;
+  const home = tmp();
+  process.env.HOME = home;
+  const { repo, jobs, id, cwd } = fixture();
+  try {
+    assert.equal(DEFAULTS.checkAfterApply, false);
+    assert.equal(loadSettings().checkAfterApply, false);
+    assert.throws(() => saveSettings({ checkAfterApply: "yes" }), /boolean|true or false/);
+    assert.equal(saveSettings({ checkAfterApply: true }).checkAfterApply, true);
+
+    // Prepare a valid diff on the fixture job.
+    fs.writeFileSync(path.join(cwd, "README.md"), "updated\n");
+    execFileSync("git", ["-C", cwd, "add", "README.md"], { stdio: "pipe" });
+    fs.writeFileSync(jobs.file(id, "diff"), execFileSync("git", ["-C", cwd, "diff", "--cached", "--binary", "HEAD"]));
+    jobs.save({ ...jobs.get(id), files: ["README.md"] });
+
+    // Configure test + lint commands via POST /api/testcmd.
+    initServer({ repo });
+    const call = async (method, urlPath, bodyObj) => {
+      const req = new PassThrough();
+      req.method = method; req.url = urlPath;
+      req.headers = { host: "127.0.0.1:4790", ...(method === "POST" ? { "x-tokenwise": "1" } : {}) };
+      let status = 200; const chunks = [];
+      const res = { writeHead(c) { status = c; }, end(d) { if (d) chunks.push(Buffer.isBuffer(d) ? d : Buffer.from(String(d))); } };
+      const p = handler(req, res);
+      if (method === "POST") req.end(JSON.stringify(bodyObj ?? {})); else req.end();
+      await p;
+      return { status, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) };
+    };
+
+    const cmdRes = await call("POST", "/api/testcmd", {
+      command: 'node -e "console.log(\'auto-test-pass\')"',
+      lint: 'node -e "console.log(\'auto-lint-pass\')"',
+    });
+    assert.equal(cmdRes.status, 200);
+    assert.match(cmdRes.body.lint, /auto-lint-pass/);
+
+    const mergeRes = await call("POST", `/api/merge/${id}`, {});
+    assert.equal(mergeRes.status, 200);
+
+    // Wait for automatic combined check triggered by checkAfterApply=true to settle.
+    const deadline = Date.now() + 5000;
+    let checkRes;
+    while (Date.now() < deadline) {
+      checkRes = await call("GET", "/api/combinedcheck");
+      if (checkRes.body.check && !checkRes.body.running) break;
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    assert.equal(checkRes.body.check.status, "pass");
+    assert.match(checkRes.body.tail, /auto-test-pass/);
+    assert.match(checkRes.body.tail, /auto-lint-pass/);
+  } finally {
+    process.env.HOME = prevHome;
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });
