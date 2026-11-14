@@ -97,6 +97,19 @@ const handler = async (req, res) => {
   const m = url.pathname.match(/^\/api\/(\w+)(?:\/([\w-]+))?$/);
   try {
     if (url.pathname === "/") return send(res, 200, fs.readFileSync(htmlPath, "utf8"), "text/html; charset=utf-8");
+    // Provider logos (unmodified lobe-icons SVGs, see assets/providers/NOTICE.md). Names are whitelisted by pattern.
+    const lm = url.pathname.match(/^\/providers\/([a-z0-9-]{1,30})\.svg$/);
+    if (lm) {
+      const f = path.join(path.dirname(htmlPath), "..", "assets", "providers", lm[1] + ".svg");
+      if (!fs.existsSync(f)) return send(res, 404, { error: "not found" });
+      res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "max-age=86400", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" });
+      let svg = fs.readFileSync(f, "utf8");
+      // Marks drawn with currentColor are meant to take the surrounding text colour; inside <img> that would be
+      // black, so fill it in from ?fg=<hex> (the file on disk stays unmodified).
+      const fg = url.searchParams.get("fg");
+      if (fg && /^[0-9a-f]{6}$/i.test(fg)) svg = svg.replace(/<svg\b/, `<svg color="#${fg}"`);
+      return res.end(svg);
+    }
     if (url.pathname === "/logo.png" || url.pathname === "/favicon.png") {
       res.writeHead(200, { "content-type": "image/png", "cache-control": "no-cache" });
       const file = url.pathname === "/favicon.png" ? "favicon-64.png" : "logo.png";

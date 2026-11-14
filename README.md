@@ -122,3 +122,7 @@ Early (v0.1). Codex and Claude workers are tested end to end; Gemini is wired up
 ## License
 
 MIT
+
+---
+
+Provider and model logos (in `assets/providers/`, from the MIT-licensed [lobe-icons](https://github.com/lobehub/lobe-icons), unmodified) are trademarks of their respective owners and are used only to identify each provider or model. tokenwise studio is not affiliated with, endorsed by, or sponsored by OpenAI, Anthropic, Google, NVIDIA or any other provider shown.
