@@ -100,6 +100,14 @@ export const DICT = {
     "composer.tooMany": "Attach at most 6 images per message.",
     "composer.readError": "Could not read image",
     "composer.attachedAlt": "Attached image",
+    "composer.dictate": "Dictate",
+    "composer.dictateStop": "Stop dictation (Esc)",
+    "composer.dictating": "Listening…",
+    "composer.dictateDeniedMic": "Microphone access denied. Allow it in System Settings > Privacy & Security > Microphone.",
+    "composer.dictateDeniedSpeech": "Speech recognition denied. Allow it in System Settings > Privacy & Security > Speech Recognition.",
+    "composer.dictateDeniedBrowser": "Microphone permission was denied in your browser.",
+    "composer.dictateUnavailable": "Speech recognition is not available right now.",
+    "composer.dictateFailed": "Dictation failed: {message}",
 
     // Effort & states & units
     "effort.low": "low",
@@ -890,6 +898,14 @@ export const DICT = {
     "composer.tooMany": "Mesaj başına en fazla 6 görsel ekleyebilirsin.",
     "composer.readError": "Görsel okunamadı",
     "composer.attachedAlt": "Eklenen görsel",
+    "composer.dictate": "Sesle yaz",
+    "composer.dictateStop": "Dikteyi durdur (Esc)",
+    "composer.dictating": "Dinliyor…",
+    "composer.dictateDeniedMic": "Mikrofon izni verilmedi. Sistem Ayarları > Gizlilik ve Güvenlik > Mikrofon bölümünden izin ver.",
+    "composer.dictateDeniedSpeech": "Konuşma tanıma izni verilmedi. Sistem Ayarları > Gizlilik ve Güvenlik > Konuşma Tanıma bölümünden izin ver.",
+    "composer.dictateDeniedBrowser": "Tarayıcıda mikrofon izni reddedildi.",
+    "composer.dictateUnavailable": "Konuşma tanıma şu anda kullanılamıyor.",
+    "composer.dictateFailed": "Dikte başarısız: {message}",
 
     // Effort & states & units
     "effort.low": "düşük",

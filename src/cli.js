@@ -145,7 +145,7 @@ exec ${q(stableNode())} ${q(path.join(SRC, "cli.js"))} --pick >> "$LOG" 2>&1
   const swift = path.join(ROOT, "launcher", "TokenwiseStudio.swift");
   if (run("xcrun", ["--find", "swiftc"]).ok || run("swiftc", ["--version"]).ok) {
     console.log("  compiling the native app (swiftc) ...");
-    const r = run("swiftc", ["-O", "-framework", "AppKit", "-framework", "WebKit", "-framework", "UserNotifications", swift, "-o", path.join(macos, EXE)], { timeout: 240000 });
+    const r = run("swiftc", ["-O", "-framework", "AppKit", "-framework", "WebKit", "-framework", "UserNotifications", "-framework", "Speech", "-framework", "AVFoundation", swift, "-o", path.join(macos, EXE)], { timeout: 240000 });
     if (r.ok) native = true;
     else console.warn(`  warning: compiling failed (${r.out.trim().split("\n")[0]})`);
   }
@@ -172,6 +172,8 @@ ${hasIcon ? "  <key>CFBundleIconFile</key><string>AppIcon</string>\n" : ""}  <ke
   <key>LSUIElement</key><false/>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>tokenwise studio uses the microphone to dictate messages in the composer.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>tokenwise studio uses speech recognition to transcribe your dictation in the composer.</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

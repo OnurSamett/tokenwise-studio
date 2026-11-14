@@ -36,6 +36,7 @@ const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "
 const i18nPath = path.join(path.dirname(htmlPath), "i18n.js");
 const citationsPath = path.join(path.dirname(htmlPath), "citations.js");
 const workspacePath = path.join(path.dirname(htmlPath), "workspace.js");
+const dictationPath = path.join(path.dirname(htmlPath), "dictation.js");
 // The version this process was started with. package.json on disk changes under a long-running server
 // when it is upgraded, so the page and the app compare against this, not against the file.
 const LOADED_VERSION = currentVersion();
@@ -216,6 +217,7 @@ export const handler = async (req, res) => {
     if (url.pathname === "/i18n.js") return send(res, 200, fs.readFileSync(i18nPath, "utf8"), "application/javascript; charset=utf-8");
     if (url.pathname === "/citations.js") return send(res, 200, fs.readFileSync(citationsPath, "utf8"), "application/javascript; charset=utf-8");
     if (url.pathname === "/workspace.js") return send(res, 200, fs.readFileSync(workspacePath, "utf8"), "application/javascript; charset=utf-8");
+    if (url.pathname === "/dictation.js") return send(res, 200, fs.readFileSync(dictationPath, "utf8"), "application/javascript; charset=utf-8");
     // Provider logos (unmodified lobe-icons SVGs, see assets/providers/NOTICE.md). Names are whitelisted by pattern.
     const lm = url.pathname.match(/^\/providers\/([a-z0-9-]{1,30})\.svg$/);
     if (lm) {

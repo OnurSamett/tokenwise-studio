@@ -7,6 +7,8 @@
 import AppKit
 import WebKit
 import UserNotifications
+import Speech
+import AVFoundation
 
 let resources = Bundle.main.resourcePath ?? ""
 let stateDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".tokenwise-studio")
@@ -145,14 +147,304 @@ func validate(repo: String?, url: String?) -> (repo: String, url: URL?)? {
     return (path, u)
 }
 
+// MARK: - dictation
+
+func encodeJSArg(_ obj: [String: Any]) -> String? {
+    guard let data = try? JSONSerialization.data(withJSONObject: obj),
+          var json = String(data: data, encoding: .utf8) else { return nil }
+    json = json.replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+               .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+    return json
+}
+
+func readStudioLanguageSetting() -> String? {
+    guard let data = try? Data(contentsOf: stateDir.appendingPathComponent("settings.json")),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let lang = obj["language"] as? String else { return nil }
+    return lang
+}
+
+func resolveDictationLocale(_ hint: String?) -> Locale {
+    let raw = (hint ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if !raw.isEmpty && raw.lowercased() != "auto" {
+        if raw.lowercased() == "tr" { return Locale(identifier: "tr-TR") }
+        if raw.lowercased() == "en" { return Locale(identifier: "en-US") }
+        return Locale(identifier: raw)
+    }
+    if let setting = readStudioLanguageSetting()?.lowercased() {
+        if setting == "tr" { return Locale(identifier: "tr-TR") }
+        if setting == "en" { return Locale(identifier: "en-US") }
+    }
+    if let first = Locale.preferredLanguages.first, !first.isEmpty {
+        if first.lowercased().hasPrefix("tr") { return Locale(identifier: "tr-TR") }
+        return Locale(identifier: first)
+    }
+    return Locale.current
+}
+
+final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
+    weak var target: WKScriptMessageHandler?
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(controller, didReceive: message)
+    }
+}
+
+final class DictationController {
+    weak var web: WKWebView?
+    private var isActive = false
+    private var stopping = false
+    private var finalized = false
+    private var sessionID: UInt64 = 0
+    private var latestText = ""
+    private var audioEngine: AVAudioEngine?
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var recognitionTask: SFSpeechRecognitionTask?
+    private var recognizer: SFSpeechRecognizer?
+    private var stopTimer: DispatchWorkItem?
+
+    private func emit(_ payload: [String: Any]) {
+        guard let json = encodeJSArg(payload) else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.web?.evaluateJavaScript("window.__twDictation && window.__twDictation(\(json))", completionHandler: nil)
+        }
+    }
+
+    func start(langHint: String?) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if self.isActive && !self.stopping { return }
+            if self.isActive { self.teardown(notifyStopped: false) }
+            self.sessionID &+= 1
+            let sid = self.sessionID
+            self.isActive = true
+            self.stopping = false
+            self.finalized = false
+            self.latestText = ""
+            let locale = resolveDictationLocale(langHint)
+            self.ensurePermissionsAndBegin(locale: locale, sid: sid)
+        }
+    }
+
+    func stop() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.isActive else { return }
+            if self.recognitionTask == nil {
+                self.teardown(notifyStopped: true)
+                return
+            }
+            if self.stopping {
+                if !self.finalized && !self.latestText.isEmpty {
+                    self.finalized = true
+                    self.emit(["type": "final", "text": self.latestText])
+                }
+                self.teardown(notifyStopped: true)
+                return
+            }
+            self.stopping = true
+            self.stopAudioEngine()
+            self.recognitionRequest?.endAudio()
+            let sid = self.sessionID
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self, self.sessionID == sid, self.isActive else { return }
+                if !self.finalized && !self.latestText.isEmpty {
+                    self.finalized = true
+                    self.emit(["type": "final", "text": self.latestText])
+                }
+                self.teardown(notifyStopped: true)
+            }
+            self.stopTimer = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
+        }
+    }
+
+    func cancel() {
+        DispatchQueue.main.async { [weak self] in
+            self?.teardown(notifyStopped: false)
+        }
+    }
+
+    private func failDictation(code: String, message: String) {
+        emit(["type": "error", "code": code, "message": message])
+        teardown(notifyStopped: true)
+    }
+
+    private func ensurePermissionsAndBegin(locale: Locale, sid: UInt64) {
+        let speechStatus = SFSpeechRecognizer.authorizationStatus()
+        switch speechStatus {
+        case .authorized:
+            checkMicPermissionAndBegin(locale: locale, sid: sid)
+        case .notDetermined:
+            SFSpeechRecognizer.requestAuthorization { [weak self] status in
+                DispatchQueue.main.async {
+                    guard let self = self, self.sessionID == sid, self.isActive, !self.stopping else { return }
+                    if status == .authorized {
+                        self.checkMicPermissionAndBegin(locale: locale, sid: sid)
+                    } else {
+                        self.failDictation(
+                            code: "speech_denied",
+                            message: "Speech recognition permission was denied. Allow it in System Settings > Privacy & Security > Speech Recognition."
+                        )
+                    }
+                }
+            }
+        case .denied, .restricted:
+            failDictation(
+                code: "speech_denied",
+                message: "Speech recognition permission was denied. Allow it in System Settings > Privacy & Security > Speech Recognition."
+            )
+        @unknown default:
+            failDictation(code: "unavailable", message: "Speech recognition permission is unavailable.")
+        }
+    }
+
+    private func checkMicPermissionAndBegin(locale: Locale, sid: UInt64) {
+        let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        switch micStatus {
+        case .authorized:
+            beginRecognition(locale: locale, sid: sid)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                DispatchQueue.main.async {
+                    guard let self = self, self.sessionID == sid, self.isActive, !self.stopping else { return }
+                    if granted {
+                        self.beginRecognition(locale: locale, sid: sid)
+                    } else {
+                        self.failDictation(
+                            code: "mic_denied",
+                            message: "Microphone access was denied. Allow it in System Settings > Privacy & Security > Microphone."
+                        )
+                    }
+                }
+            }
+        case .denied, .restricted:
+            failDictation(
+                code: "mic_denied",
+                message: "Microphone access was denied. Allow it in System Settings > Privacy & Security > Microphone."
+            )
+        @unknown default:
+            failDictation(code: "unavailable", message: "Microphone access is unavailable.")
+        }
+    }
+
+    private func beginRecognition(locale: Locale, sid: UInt64) {
+        guard self.sessionID == sid, self.isActive, !self.stopping else { return }
+        let rec = SFSpeechRecognizer(locale: locale)
+            ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+            ?? SFSpeechRecognizer()
+        guard let rec = rec else {
+            failDictation(code: "unavailable", message: "Speech recognition is not available for this language.")
+            return
+        }
+        if !rec.isAvailable && !rec.supportsOnDeviceRecognition {
+            failDictation(code: "unavailable", message: "Speech recognition is currently unavailable.")
+            return
+        }
+
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        let format = inputNode.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            failDictation(code: "unavailable", message: "No audio input device is available.")
+            return
+        }
+
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        if rec.supportsOnDeviceRecognition {
+            request.requiresOnDeviceRecognition = true
+        }
+
+        inputNode.removeTap(onBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak request] buffer, _ in
+            request?.append(buffer)
+        }
+
+        do {
+            engine.prepare()
+            try engine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            failDictation(code: "failed", message: "Could not start microphone: \(error.localizedDescription)")
+            return
+        }
+
+        self.recognizer = rec
+        self.audioEngine = engine
+        self.recognitionRequest = request
+        emit([
+            "type": "started",
+            "onDevice": request.requiresOnDeviceRecognition,
+            "locale": rec.locale.identifier,
+        ])
+
+        self.recognitionTask = rec.recognitionTask(with: request) { [weak self] result, error in
+            DispatchQueue.main.async {
+                guard let self = self, self.sessionID == sid, self.isActive else { return }
+                if let result = result {
+                    let text = result.bestTranscription.formattedString
+                    self.latestText = text
+                    if result.isFinal {
+                        self.finalized = true
+                        self.emit(["type": "final", "text": text])
+                        self.teardown(notifyStopped: true)
+                        return
+                    } else if !self.stopping {
+                        self.emit(["type": "partial", "text": text])
+                    }
+                }
+                if let error = error {
+                    let nsErr = error as NSError
+                    let ignorable = self.finalized || self.stopping || nsErr.code == 216 || nsErr.code == 301 || nsErr.code == 1110
+                    if !ignorable {
+                        self.emit(["type": "error", "code": "failed", "message": error.localizedDescription])
+                    } else if !self.finalized && !self.latestText.isEmpty {
+                        self.finalized = true
+                        self.emit(["type": "final", "text": self.latestText])
+                    }
+                    self.teardown(notifyStopped: true)
+                }
+            }
+        }
+    }
+
+    private func stopAudioEngine() {
+        if let engine = audioEngine {
+            if engine.isRunning { engine.stop() }
+            engine.inputNode.removeTap(onBus: 0)
+        }
+        audioEngine = nil
+    }
+
+    private func teardown(notifyStopped: Bool) {
+        sessionID &+= 1
+        stopTimer?.cancel()
+        stopTimer = nil
+        stopAudioEngine()
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        recognizer = nil
+        let wasActive = isActive
+        isActive = false
+        stopping = false
+        latestText = ""
+        if notifyStopped && wasActive {
+            emit(["type": "stopped"])
+        }
+    }
+}
+
 // MARK: - project window
 
-final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDelegate, NSWindowDelegate {
+final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDelegate, WKScriptMessageHandler, NSWindowDelegate {
     let repo: String
     let window: NSWindow
     let web: WKWebView
     let spinner = NSProgressIndicator()
     let label = NSTextField(labelWithString: "Starting…")
+    let dictation = DictationController()
+    let scriptHandler = WeakScriptHandler()
     var onClose: ((String) -> Void)?
     var onChooseProject: (() -> Void)?
     var restarted = false // one automatic restart per page load when the server disappears
@@ -164,12 +456,15 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         let cfg = WKWebViewConfiguration()
         cfg.defaultWebpagePreferences.allowsContentJavaScript = true
         cfg.userContentController.addUserScript(WKUserScript(source: "window.__tokenwiseNative = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        cfg.userContentController.add(scriptHandler, name: "tw")
         web = WKWebView(frame: .zero, configuration: cfg)
         if #available(macOS 13.3, *), ProcessInfo.processInfo.environment["TOKENWISE_DEBUG"] == "1" { web.isInspectable = true }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         super.init()
+        scriptHandler.target = self
+        dictation.web = web
         window.title = "tokenwise studio — \(name)"
         window.contentMinSize = NSSize(width: 900, height: 600)
         window.isReleasedWhenClosed = false
@@ -319,6 +614,10 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         return nil
     }
 
+    func webView(_ w: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        dictation.cancel()
+    }
+
     func webView(_ w: WKWebView, didFinish navigation: WKNavigation!) {
         restarted = false
         spinner.stopAnimation(nil)
@@ -330,6 +629,23 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         if (error as NSError).code == NSURLErrorCancelled { return }
         if !restarted { restarted = true; restartServer(); return }
         failed("The page did not load: \(error.localizedDescription)")
+    }
+
+    // JS bridge: window.webkit.messageHandlers.tw.postMessage(...)
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "tw",
+              message.frameInfo.isMainFrame,
+              isLocalHost(message.frameInfo.securityOrigin.host),
+              let body = message.body as? [String: Any],
+              let type = body["type"] as? String else { return }
+        if type == "dictation" {
+            let action = (body["action"] as? String ?? "").lowercased()
+            if action == "start" {
+                dictation.start(langHint: body["lang"] as? String)
+            } else if action == "stop" {
+                dictation.stop()
+            }
+        }
     }
 
     // JS dialogs
@@ -361,7 +677,11 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         p.beginSheetModal(for: window) { r in completionHandler(r == .OK ? p.urls : nil) }
     }
 
-    func windowWillClose(_ n: Notification) { onClose?(repo) }
+    func windowWillClose(_ n: Notification) {
+        dictation.cancel()
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "tw")
+        onClose?(repo)
+    }
 }
 
 // MARK: - app delegate

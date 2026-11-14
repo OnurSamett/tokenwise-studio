@@ -183,7 +183,16 @@
   .chat-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .chat-images:first-child { margin-top: 0; }
   .composer.dragging { border-color: #818cf8; background: var(--s2); }
-  .composer .attach:hover { color: #818cf8; background: var(--s2); }
+  .composer.dictating { border-color: var(--accent); }
+  .composer .attach:hover, .composer .mic:hover { color: #818cf8; background: var(--s2); }
+  .composer .mic { display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: background .15s, color .15s, border-color .15s; }
+  .composer .mic .mic-live { display: none; align-items: center; gap: 6px; }
+  .composer .mic.recording { background: var(--accent-soft); color: var(--text); border: 1px solid var(--accent); padding: 5px 9px; }
+  .composer .mic.recording:hover { background: var(--accent-soft); color: var(--text); }
+  .composer .mic.recording .mic-ico { display: none; }
+  .composer .mic.recording .mic-live { display: inline-flex; }
+  .composer .mic .mic-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; flex: none; }
+  .composer .mic .mic-stop { width: 9px; height: 9px; border-radius: 2px; background: currentColor; flex: none; }
   .thinking { color: var(--muted); font-size: 13px; margin: 8px 0 12px; }
   .thinking summary { cursor: pointer; }
   .thinking-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; margin-top: 8px; line-height: 1.6; }
@@ -197,6 +206,7 @@
   .pillwrap .pilllogo { position: absolute; left: 9px; width: 13px; height: 13px; pointer-events: none; }
   .pill.with-logo { padding-left: 27px; }
   .err { color: var(--bad); font-size: 13px; }
+  .err:not(:empty) { margin-right: 10px; }
   .send { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--text); color: var(--bg); display: grid; place-items: center; font-size: 16px; font-weight: 700; }
   .send:disabled { opacity: .3; cursor: default; }
   .stop { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line2); background: var(--s2); display: grid; place-items: center; }
@@ -629,6 +639,7 @@
       <textarea id="input" rows="1" placeholder="Ask the team…"></textarea>
       <div class="crow">
         <button class="icon-btn attach" id="attach" title="Attach images" aria-label="Attach images"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m8 13 7-7a3 3 0 0 1 4 4L9 20a5 5 0 0 1-7-7L13 2m-7 12 8-8"/></svg></button>
+        <button class="icon-btn mic" id="mic" type="button" title="Dictate" aria-label="Dictate" aria-pressed="false" hidden><svg class="mic-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="9" y1="21" x2="15" y2="21"/></svg><span class="mic-live" aria-hidden="true"><span class="mic-dot"></span><span class="mic-stop"></span></span></button>
         <button class="pill" id="teambtn" title="Who does the work (team settings)" style="background-image:none;padding-right:11px">Team: Auto</button>
         <span class="pillwrap"><img class="plogo pilllogo" id="orchlogo" src="/providers/claude.svg" alt=""><select class="pill with-logo" id="omodel" title="Orchestrator model"><optgroup label="Claude"><option value="opus">Claude Opus</option><option value="sonnet">Claude Sonnet</option><option value="haiku">Claude Haiku</option></optgroup><optgroup label="Codex"><option value="sol">Codex Sol</option><option value="terra">Codex Terra</option><option value="luna">Codex Luna</option></optgroup></select></span>
         <select class="pill" id="oeffort" title="Orchestrator effort"><option value="medium">medium</option><option value="low">low</option><option value="high">high</option><option value="xhigh">xhigh</option></select>
@@ -678,10 +689,12 @@ setTimeout(function () {
 import { t as tr, tp as trp, hasKey, resolveLanguage, translateReason, translateNotice } from "/i18n.js";
 import { parseCitations, renderMarkdownHtml } from "/citations.js";
 import { detectLanguage, renderHighlightedLinesHtml } from "/workspace.js";
+import { createDictationController } from "/dictation.js";
 
 // ---------- i18n ----------
 let langSetting = "auto";
 let lang = resolveLanguage("auto");
+let dictation = null;
 document.documentElement.lang = lang;
 const t = (key, vars = {}) => tr(key, vars, lang);
 const tp = (key, n, vars = {}) => trp(key, n, vars, lang);
@@ -704,6 +717,11 @@ function applyStaticI18n() {
   $("#input").placeholder = t("composer.placeholder");
   $("#attach").title = t("composer.attach");
   $("#attach").setAttribute("aria-label", t("composer.attach"));
+  if (dictation) dictation.updateLabels();
+  else {
+    $("#mic").title = t("composer.dictate");
+    $("#mic").setAttribute("aria-label", t("composer.dictate"));
+  }
   $("#teambtn").title = t("composer.teamTitle");
   $("#omodel").title = t("composer.orchModel");
   $("#oeffort").title = t("composer.orchEffort");
@@ -1476,6 +1494,7 @@ async function sendChatMessage(message, { withAttachments = false } = {}) {
 }
 
 async function send() {
+  if (dictation?.isActive()) dictation.stop();
   return sendChatMessage($("#input").value, { withAttachments: true });
 }
 
@@ -3184,6 +3203,24 @@ $("#input").addEventListener("input", autosize);
 $("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
 $("#input").addEventListener("input", updateSend);
 $("#attach").onclick = () => { if (!sending) $("#imagefiles").click(); };
+dictation = createDictationController({
+  win: window,
+  input: $("#input"),
+  button: $("#mic"),
+  composer: $(".composer"),
+  t,
+  getLang: () => (langSetting === "auto" ? undefined : uiLocale()),
+  onError: (msg) => { $("#cerr").textContent = msg; toast(msg, true); },
+  onChange: () => { autosize(); updateSend(); },
+});
+$("#mic").onclick = () => { if (!sending) { $("#cerr").textContent = ""; dictation.toggle(); } };
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && dictation?.isActive()) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    dictation.stop();
+  }
+});
 $("#imagefiles").onchange = (e) => { addImages(e.target.files); e.target.value = ""; };
 $(".composer").addEventListener("paste", (e) => {
   const files = [...(e.clipboardData?.items || [])].filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter(Boolean);
