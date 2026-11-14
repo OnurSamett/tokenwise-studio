@@ -488,6 +488,68 @@
     .col { padding: 20px 16px 30px; } .dock { padding: 0 16px 14px; } .top { padding: 0 16px; }
     #khint { display: none; } .toasts { left: 16px; right: 16px; }
   }
+
+  /* ---------- side workspace panel ---------- */
+  .ws-toggle { margin-left: auto; background: var(--s2); border: 1px solid var(--line); color: var(--muted); border-radius: 9px; padding: 5px 11px; font-size: 13px; font-weight: 550; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
+  .ws-toggle:hover { color: var(--text); border-color: var(--line2); background: var(--s3); }
+  .ws-toggle.on { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+  .ws-resizer { width: 5px; flex: none; cursor: col-resize; background: transparent; border-left: 1px solid var(--line); transition: background .15s, border-color .15s; }
+  .ws-resizer:hover, body.ws-resizing .ws-resizer { background: var(--accent-soft); border-left-color: var(--accent); }
+  body.ws-resizing { user-select: none; cursor: col-resize; }
+  .ws-panel { flex: none; width: 460px; min-width: 320px; background: var(--s1); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .ws-head { height: 56px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; border-bottom: 1px solid var(--line); }
+  .ws-tabs { display: flex; gap: 2px; height: 100%; align-items: stretch; flex: 1; min-width: 0; }
+  .ws-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 0 10px; font-size: 13px; font-weight: 550; color: var(--muted); white-space: nowrap; }
+  .ws-tabs button:hover { color: var(--text); }
+  .ws-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+  .ws-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .ws-tree-wrap { flex: none; max-height: 40%; min-height: 110px; overflow: auto; border-bottom: 1px solid var(--line); padding: 6px; background: var(--bg); display: flex; flex-direction: column; gap: 1px; }
+  .ws-tree-wrap.full { flex: 1; max-height: none; border-bottom: 0; }
+  .ws-tree-item { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: 0; border-radius: 7px; padding: 4px 8px; padding-left: calc(8px + var(--depth, 0) * 14px); font-size: 13px; color: var(--muted); }
+  .ws-tree-item:hover { background: var(--s2); color: var(--text); }
+  .ws-tree-item.on { background: var(--accent-soft); color: var(--text); }
+  .ws-tree-item .chev { width: 12px; text-align: center; flex: none; font-size: 11px; color: var(--dim); transition: transform .12s; }
+  .ws-tree-item.open .chev { transform: rotate(90deg); }
+  .ws-tree-item .fdot { width: 12px; text-align: center; flex: none; font-size: 11px; color: var(--dim); }
+  .ws-tree-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12.5px; }
+  .ws-tree-more { margin: 4px 0 2px; margin-left: calc(8px + var(--depth, 0) * 14px); align-self: flex-start; background: var(--s2); border: 1px solid var(--line2); border-radius: 7px; padding: 3px 9px; font-size: 12px; color: var(--muted); }
+  .ws-tree-more:hover { color: var(--text); background: var(--s3); }
+  .ws-file-bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: var(--s2); font-size: 12.5px; min-width: 0; }
+  .ws-file-bar .fp { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); color: var(--text); }
+  .ws-mini-btn { background: var(--s1); border: 1px solid var(--line2); color: var(--muted); border-radius: 7px; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; flex: none; }
+  .ws-mini-btn:hover { color: var(--text); background: var(--s3); }
+  .ws-note-bar { flex: none; padding: 6px 12px; font-size: 12px; color: var(--muted); background: var(--accent-soft); border-bottom: 1px solid var(--line); }
+  .ws-code-wrap { flex: 1; min-height: 0; overflow: auto; background: var(--bg); font: 12.5px/1.6 var(--mono); padding: 8px 0; }
+  .cv-line { display: flex; padding-right: 14px; min-width: max-content; }
+  .cv-line.is-target { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .cv-ln { width: 46px; flex: none; text-align: right; padding-right: 12px; color: var(--dim); user-select: none; font-variant-numeric: tabular-nums; }
+  .cv-code { white-space: pre; color: var(--text); }
+  .tok-kw { color: var(--accent); font-weight: 550; }
+  .tok-str { color: var(--codex); }
+  .tok-com { color: var(--dim); font-style: italic; }
+  .tok-num, .tok-lit { color: var(--claude); }
+  .tok-type { color: var(--gemini); }
+  .tok-key { color: var(--accent); }
+  .tok-hd { color: var(--accent); font-weight: 650; }
+  .ws-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+  .ws-diff-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 8px; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+  .ws-diff-summary { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12.5px; color: var(--muted); }
+  .tag.staged { color: var(--accent); background: var(--accent-soft); }
+  .ws-file-chev { color: var(--dim); font-size: 12px; transition: transform .12s; display: inline-block; }
+  details.file[open] .ws-file-chev { transform: rotate(90deg); }
+  .ws-img-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  .ws-img-wrap img { max-width: 100%; max-height: 68vh; object-fit: contain; border-radius: 6px; cursor: zoom-in; }
+  .ws-img-meta { font-size: 12px; color: var(--dim); font-family: var(--mono); }
+  .ws-md-preview { padding: 4px 2px; font-size: 14.5px; line-height: 1.6; }
+  .ws-md-preview blockquote { margin: 8px 0; padding: 4px 12px; border-left: 2px solid var(--accent); color: var(--muted); }
+  .ws-md-preview hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+  .ws-empty { color: var(--dim); text-align: center; padding: 36px 18px; font-size: 13.5px; line-height: 1.5; }
+  .file-ref { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; cursor: pointer; }
+  .file-ref:hover { opacity: .88; text-decoration-style: solid; }
+  .file-ref.code-ref { text-decoration: none; }
+  .file-ref.code-ref code { color: var(--accent); background: var(--accent-soft); border: 1px solid rgba(139,143,255,.32); }
+  .file-ref.code-ref:hover code { border-color: var(--accent); }
+  @media (max-width: 899px) { .ws-panel, .ws-resizer, .ws-toggle { display: none !important; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -505,6 +567,7 @@
     <button class="menu-btn" id="menubtn" aria-label="Menu">☰</button>
     <h1><button class="projbtn" id="project" title="Switch project"><span id="projname">project</span><span class="car">▾</span></button></h1>
     <span class="sub" id="chattitle"></span>
+    <button class="ws-toggle" id="wstoggle" title="Toggle workspace panel (⌘\)" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg><span id="wstogglelbl">Workspace</span></button>
   </div>
   <div class="scroll" id="scroll"><div class="col" id="col"></div></div>
   <div class="dock"><div class="dock-in">
@@ -528,6 +591,20 @@
   </div></div>
 </div>
 
+<div class="ws-resizer" id="ws-resizer" role="separator" aria-orientation="vertical" aria-label="Resize workspace panel" hidden></div>
+<aside class="ws-panel" id="ws-panel" hidden>
+  <div class="ws-head">
+    <div class="ws-tabs" id="ws-tabs" role="tablist">
+      <button type="button" role="tab" data-tab="files" id="ws-tab-files">Files</button>
+      <button type="button" role="tab" data-tab="changes" id="ws-tab-changes">Changes</button>
+      <button type="button" role="tab" data-tab="preview" id="ws-tab-preview">Preview</button>
+    </div>
+    <button class="icon-btn" id="ws-refresh" title="Refresh" aria-label="Refresh">↻</button>
+    <button class="icon-btn" id="ws-close" title="Close panel" aria-label="Close panel">×</button>
+  </div>
+  <div class="ws-body" id="ws-body"></div>
+</aside>
+
 <div class="toasts" id="toasts"></div>
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
@@ -550,6 +627,7 @@ setTimeout(function () {
 <script type="module">
 import { t as tr, tp as trp, hasKey, resolveLanguage, translateReason, translateNotice } from "/i18n.js";
 import { parseCitations, renderMarkdownHtml } from "/citations.js";
+import { detectLanguage, renderHighlightedLinesHtml } from "/workspace.js";
 
 // ---------- i18n ----------
 let langSetting = "auto";
@@ -586,6 +664,16 @@ function applyStaticI18n() {
   $("#khint").textContent = t("composer.hint");
   $("#stop").title = t("composer.stop");
   $("#send").title = t("composer.send");
+  $("#wstogglelbl").textContent = t("top.workspace");
+  $("#wstoggle").title = t("top.workspaceTitle");
+  $("#ws-tab-files").textContent = t("ws.tab.files");
+  $("#ws-tab-changes").textContent = t("ws.tab.changes");
+  $("#ws-tab-preview").textContent = t("ws.tab.preview");
+  $("#ws-refresh").title = t("ws.refresh");
+  $("#ws-refresh").setAttribute("aria-label", t("ws.refresh"));
+  $("#ws-close").title = t("ws.close");
+  $("#ws-close").setAttribute("aria-label", t("ws.close"));
+  $("#ws-resizer").setAttribute("aria-label", t("ws.resizeAria"));
 }
 
 // ---------- helpers ----------
@@ -632,9 +720,9 @@ function sourcesBlock(sources) {
 }
 function richReply(text) {
   const { body, sources } = parseCitations(text);
-  const bodyEl = body ? md(body, { sources }) : null;
+  const bodyEl = body ? md(body, { sources, fileLinks: true }) : null;
   const srcEl = sourcesBlock(sources);
-  if (!srcEl) return bodyEl || md(text);
+  if (!srcEl) return bodyEl || md(text, { fileLinks: true });
   const wrap = document.createElement("div");
   wrap.className = "reply-wrap";
   if (bodyEl) wrap.append(bodyEl);
@@ -695,6 +783,7 @@ function applyLanguage(nextSetting) {
   renderBanner();
   renderLimits();
   renderVersion();
+  renderWorkspace();
   if (drawer) {
     const prevScroll = $("#drawer .d-body")?.scrollTop || 0;
     Promise.resolve(renderDrawer(true)).then(() => {
@@ -1867,7 +1956,7 @@ async function renderDrawer(full) {
   }
   if (drawer.kind === "keys") {
     if (!full) return;
-    const rows = [["↵", t("keys.send")], ["⇧ ↵", t("keys.newLine")], ["⌘ K", t("keys.newTask")], ["Esc", t("keys.closePanel")], ["?", t("keys.showShortcuts")]];
+    const rows = [["↵", t("keys.send")], ["⇧ ↵", t("keys.newLine")], ["⌘ K", t("keys.newTask")], ["⌘ \\", t("keys.toggleWorkspace")], ["Esc", t("keys.closePanel")], ["?", t("keys.showShortcuts")]];
     set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("keys.title"))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
       h("div", { class: "d-body" }, h("div", { class: "keys" }, rows.map(([k, v]) => [h("span", {}, k.split(" ").map((x) => h("kbd", {}, x))), h("span", { class: "muted" }, v)]))));
     return;
@@ -2119,7 +2208,7 @@ function projectMenu() {
   const open = async (path) => {
     if (sending) return;
     closePop();
-    try { S = await api("project", { path }); studioDraft = { raw: "", result: null, selected: new Set() }; newTask(); await refresh(); renderLimits(); toast(t("project.opened", { name: S.project?.name || "" })); } catch (e) { toast(e.message, true); }
+    try { S = await api("project", { path }); studioDraft = { raw: "", result: null, selected: new Set() }; resetWorkspace(); newTask(); await refresh(); renderLimits(); toast(t("project.opened", { name: S.project?.name || "" })); } catch (e) { toast(e.message, true); }
   };
   inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && inp.value.trim()) open(inp.value.trim()); });
   const rec = (S.recents || []).filter((p) => p !== S.repo);
@@ -2143,12 +2232,407 @@ function toast(text, opts = false) {
   setTimeout(() => el.remove(), actionLabel ? 7000 : 3800);
 }
 
+// ---------- side workspace panel ----------
+const WS_OPEN_KEY = "tw-ws-open";
+const WS_WIDTH_KEY = "tw-ws-width";
+const WS_MIN_W = 320;
+const WS_IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp", "gif", "svg"]);
+const WS_MD_EXT = new Set(["md", "markdown"]);
+const wsExt = (p = "") => { const m = String(p).toLowerCase().match(/\.([a-z0-9]+)$/); return m ? m[1] : ""; };
+
+const ws = {
+  open: false,
+  width: 460,
+  tab: "files",
+  treeOpen: true,
+  expanded: new Set(),
+  tree: new Map(),
+  selectedPath: null,
+  fileData: null,
+  fileLoading: false,
+  fileError: null,
+  targetLine: 0,
+  diffData: null,
+  diffLoading: false,
+  diffError: null,
+  diffAt: 0,
+  collapsedDiffs: new Set(),
+};
+
+try {
+  ws.open = localStorage.getItem(WS_OPEN_KEY) === "1";
+  const savedW = Number(localStorage.getItem(WS_WIDTH_KEY));
+  if (Number.isFinite(savedW) && savedW >= WS_MIN_W) ws.width = savedW;
+} catch {}
+
+function clampWsWidth(w) {
+  const sideW = window.innerWidth > 760 ? 248 : 0;
+  const maxW = Math.max(WS_MIN_W, window.innerWidth - sideW - 320);
+  return Math.max(WS_MIN_W, Math.min(Math.round(Number(w) || 460), maxW));
+}
+
+function saveWsPrefs() {
+  try {
+    localStorage.setItem(WS_OPEN_KEY, ws.open ? "1" : "0");
+    localStorage.setItem(WS_WIDTH_KEY, String(Math.round(ws.width)));
+  } catch {}
+}
+
+function applyWorkspaceChrome() {
+  const panel = $("#ws-panel"), resizer = $("#ws-resizer"), toggle = $("#wstoggle");
+  panel.hidden = !ws.open;
+  resizer.hidden = !ws.open;
+  panel.style.width = clampWsWidth(ws.width) + "px";
+  toggle.classList.toggle("on", ws.open);
+  toggle.setAttribute("aria-pressed", ws.open ? "true" : "false");
+  for (const btn of $("#ws-tabs").querySelectorAll("button")) {
+    const on = btn.dataset.tab === ws.tab;
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  }
+}
+
+function resetWorkspace() {
+  ws.expanded.clear();
+  ws.tree.clear();
+  ws.selectedPath = null;
+  ws.fileData = null;
+  ws.fileError = null;
+  ws.fileLoading = false;
+  ws.targetLine = 0;
+  ws.diffData = null;
+  ws.diffError = null;
+  ws.diffLoading = false;
+  ws.diffAt = 0;
+  ws.collapsedDiffs.clear();
+  if (ws.open) {
+    if (ws.tab === "changes") loadWsDiff(true);
+    else loadWsDir("", { reset: true });
+  }
+  renderWorkspace();
+}
+
+async function loadWsDir(dir = "", { reset = false, append = false } = {}) {
+  const cur = ws.tree.get(dir);
+  if (cur?.loading) return;
+  const offset = append && cur?.nextCursor != null ? cur.nextCursor : 0;
+  if (!reset && !append && cur?.loaded) return;
+  const entry = { entries: append && cur ? [...cur.entries] : [], total: cur?.total || 0, nextCursor: cur?.nextCursor ?? null, loaded: !!cur?.loaded, loading: true, error: null };
+  ws.tree.set(dir, entry);
+  renderWorkspace();
+  try {
+    const r = await api(`files?dir=${encodeURIComponent(dir)}&offset=${offset}&limit=200`);
+    const merged = append ? [...entry.entries, ...(r.entries || [])] : (r.entries || []);
+    ws.tree.set(dir, { entries: merged, total: r.total || merged.length, nextCursor: r.nextCursor ?? null, loaded: true, loading: false, error: null });
+  } catch (e) {
+    ws.tree.set(dir, { ...entry, loading: false, error: e.message });
+  }
+  renderWorkspace();
+}
+
+async function loadWsFile(filePath, { line = 0 } = {}) {
+  ws.selectedPath = filePath;
+  ws.targetLine = Number(line) || 0;
+  ws.fileError = null;
+  ws.fileLoading = true;
+  const ext = wsExt(filePath);
+  if (WS_IMAGE_EXT.has(ext) && ext !== "svg") {
+    ws.fileData = { path: filePath, ext, imageOnly: true };
+    ws.fileLoading = false;
+    renderWorkspace();
+    return;
+  }
+  ws.fileData = null;
+  renderWorkspace();
+  try {
+    ws.fileData = await api(`file?path=${encodeURIComponent(filePath)}`);
+  } catch (e) {
+    ws.fileError = e.message;
+  } finally {
+    ws.fileLoading = false;
+  }
+  renderWorkspace();
+  if (ws.targetLine > 0) {
+    requestAnimationFrame(() => {
+      const el = $("#ws-body")?.querySelector(`.cv-line[data-line="${ws.targetLine}"]`);
+      el?.scrollIntoView({ block: "center" });
+    });
+  }
+}
+
+async function loadWsDiff(force = false) {
+  if (ws.diffLoading) return;
+  if (!force && ws.diffData && Date.now() - ws.diffAt < 2500) return;
+  ws.diffLoading = true;
+  if (!ws.diffData) renderWorkspace();
+  try {
+    ws.diffData = await api("worktree-diff");
+    ws.diffError = null;
+    ws.diffAt = Date.now();
+  } catch (e) {
+    ws.diffError = e.message;
+  } finally {
+    ws.diffLoading = false;
+  }
+  renderWorkspace();
+}
+
+function toggleWorkspace(force) {
+  ws.open = force === undefined ? !ws.open : !!force;
+  saveWsPrefs();
+  applyWorkspaceChrome();
+  if (ws.open) {
+    if (ws.tab === "changes") loadWsDiff(true);
+    else if (!ws.tree.get("")?.loaded) loadWsDir("");
+  }
+  renderWorkspace();
+}
+
+function setWsTab(tab) {
+  ws.tab = tab;
+  if (ws.open) {
+    if (tab === "changes") loadWsDiff(true);
+    else if (tab === "files" && !ws.tree.get("")?.loaded) loadWsDir("");
+  }
+  applyWorkspaceChrome();
+  renderWorkspace();
+}
+
+function openWorkspaceFile(filePath, { line = 0, tab = "files" } = {}) {
+  if (!filePath) return;
+  if (!ws.open) {
+    ws.open = true;
+    saveWsPrefs();
+  }
+  ws.tab = tab;
+  applyWorkspaceChrome();
+  if (!ws.tree.get("")?.loaded) loadWsDir("");
+  loadWsFile(filePath, { line });
+}
+
+function renderTreeNodes(dir, depth = 0) {
+  const node = ws.tree.get(dir);
+  if (!node) return null;
+  if (node.loading && !node.entries.length) return [h("div", { class: "ws-empty", style: "padding:10px" }, t("ws.loading"))];
+  if (node.error) return [h("div", { class: "err", style: "padding:6px 10px" }, node.error)];
+  if (!node.entries.length && dir === "") return [h("div", { class: "ws-empty", style: "padding:18px" }, t("ws.emptyTree"))];
+  const out = [];
+  for (const item of node.entries) {
+    if (item.type === "dir") {
+      const open = ws.expanded.has(item.path);
+      out.push(h("button", {
+        type: "button",
+        class: "ws-tree-item" + (open ? " open" : ""),
+        style: `--depth:${depth}`,
+        onclick: () => {
+          if (ws.expanded.has(item.path)) ws.expanded.delete(item.path);
+          else { ws.expanded.add(item.path); loadWsDir(item.path); }
+          renderWorkspace();
+        },
+      }, h("span", { class: "chev" }, "›"), h("span", { class: "nm" }, item.name + "/")));
+      if (open) out.push(renderTreeNodes(item.path, depth + 1));
+    } else {
+      out.push(h("button", {
+        type: "button",
+        class: "ws-tree-item" + (ws.selectedPath === item.path ? " on" : ""),
+        style: `--depth:${depth}`,
+        onclick: () => loadWsFile(item.path, { line: 0 }),
+      }, h("span", { class: "fdot" }, "•"), h("span", { class: "nm" }, item.name)));
+    }
+  }
+  if (node.nextCursor != null) {
+    const rem = Math.max(0, node.total - node.entries.length);
+    out.push(h("button", {
+      type: "button",
+      class: "ws-tree-more",
+      style: `--depth:${depth}`,
+      disabled: node.loading ? true : null,
+      onclick: () => loadWsDir(dir, { append: true }),
+    }, node.loading ? t("ws.loading") : t("ws.loadMore", { n: rem })));
+  }
+  return out;
+}
+
+function renderCodeViewer(fileData) {
+  if (ws.fileLoading) return h("div", { class: "ws-empty" }, t("ws.loading"));
+  if (ws.fileError) return h("div", { class: "ws-empty" }, h("span", { class: "err" }, ws.fileError));
+  if (!ws.selectedPath) return h("div", { class: "ws-empty" }, t("ws.noFileSelected"));
+  if (fileData?.imageOnly) {
+    return h("div", { class: "ws-empty" },
+      h("div", {}, t("ws.binaryFile")),
+      h("div", { style: "margin-top:10px" }, h("button", { class: "btn", onclick: () => setWsTab("preview") }, t("ws.openInPreview"))));
+  }
+  if (!fileData) return h("div", { class: "ws-empty" }, t("ws.noFileSelected"));
+  const wrap = h("div", { class: "ws-code-wrap" });
+  wrap.innerHTML = renderHighlightedLinesHtml(fileData.content || "", detectLanguage(fileData.path), { highlightLine: ws.targetLine });
+  return [
+    fileData.truncated ? h("div", { class: "ws-note-bar" }, t("ws.truncated", { shown: kb(fileData.bytesRead), total: kb(fileData.size) })) : null,
+    wrap,
+  ];
+}
+
+function renderWsFileBar(showTreeToggle = false) {
+  if (!ws.selectedPath) return null;
+  const ext = wsExt(ws.selectedPath);
+  const canPreview = WS_IMAGE_EXT.has(ext) || WS_MD_EXT.has(ext);
+  return h("div", { class: "ws-file-bar" },
+    h("span", { class: "fp", title: ws.selectedPath }, ws.selectedPath),
+    ws.fileData?.lines ? h("span", { class: "tag" }, t("ws.lines", { n: ws.fileData.lines })) : null,
+    ws.tab === "files" && canPreview ? h("button", { type: "button", class: "ws-mini-btn", onclick: () => setWsTab("preview") }, t("ws.openInPreview")) : null,
+    ws.tab === "preview" ? h("button", { type: "button", class: "ws-mini-btn", onclick: () => setWsTab("files") }, t("ws.openInFiles")) : null,
+    showTreeToggle ? h("button", { type: "button", class: "ws-mini-btn", onclick: () => { ws.treeOpen = !ws.treeOpen; renderWorkspace(); } }, t(ws.treeOpen ? "ws.collapseTree" : "ws.expandTree")) : null);
+}
+
+function renderWsDiffFile(f, kind) {
+  const key = `${kind}:${f.path}`;
+  const isOpen = !ws.collapsedDiffs.has(key);
+  const det = h("details", { class: "file", open: isOpen ? true : null });
+  det.addEventListener("toggle", () => {
+    if (det.open) ws.collapsedDiffs.delete(key);
+    else ws.collapsedDiffs.add(key);
+  });
+  const openBtn = !f.deleted ? h("button", {
+    type: "button",
+    class: "ws-mini-btn",
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); openWorkspaceFile(f.path, { line: 0, tab: "files" }); },
+  }, t("ws.openFile")) : null;
+  const tag = h("span", { class: "tag" + (kind === "staged" ? " staged" : "") }, t(kind === "staged" ? "ws.staged" : "ws.unstaged"));
+  const sum = h("summary", {},
+    h("span", { class: "ws-file-chev" }, "›"),
+    h("span", { class: "fp" }, f.path),
+    tag,
+    f.binary ? h("span", { class: "tag" }, t(f.deleted ? "ws.deleted" : "ws.binary")) : [h("span", { class: "plus" }, "+" + f.add), h("span", { class: "minus" }, "−" + f.del)],
+    openBtn);
+  det.append(sum);
+  if (f.binary) {
+    det.append(h("div", { class: "binfile" }, h("span", {}, t(f.deleted ? "file.deleted" : "file.binaryNote"))));
+  } else {
+    const lines = f.patch.split("\n").filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode)/.test(l));
+    det.append(h("div", { class: "diff" }, lines.map((l) => h("span", { class: l.startsWith("+") ? "a" : l.startsWith("-") ? "d" : l.startsWith("@@") ? "h" : "" }, l || " "))));
+  }
+  return det;
+}
+
+function renderWorkspace() {
+  applyWorkspaceChrome();
+  if (!ws.open) return;
+  const body = $("#ws-body");
+  if (ws.tab === "files") {
+    const prevTreeScroll = body.querySelector(".ws-tree-wrap")?.scrollTop || 0;
+    const showTree = ws.treeOpen || !ws.selectedPath;
+    set(body,
+      showTree ? h("div", { class: "ws-tree-wrap" + (!ws.selectedPath ? " full" : "") }, renderTreeNodes("", 0)) : null,
+      renderWsFileBar(true),
+      ws.selectedPath ? renderCodeViewer(ws.fileData) : null);
+    const treeEl = body.querySelector(".ws-tree-wrap");
+    if (treeEl && prevTreeScroll) treeEl.scrollTop = prevTreeScroll;
+    return;
+  }
+  if (ws.tab === "changes") {
+    if (ws.diffLoading && !ws.diffData) { set(body, h("div", { class: "ws-empty" }, t("ws.loading"))); return; }
+    if (ws.diffError) { set(body, h("div", { class: "ws-empty" }, h("span", { class: "err" }, ws.diffError))); return; }
+    const d = ws.diffData;
+    if (!d || !d.isGit) { set(body, h("div", { class: "ws-empty" }, t("ws.noGit"))); return; }
+    const st = d.staged || [], un = d.unstaged || [];
+    if (!st.length && !un.length) { set(body, h("div", { class: "ws-empty" }, t("ws.cleanTree"))); return; }
+    set(body, h("div", { class: "ws-scroll" },
+      h("div", { class: "ws-diff-summary" },
+        h("span", { class: "tag staged" }, t("ws.stagedCount", { n: st.length })),
+        h("span", { class: "tag" }, t("ws.unstagedCount", { n: un.length }))),
+      st.length ? [h("div", { class: "ws-diff-head" }, t("ws.staged")), st.map((f) => renderWsDiffFile(f, "staged"))] : null,
+      un.length ? [h("div", { class: "ws-diff-head" }, t("ws.unstaged")), un.map((f) => renderWsDiffFile(f, "unstaged"))] : null));
+    return;
+  }
+  if (ws.tab === "preview") {
+    if (!ws.selectedPath) { set(body, h("div", { class: "ws-empty" }, t("ws.selectToPreview"))); return; }
+    const ext = wsExt(ws.selectedPath);
+    if (WS_IMAGE_EXT.has(ext)) {
+      const src = `/api/file-raw?path=${encodeURIComponent(ws.selectedPath)}`;
+      const metaEl = h("div", { class: "ws-img-meta" }, t("ws.imageNote"));
+      const img = h("img", { src, alt: ws.selectedPath, onclick: () => lightbox(src, ws.selectedPath) });
+      img.addEventListener("load", () => { metaEl.textContent = `${img.naturalWidth} × ${img.naturalHeight}`; });
+      img.addEventListener("error", () => { metaEl.textContent = t("ws.imageError"); metaEl.style.color = "var(--bad)"; });
+      set(body, renderWsFileBar(false), h("div", { class: "ws-scroll" }, h("div", { class: "ws-img-wrap" }, img, metaEl)));
+      return;
+    }
+    if (WS_MD_EXT.has(ext)) {
+      if (ws.fileLoading) { set(body, renderWsFileBar(false), h("div", { class: "ws-empty" }, t("ws.loading"))); return; }
+      if (ws.fileError) { set(body, renderWsFileBar(false), h("div", { class: "ws-empty" }, h("span", { class: "err" }, ws.fileError))); return; }
+      const previewEl = md(ws.fileData?.content || "", { fileLinks: true });
+      previewEl.classList.add("ws-md-preview");
+      set(body,
+        renderWsFileBar(false),
+        ws.fileData?.truncated ? h("div", { class: "ws-note-bar" }, t("ws.truncated", { shown: kb(ws.fileData.bytesRead), total: kb(ws.fileData.size) })) : null,
+        h("div", { class: "ws-scroll" }, previewEl));
+      return;
+    }
+    // Non-image, non-markdown files fall back to the viewer.
+    set(body,
+      renderWsFileBar(false),
+      h("div", { class: "ws-note-bar" }, ext ? t("ws.previewFallback", { ext }) : t("ws.previewFallbackPlain")),
+      renderCodeViewer(ws.fileData));
+  }
+}
+
+$("#wstoggle").onclick = () => toggleWorkspace();
+$("#ws-close").onclick = () => toggleWorkspace(false);
+$("#ws-refresh").onclick = () => {
+  if (ws.tab === "changes") loadWsDiff(true);
+  else {
+    loadWsDir("", { reset: true });
+    for (const dir of ws.expanded) loadWsDir(dir, { reset: true });
+    if (ws.selectedPath) loadWsFile(ws.selectedPath, { line: ws.targetLine });
+  }
+};
+for (const btn of $("#ws-tabs").querySelectorAll("button")) {
+  btn.onclick = () => setWsTab(btn.dataset.tab);
+}
+document.addEventListener("click", (e) => {
+  const ref = e.target.closest?.(".file-ref");
+  if (!ref) return;
+  const p = ref.dataset.file;
+  const line = Number(ref.dataset.line) || 0;
+  if (p) openWorkspaceFile(p, { line, tab: "files" });
+});
+$("#ws-resizer").addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  const startX = e.clientX, startW = $("#ws-panel").getBoundingClientRect().width;
+  document.body.classList.add("ws-resizing");
+  const onMove = (ev) => {
+    ws.width = clampWsWidth(startW + (startX - ev.clientX));
+    $("#ws-panel").style.width = ws.width + "px";
+  };
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    document.body.classList.remove("ws-resizing");
+    saveWsPrefs();
+  };
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+});
+window.addEventListener("resize", () => {
+  if (ws.open) $("#ws-panel").style.width = clampWsWidth(ws.width) + "px";
+});
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === "\\" || e.code === "Backslash")) {
+    e.preventDefault();
+    toggleWorkspace();
+  }
+});
+applyWorkspaceChrome();
+if (ws.open) {
+  if (ws.tab === "changes") loadWsDiff(true);
+  else loadWsDir("");
+}
+
 // ---------- loop ----------
 async function refresh() {
   S = await api("state");
   await pollStaged();
   renderSide(); renderTop(); renderBanner(); renderTurnChrome();
   if (drawer) renderDrawer(false);
+  if (ws.open && ws.tab === "changes") loadWsDiff(false);
 }
 
 function autosize() { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 220) + "px"; }

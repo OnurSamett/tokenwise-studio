@@ -22,13 +22,13 @@ const MAX_STEPS = Number(process.env.TOKENWISE_FREE_MAX_STEPS || 40);
 const MAX_MINUTES = Number(process.env.TOKENWISE_FREE_MAX_MINUTES) > 0 ? Number(process.env.TOKENWISE_FREE_MAX_MINUTES) : 15;
 const MAX_READ = 2 << 20, MAX_WRITE = 1 << 20, MAX_SEARCH_FILE = 1_000_000, MAX_SEARCH_TOTAL = 50 << 20, MAX_HITS = 120;
 const SKIP_DIRS = new Set([".git", "node_modules", ".tokenwise-studio", "__pycache__", ".venv", "venv", "dist", "build", ".next", "target"]);
-const SECRET_FILE = [/^\.env(\..*)?$/i, /^\.envrc$/i, /^\.dev\.vars$/i, /\.(pem|key|p12|pfx|keystore|jks|tfvars|tfstate)$/i, /^id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/i,
+export const SECRET_FILE = [/^\.env(\..*)?$/i, /^\.envrc$/i, /^\.dev\.vars$/i, /\.(pem|key|p12|pfx|keystore|jks|tfvars|tfstate)$/i, /^id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/i,
   /^\.(npmrc|pypirc|netrc|pgpass|git-credentials)$/i, /^(credentials|secrets?)(\.\w+)?$/i];
 // macOS file names are case-insensitive and Unicode-folding ("ſecrets" opens "secrets"), so compare a
 // normalized form; and refuse non-ASCII path parts outright to close lookalike tricks.
-const norm = (name) => String(name).normalize("NFKC").toLowerCase();
-const isSecret = (name) => SECRET_FILE.some((re) => re.test(norm(name)));
-const BLOCKED_DIRS = new Set([".git", ".tokenwise-studio", ".docker", ".ssh", ".aws", ".gnupg"]);
+export const norm = (name) => String(name).normalize("NFKC").toLowerCase();
+export const isSecret = (name) => SECRET_FILE.some((re) => re.test(norm(name)));
+export const BLOCKED_DIRS = new Set([".git", ".tokenwise-studio", ".docker", ".ssh", ".aws", ".gnupg"]);
 // Never let an API key reach the output, even inside an error message.
 const KEYS = ["NVIDIA_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "TOKENWISE_FREE_KEY"].map((k) => process.env[k]).filter(Boolean)
   // raw key, its JSON-escaped form, and every line fragment, so a malformed key can't leak through an error message

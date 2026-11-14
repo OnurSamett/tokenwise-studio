@@ -27,11 +27,13 @@ import { createSnapshot } from "./snapshots.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
 import { runAutoUpdate, readyFor, readUpdateState, needsAppSetup, runSetup, quitStudioServers, logUpdate } from "./autoupdate.js";
 import { parseStudioErrors, formatStudioPrompt } from "./studiolog.js";
+import { listRepoFiles, readRepoTextFile, resolveRepoImage, worktreeDiff, splitDiff } from "./workspace.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
 const i18nPath = path.join(path.dirname(htmlPath), "i18n.js");
 const citationsPath = path.join(path.dirname(htmlPath), "citations.js");
+const workspacePath = path.join(path.dirname(htmlPath), "workspace.js");
 // The version this process was started with. package.json on disk changes under a long-running server
 // when it is upgraded, so the page and the app compare against this, not against the file.
 const LOADED_VERSION = currentVersion();
@@ -88,21 +90,6 @@ function chatTimeline(id, from = 0) {
     for (const it of normalize(e.agent || "claude", e, repo)) items.push({ t: e.t, turn: e.turn, ...it });
   }
   return { items, next };
-}
-
-function splitDiff(raw) {
-  if (!raw) return [];
-  return raw.split(/^(?=diff --git )/m).filter((p) => p.startsWith("diff --git")).map((patch) => {
-    const m = patch.match(/^diff --git a\/(.+?) b\/(.+)$/m);
-    const add = (patch.match(/^\+(?!\+\+)/gm) || []).length, del = (patch.match(/^-(?!--)/gm) || []).length;
-    const p = m ? m[2] : "?";
-    // Binary files (generated images): keep the header only; the base85 body is useless in a review and can be huge.
-    if (/^GIT binary patch$|^Binary files /m.test(patch)) {
-      const head = patch.split("\n").filter((l) => /^(diff --git|new file mode|deleted file mode|similarity|rename )/.test(l)).join("\n");
-      return { path: p, add: 0, del: 0, binary: true, image: !!imageType(p), deleted: /^deleted file mode/m.test(patch), patch: head + "\n" };
-    }
-    return { path: p, add, del, patch };
-  });
 }
 
 // Instructions file state for Settings and the editor drawer. `text` is what the editor shows (the whole file).
@@ -219,11 +206,12 @@ export const handler = async (req, res) => {
   if (!allowed(req)) return send(res, 403, { error: "forbidden" });
   const url = new URL(req.url, "http://x");
   const from = Number(url.searchParams.get("from") || 0);
-  const m = url.pathname.match(/^\/api\/(\w+)(?:\/([\w-]+))?$/);
+  const m = url.pathname.match(/^\/api\/([\w-]+)(?:\/([\w-]+))?$/);
   try {
     if (url.pathname === "/") return send(res, 200, fs.readFileSync(htmlPath, "utf8"), "text/html; charset=utf-8");
     if (url.pathname === "/i18n.js") return send(res, 200, fs.readFileSync(i18nPath, "utf8"), "application/javascript; charset=utf-8");
     if (url.pathname === "/citations.js") return send(res, 200, fs.readFileSync(citationsPath, "utf8"), "application/javascript; charset=utf-8");
+    if (url.pathname === "/workspace.js") return send(res, 200, fs.readFileSync(workspacePath, "utf8"), "application/javascript; charset=utf-8");
     // Provider logos (unmodified lobe-icons SVGs, see assets/providers/NOTICE.md). Names are whitelisted by pattern.
     const lm = url.pathname.match(/^\/providers\/([a-z0-9-]{1,30})\.svg$/);
     if (lm) {
@@ -290,6 +278,29 @@ export const handler = async (req, res) => {
       if (what === "log") return send(res, 200, jobTimeline(id, from));
       if (what === "diff") return send(res, 200, { files: splitDiff(jobs.diff(id)), conflicts: jobs.conflicts(id) });
       if (what === "conflicts") return send(res, 200, jobs.conflicts(id));
+      if (what === "files") {
+        return send(res, 200, listRepoFiles(repo, {
+          dir: url.searchParams.get("dir") ?? url.searchParams.get("path") ?? "",
+          offset: url.searchParams.get("offset") ?? url.searchParams.get("cursor") ?? 0,
+          limit: url.searchParams.get("limit"),
+        }));
+      }
+      if (what === "file") {
+        return send(res, 200, readRepoTextFile(repo, url.searchParams.get("path"), {
+          maxBytes: url.searchParams.get("maxBytes"),
+        }));
+      }
+      if (what === "file-raw") {
+        const img = resolveRepoImage(repo, url.searchParams.get("path"));
+        res.writeHead(200, {
+          "content-type": img.type,
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+          "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
+        });
+        return res.end(fs.readFileSync(img.abs));
+      }
+      if (what === "worktree-diff") return send(res, 200, worktreeDiff(repo));
     }
     if (req.method === "POST") {
       const b = await readBody(req, what === "upload" ? UPLOAD_BODY_LIMIT : undefined);
@@ -369,7 +380,7 @@ export const handler = async (req, res) => {
     }
     return send(res, 404, { error: "not found" });
   } catch (e) {
-    return send(res, 400, { error: String(e.message || e) });
+    return send(res, e?.status || 400, { error: String(e.message || e) });
   }
 };
 

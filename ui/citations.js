@@ -1,5 +1,6 @@
 // Citation & Sources parser and safe Markdown/link renderer (only http/https URLs become links).
 // Shared between ui/index.html (browser / Mac WKWebView) and Node unit tests.
+import { parseFileLineRefs } from "./workspace.js";
 
 export function safeHttpUrl(raw) {
   if (typeof raw !== "string") return null;
@@ -187,16 +188,41 @@ function dedupeSources(list) {
   return out;
 }
 
-function renderBoldAndEsc(s) {
-  return escHtml(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+function renderPlainWithFileLinks(s, fileLinks) {
+  if (!fileLinks) return escHtml(s);
+  const refs = parseFileLineRefs(s);
+  if (!refs.length) return escHtml(s);
+  let out = "";
+  let last = 0;
+  for (const r of refs) {
+    if (r.index > last) out += escHtml(s.slice(last, r.index));
+    out += `<button type="button" class="file-ref" data-file="${escHtml(r.path)}" data-line="${r.line}" title="${escHtml(r.path)}:${r.line}">${escHtml(r.raw)}</button>`;
+    last = r.index + r.length;
+  }
+  if (last < s.length) out += escHtml(s.slice(last));
+  return out;
 }
 
-function renderTextAndCitations(s, srcMap) {
+function renderBoldAndEsc(s, fileLinks = false) {
+  if (!fileLinks) return escHtml(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  const boldRe = /\*\*([^*]+)\*\*/g;
+  let out = "";
+  let last = 0;
+  for (const m of s.matchAll(boldRe)) {
+    if (m.index > last) out += renderPlainWithFileLinks(s.slice(last, m.index), true);
+    out += `<b>${renderPlainWithFileLinks(m[1], true)}</b>`;
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out += renderPlainWithFileLinks(s.slice(last), true);
+  return out;
+}
+
+function renderTextAndCitations(s, srcMap, fileLinks = false) {
   const re = /\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\]|(https?:\/\/[^\s<>]+)/gi;
   let out = "";
   let last = 0;
   for (const m of s.matchAll(re)) {
-    if (m.index > last) out += renderBoldAndEsc(s.slice(last, m.index));
+    if (m.index > last) out += renderBoldAndEsc(s.slice(last, m.index), fileLinks);
     if (m[1]) {
       const nums = m[1].split(",").map((x) => Number(x.trim()));
       const anySafe = nums.some((n) => srcMap.has(n));
@@ -225,30 +251,31 @@ function renderTextAndCitations(s, srcMap) {
     }
     last = m.index + m[0].length;
   }
-  if (last < s.length) out += renderBoldAndEsc(s.slice(last));
+  if (last < s.length) out += renderBoldAndEsc(s.slice(last), fileLinks);
   return out;
 }
 
-function renderNonCodeSegment(s, srcMap) {
+function renderNonCodeSegment(s, srcMap, fileLinks = false) {
   const linkRe = /\[([^\]]+)\]\(((?:[^()\s]+|\([^()\s]*\))+)\)/g;
   let out = "";
   let last = 0;
   for (const m of s.matchAll(linkRe)) {
-    if (m.index > last) out += renderTextAndCitations(s.slice(last, m.index), srcMap);
+    if (m.index > last) out += renderTextAndCitations(s.slice(last, m.index), srcMap, fileLinks);
     const safe = safeHttpUrl(m[2]);
     if (safe) {
-      out += `<a href="${escHtml(safe)}" target="_blank" rel="noopener noreferrer">${renderBoldAndEsc(m[1])}</a>`;
+      out += `<a href="${escHtml(safe)}" target="_blank" rel="noopener noreferrer">${renderBoldAndEsc(m[1], false)}</a>`;
     } else {
       // Non-http(s) links (javascript:, data:, file:, ftp:, etc.) must never be linkified.
       out += escHtml(m[0]);
     }
     last = m.index + m[0].length;
   }
-  if (last < s.length) out += renderTextAndCitations(s.slice(last), srcMap);
+  if (last < s.length) out += renderTextAndCitations(s.slice(last), srcMap, fileLinks);
   return out;
 }
 
-export function renderInlineHtml(line, sources = []) {
+export function renderInlineHtml(line, sources = [], opts = {}) {
+  const fileLinks = !!opts?.fileLinks;
   const srcMap = new Map();
   for (const s of sources || []) {
     if (s && s.url && safeHttpUrl(s.url)) srcMap.set(Number(s.num), s);
@@ -257,15 +284,29 @@ export function renderInlineHtml(line, sources = []) {
   let out = "";
   let last = 0;
   for (const m of String(line ?? "").matchAll(codeRe)) {
-    if (m.index > last) out += renderNonCodeSegment(line.slice(last, m.index), srcMap);
-    out += `<code>${escHtml(m[1])}</code>`;
+    if (m.index > last) out += renderNonCodeSegment(line.slice(last, m.index), srcMap, fileLinks);
+    const codeText = m[1];
+    if (fileLinks) {
+      const refs = parseFileLineRefs(codeText);
+      if (refs.length === 1 && refs[0].index === 0 && refs[0].length === codeText.length) {
+        const r = refs[0];
+        out += `<button type="button" class="file-ref code-ref" data-file="${escHtml(r.path)}" data-line="${r.line}" title="${escHtml(r.path)}:${r.line}"><code>${escHtml(codeText)}</code></button>`;
+      } else if (refs.length > 0) {
+        out += `<code>${renderPlainWithFileLinks(codeText, true)}</code>`;
+      } else {
+        out += `<code>${escHtml(codeText)}</code>`;
+      }
+    } else {
+      out += `<code>${escHtml(codeText)}</code>`;
+    }
     last = m.index + m[0].length;
   }
-  if (last < String(line ?? "").length) out += renderNonCodeSegment(String(line ?? "").slice(last), srcMap);
+  if (last < String(line ?? "").length) out += renderNonCodeSegment(String(line ?? "").slice(last), srcMap, fileLinks);
   return out;
 }
 
-export function renderMarkdownHtml(text, { sources = [] } = {}) {
+export function renderMarkdownHtml(text, opts = {}) {
+  const sources = opts?.sources || [];
   const out = [];
   let list = null;
   let code = null;
@@ -281,13 +322,16 @@ export function renderMarkdownHtml(text, { sources = [] } = {}) {
     if (ol || ul) {
       const t = ol ? "ol" : "ul";
       if (!list || list.t !== t) { flush(); list = { t, items: [] }; }
-      list.items.push("<li>" + renderInlineHtml((ol || ul)[1], sources) + "</li>");
+      list.items.push("<li>" + renderInlineHtml((ol || ul)[1], sources, opts) + "</li>");
       continue;
     }
     flush();
+    if (/^\s*---+\s*$/.test(line)) { out.push("<hr>"); continue; }
+    const bq = line.match(/^\s*>\s?(.*)/);
+    if (bq) { out.push("<blockquote>" + renderInlineHtml(bq[1], sources, opts) + "</blockquote>"); continue; }
     const hd = line.match(/^#{1,4}\s+(.*)/);
-    if (hd) { out.push("<h4>" + renderInlineHtml(hd[1], sources) + "</h4>"); continue; }
-    if (line.trim()) out.push("<p>" + renderInlineHtml(line, sources) + "</p>");
+    if (hd) { out.push("<h4>" + renderInlineHtml(hd[1], sources, opts) + "</h4>"); continue; }
+    if (line.trim()) out.push("<p>" + renderInlineHtml(line, sources, opts) + "</p>");
   }
   if (code) out.push("<pre>" + escHtml(code.join("\n")) + "</pre>");
   flush();
