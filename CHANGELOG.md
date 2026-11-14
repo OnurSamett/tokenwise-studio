@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+
+- Turkish UI: a Language setting (Auto, English, Türkçe) for the interface and desktop notifications. Auto picks Turkish when the browser or system language is Turkish.
+- Compact long chats: when the orchestrator's context passes a threshold (default 120k tokens, set 60k to 400k in Settings), the earlier conversation is summarized with Claude Haiku (or a local fallback) and a fresh session continues from the summary. A "Compact now" action sits in the chat menu.
+- Research role: a Web research role in Team settings and `role="research"` on `delegate`. Read-only research jobs get live web search on Claude and Codex only for that role; answers carry numbered citations and a Sources list, and only http and https links are clickable. Free and local workers are not supported.
+- Fixes found in review: compaction input is scrubbed of inline image data and long base64 runs, and several Turkish strings now use the informal "sen" form consistently.
+
 ## 0.6.0
 
 - Chat export and backup: export a chat as Markdown or JSON from its ... menu, `tokenwise-studio export [--chat <id>] [--out <dir>]` for the command line, and a "Back up all chats" button in Settings that copies chats, jobs and their images to `~/.tokenwise-studio/backups/<project>/<timestamp>/`.

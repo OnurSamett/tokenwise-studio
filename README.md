@@ -135,6 +135,18 @@ When a write worker produces png, jpg, webp or gif files (for example Codex imag
 
 Studio detects a test command per project: an `npm test` script in `package.json` (the npm placeholder is ignored), else `pytest -q` (`pytest.ini` or pytest in `pyproject.toml`), `go test ./...` (`go.mod`), `cargo test` (`Cargo.toml`). Override it under **Settings, Tests**. For a finished write job, the review and the job drawer have a **Run tests** button: it runs the command in that job's worktree (argument array, no shell, 10 minute timeout, one run per job), streams the output, and shows pass or fail with the end of the output. Network is not restricted, and a worktree has only committed files (dependencies are not installed), so a project whose tests need `node_modules` may need a setup command in its test script. Turn on **Run tests before Apply** to run them automatically when a write job finishes; the result shows as a chip on the job card. The orchestrator can call `job_test` to check its workers' work (allowed in every permission mode, since it changes no project files).
 
+### Language
+
+Settings has a Language choice: Auto (follows the system or browser language), English or Türkçe. It covers the interface and desktop notifications.
+
+### Compacting long chats
+
+When an orchestrator chat's context grows past a threshold (default 120k tokens, 60k to 400k in Settings), the next turn first summarizes the earlier conversation with Claude Haiku (`claude -p --model haiku`, no tools; a local summary is used if that is unavailable) and starts a fresh session with that summary. The full history stays visible in the chat, with a collapsible "compacted" notice. Use *Compact now* in a task's `...` menu to do it manually, or turn it off in Settings. The summary is built only from this chat's messages and its jobs.
+
+### Web research
+
+The Team settings have a *Web research* role. Research jobs (`delegate` with `role="research"`, read-only) get live web search on Claude and Codex (Gemini and Antigravity use their own web tools); other jobs never get web access they did not have before. Free and local workers do not support it. Replies show numbered citations and a Sources list; only http and https links are clickable.
+
 ### Models
 
 | Agent | fast | balanced | frontier |
