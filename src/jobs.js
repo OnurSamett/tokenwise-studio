@@ -166,7 +166,7 @@ export class Jobs {
 
   isGit() { return isGitRepo(this.repo); }
 
-  start({ agent, model, effort, task, write = false, role = null, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
+  start({ agent, model, effort, hint = null, provider = null, task, write = false, role = null, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
     tried = [], movedFrom = null, noFallback = false, images = [] }) {
     if (role !== null && role !== undefined && !ROLES.includes(role)) throw new Error(`unknown role '${role}' (roles: ${ROLES.join(", ")})`);
     if (role === "research" && write) throw new Error("research jobs must be read-only (write=false)");
@@ -181,13 +181,13 @@ export class Jobs {
         : null);
       if (why) {
         const alt = nextAgent({ tried: [...tried, agent], write, role, home: this.home });
-        if (alt) { movedFrom = movedFrom || { agent, reason: why }; tried = [...tried, agent]; agent = alt; model = undefined; }
+        if (alt) { movedFrom = movedFrom || { agent, reason: why }; tried = [...tried, agent]; agent = alt; model = undefined; hint = null; provider = null; }
       }
     }
     if (role === "research" && (agent === "free" || agent === "local")) {
       throw new Error(`${agent} does not support web research; use claude, gemini or codex`);
     }
-    const spec = resolve({ agent, model, effort, allowAstra: team.allow.astra === true });
+    const spec = resolve({ agent, model, effort, hint, provider, allowAstra: team.allow.astra === true });
     const id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
     let cwd = this.repo, branch = null;
     if (write) {

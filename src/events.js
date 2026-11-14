@@ -139,7 +139,7 @@ export function normalize(agent, entry, base) {
   if (e.event) return antigravity(e, base);
   if (typeof e.type === "string" && e.type.startsWith("free.")) {
     if (e.type === "free.init") return [{ kind: "meta", text: `free API · ${e.provider} · ${e.model}` }];
-    if (e.type === "free.skip") return [{ kind: "meta", text: `${e.provider} unavailable (${e.message}); trying the next free provider` }];
+    if (e.type === "free.skip") return [{ kind: "meta", text: `${e.model ? `${e.provider} · ${e.model}` : e.provider} unavailable (${e.message}); trying the next ${e.model ? "free model" : "free provider"}` }];
     if (e.type === "free.message") return [{ kind: "say", text: e.text }];
     if (e.type === "free.tool") return [{ kind: e.error ? "error" : e.kind, text: e.error ? `${e.text}: ${e.error}` : e.text }];
     if (e.type === "free.usage") return [{ kind: "usage", text: `${e.usage?.prompt_tokens ?? 0} in · ${e.usage?.completion_tokens ?? 0} out` }];

@@ -3,22 +3,39 @@
 // delegate work to Codex / Claude / Gemini workers and review + merge their changes.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { Jobs } from "./jobs.js";
 import { loadTeam, teamGuide, ROLES } from "./team.js";
 import { loadSettings } from "./settings.js";
 import { budgetGate } from "./budget.js";
 import { runTests, testRunning, testTail } from "./testrun.js";
+import { normalizeFreeModelArg } from "./workers.js";
 
 const repo = process.env.TOKENWISE_REPO || process.cwd();
-const jobs = new Jobs(repo);
+let jobsInstance = null;
+const getJobs = () => (jobsInstance ||= new Jobs(repo));
 const server = new McpServer({ name: "tokenwise-studio", version: "0.1.0" });
+
+/** Validate delegate arguments and convert bare free model aliases into ranking hints. */
+export function prepareDelegateArgs(a) {
+  if (!a || typeof a !== "object") throw new Error("delegate arguments must be an object");
+  if (a.agent !== "free") return a;
+  const { model, hint, provider } = normalizeFreeModelArg(a.model);
+  return {
+    ...a,
+    ...(model !== undefined ? { model } : {}),
+    ...(hint ? { hint } : {}),
+    ...(provider ? { provider } : {}),
+  };
+}
 
 const brief = (j, { includeConflicts = false } = {}) => ({
   id: j.id, status: j.status, agent: j.agent, model: j.model, effort: j.effort, write: j.write, role: j.role || null,
   title: j.title, diffStat: j.diffStat, files: j.files, movedFrom: j.movedFrom || null, movedTo: j.movedTo || null, final: j.final ? String(j.final).slice(0, 4000) : null,
   images: (j.images || []).map((i) => i.path), tests: j.test ? j.test.status : null,
-  ...(includeConflicts ? { conflicts: j.write && j.status === "done" ? jobs.conflicts(j.id) : null } : {}),
+  ...(includeConflicts ? { conflicts: j.write && j.status === "done" ? getJobs().conflicts(j.id) : null } : {}),
 });
 const ok = (obj) => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }] });
 const fail = (e) => ({ isError: true, content: [{ type: "text", text: String(e.message || e) }] });
@@ -28,7 +45,7 @@ server.registerTool("delegate", {
   description: [
     "Start a self-contained task on another AI agent CLI and return a job id immediately (it runs in the background).",
     "agent: 'codex' (models: terra, sol [default], or a full slug; astra is blocked unless the user opted in),",
-    "'local' (Ollama model via Codex, free and unlimited, can edit files), 'free' (free hosted models like NVIDIA's Kimi/DeepSeek/GLM via a safe tool loop; reads and, with write=true, edits files; it cannot run commands; opt-in),",
+    "'local' (Ollama model via Codex, free and unlimited, can edit files), 'free' (free hosted models via a safe tool loop; pass model='auto' [default] or a full 'nvidia:<id>' / '<provider>:<id>' from the team options — never a bare alias like 'deepseek'; reads and, with write=true, edits files; it cannot run commands; opt-in),",
     "'claude' (haiku [default], sonnet, opus) or 'gemini' (via Google Antigravity: hydrogen [default, fast], argon [frontier, strongest]). effort: low|medium|high|xhigh.",
     "write=false: read-only answer. write=true: the worker edits files in its own git worktree branched from HEAD",
     "(uncommitted changes in the main tree are NOT visible to it); review with job_diff, then job_merge or job_discard.",
@@ -36,12 +53,12 @@ server.registerTool("delegate", {
     "The worker cannot see this conversation: put every detail it needs in `task` (files, constraints, done-condition).",
     "Dispatch independent tasks in parallel, then job_wait each.",
     "If a worker's plan is near its usage limit or it hits a rate limit, the job is automatically moved to the next worker (codex → gemini → claude → free → local); job_wait follows the move.",
-  ].join(" ") + (teamGuide(loadTeam(jobs.home)) ? "\n\n" + teamGuide(loadTeam(jobs.home)) : ""),
+  ].join(" ") + (teamGuide(loadTeam(path.join(repo, ".tokenwise-studio"))) ? "\n\n" + teamGuide(loadTeam(path.join(repo, ".tokenwise-studio"))) : ""),
   inputSchema: {
     agent: z.enum(["codex", "claude", "gemini", "local", "free"]),
     task: z.string().min(10),
     images: z.array(z.string()).max(6).optional().describe("Repo-relative paths inside .tokenwise-studio/uploads; forwarded to Codex and Claude"),
-    model: z.string().optional(),
+    model: z.string().optional().describe("Optional model; for agent='free', pass 'auto' or a full 'nvidia:<id>' (or '<provider>:<id>') from team options"),
     effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
     write: z.boolean().optional(),
     role: z.enum(ROLES).optional().describe("Optional job role; pass 'research' (with write=false) for current web research"),
@@ -50,6 +67,7 @@ server.registerTool("delegate", {
   },
 }, async (a) => {
   try {
+    const jobs = getJobs();
     if (a.role === "research" && a.write) {
       return fail(new Error("research jobs must be read-only (write=false)"));
     }
@@ -58,7 +76,8 @@ server.registerTool("delegate", {
     }
     const over = budgetGate(jobs, process.env.TOKENWISE_PARENT, loadSettings().turnBudget);
     if (over) return fail(new Error(over));
-    return ok(brief(jobs.start({ ...a, timeoutMin: a.timeout_min })));
+    const prepared = prepareDelegateArgs(a);
+    return ok(brief(jobs.start({ ...prepared, timeoutMin: prepared.timeout_min })));
   } catch (e) { return fail(e); }
 });
 
@@ -67,7 +86,7 @@ server.registerTool("job_wait", {
   description: "Wait until a job finishes (or timeout_s passes) and return its status, final answer and diff summary.",
   inputSchema: { id: z.string(), timeout_s: z.number().int().min(1).max(1800).optional() },
 }, async ({ id, timeout_s }) => {
-  try { return ok(brief(await jobs.wait(id, timeout_s ?? 600))); } catch (e) { return fail(e); }
+  try { return ok(brief(await getJobs().wait(id, timeout_s ?? 600))); } catch (e) { return fail(e); }
 });
 
 server.registerTool("job_status", {
@@ -76,6 +95,7 @@ server.registerTool("job_status", {
   inputSchema: { id: z.string().optional() },
 }, async ({ id }) => {
   try {
+    const jobs = getJobs();
     return ok(id
       ? brief(jobs.get(id), { includeConflicts: true })
       : jobs.list().map((j) => brief(j, { includeConflicts: true })));
@@ -88,6 +108,7 @@ server.registerTool("job_diff", {
   inputSchema: { id: z.string() },
 }, async ({ id }) => {
   try {
+    const jobs = getJobs();
     const j = jobs.get(id);
     const d = jobs.diff(id);
     const conflicts = j.write && j.status === "done" ? jobs.conflicts(id) : null;
@@ -104,6 +125,7 @@ server.registerTool("job_test", {
   inputSchema: { id: z.string(), rerun: z.boolean().optional(), timeout_s: z.number().int().min(10).max(700).optional() },
 }, async ({ id, rerun, timeout_s }) => {
   try {
+    const jobs = getJobs();
     let j = jobs.get(id);
     const give = (j) => ok({ id: j.id, status: j.test?.status || "not run", command: j.test?.command || null, exitCode: j.test?.exitCode ?? null,
       durationMs: j.test?.durationMs ?? null, tail: (testTail(jobs, id, 3000) || j.test?.tail || "").slice(-3000) });
@@ -123,7 +145,7 @@ server.registerTool("job_merge", {
 }, async ({ id, files }) => {
   try {
     if (loadSettings().permissionMode === "plan-only") return fail(new Error("applying changes is disabled in plan-only mode"));
-    return ok(brief(jobs.merge(id, files)));
+    return ok(brief(getJobs().merge(id, files)));
   } catch (e) { return fail(e); }
 });
 
@@ -132,7 +154,9 @@ server.registerTool("job_discard", {
   description: "Stop a job if running and delete its worktree and branch without applying anything.",
   inputSchema: { id: z.string() },
 }, async ({ id }) => {
-  try { return ok(brief(jobs.discard(id))); } catch (e) { return fail(e); }
+  try { return ok(brief(getJobs().discard(id))); } catch (e) { return fail(e); }
 });
 
-await server.connect(new StdioServerTransport());
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await server.connect(new StdioServerTransport());
+}

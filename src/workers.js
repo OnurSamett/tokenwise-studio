@@ -28,8 +28,47 @@ function codexSlug(model) {
   return hit.slug;
 }
 
+const FREE_PROVIDER_RE = /^(nvidia|openrouter|groq|mistral|custom):(.+)$/;
+const FREE_MODEL_CHARS = /^[\w.\/:-]{1,120}$/;
+
+/** Parse a requested free model string into an auto choice, a provider:id, an explicit id, or a bare ranking hint. */
+export function parseFreeModel(model) {
+  const m = String(model || "").trim();
+  if (!m || m === "auto") return { kind: "auto", model: "auto" };
+  const sel = m.match(FREE_PROVIDER_RE);
+  if (sel) {
+    if ((sel[1] === "nvidia" || sel[1] === "openrouter") && !sel[2].includes("/")) {
+      return { kind: "hint", provider: sel[1], hint: sel[2], model: "auto" };
+    }
+    return { kind: "provider_model", provider: sel[1], id: sel[2], model: m };
+  }
+  if (!m.includes("/") && !m.includes(":")) {
+    return { kind: "hint", provider: null, hint: m, model: "auto" };
+  }
+  return { kind: "id", id: m, model: m };
+}
+
+/** Validate a free-agent model argument and convert bare aliases to ranking hints. */
+export function normalizeFreeModelArg(model) {
+  if (model === undefined || model === null) return { model: undefined, hint: null, provider: null };
+  if (typeof model !== "string") throw new Error("free model must be a string");
+  const raw = model.trim();
+  if (!raw || raw === "auto") return { model: "auto", hint: null, provider: null };
+  if (!FREE_MODEL_CHARS.test(raw)) {
+    throw new Error("free model must be 'auto' or '<provider>:<id>' (nvidia|openrouter|groq|mistral|custom)");
+  }
+  if (raw.includes(":") && !FREE_PROVIDER_RE.test(raw)) {
+    throw new Error("free model must be 'auto' or '<provider>:<id>' (nvidia|openrouter|groq|mistral|custom)");
+  }
+  const parsed = parseFreeModel(raw);
+  if (parsed.kind === "hint") {
+    return { model: "auto", hint: parsed.hint, provider: parsed.provider || null };
+  }
+  return { model: parsed.model, hint: null, provider: parsed.provider || null };
+}
+
 /** Validate and normalise a request; throws with a readable message on policy violations. */
-export function resolve({ agent, model, effort, allowAstra = false }) {
+export function resolve({ agent, model, effort, hint = null, provider = null, allowAstra = false }) {
   if (!AGENTS.includes(agent)) throw new Error(`agent must be one of ${AGENTS.join(", ")}`);
   const defaults = { codex: "medium", claude: "low", gemini: "medium", local: "medium", free: "medium" };
   const eff = effort || defaults[agent];
@@ -46,7 +85,15 @@ export function resolve({ agent, model, effort, allowAstra = false }) {
   } else if (agent === "local") {
     m = model || process.env.TOKENWISE_LOCAL_MODEL || "gpt-oss:20b";
   } else if (agent === "free") {
-    m = model || process.env.TOKENWISE_FREE_MODEL || "auto";
+    const parsed = parseFreeModel(model || process.env.TOKENWISE_FREE_MODEL || "auto");
+    const freeHint = hint || (parsed.kind === "hint" ? parsed.hint : null);
+    const freeProvider = provider || (parsed.kind === "hint" ? parsed.provider : null);
+    return {
+      agent,
+      model: parsed.model,
+      effort: eff,
+      ...(freeHint ? { hint: freeHint, ...(freeProvider ? { provider: freeProvider } : {}) } : {}),
+    };
   } else if (agent === "gemini" && findAgy() && !process.env.GEMINI_API_KEY) {
     // Prefer Antigravity (personal Google account); fall back to Gemini CLI when an API key is set.
     m = agySlug(model, eff);
@@ -56,7 +103,7 @@ export function resolve({ agent, model, effort, allowAstra = false }) {
 }
 
 /** Build the CLI invocation. `lastFile` receives Codex's final message. */
-export function command({ agent, model, effort, via }, { task, cwd, write, role = null, lastFile, images = [] }) {
+export function command({ agent, model, effort, via, hint: specHint, provider: specProvider }, { task, cwd, write, role = null, lastFile, images = [] }) {
   if (agent === "gemini" && via === "antigravity") {
     const args = ["-p", task, "--model", model, "--output-format", "stream-json", "--print-timeout", "0s",
       "--mode", write ? "accept-edits" : "plan"];
@@ -79,13 +126,21 @@ export function command({ agent, model, effort, via }, { task, cwd, write, role 
     // Free-tier chat APIs driven by our own small tool loop (src/freeagent.js): reads the repo,
     // and in write mode edits files inside the worktree (no commands; see freeagent.js).
     let env = {};
-    const sel = model && model !== "auto" ? model.match(/^(nvidia|openrouter|groq|mistral|custom):(.+)$/) : null;
-    if (sel) {
+    const parsed = parseFreeModel(model);
+    const hint = specHint || (parsed.kind === "hint" ? parsed.hint : null);
+    const prov = specProvider || (parsed.kind === "hint" ? parsed.provider : null);
+    const otherProviders = (first) => {
+      try { return freeProviders().map((p) => p.name).filter((n) => n !== first); } catch { return []; }
+    };
+    if (parsed.kind === "provider_model") {
       // "provider:model": try that provider/model first, keep the other configured providers as fallback.
-      let others = [];
-      try { others = freeProviders().map((p) => p.name).filter((n) => n !== sel[1]); } catch {}
-      env = { TOKENWISE_FREE_PROVIDERS: [sel[1], ...others].join(","), [`TOKENWISE_${sel[1].toUpperCase()}_MODEL`]: sel[2] };
-    } else if (model && model !== "auto") env = { TOKENWISE_FREE_MODEL: model };
+      env = { TOKENWISE_FREE_PROVIDERS: [parsed.provider, ...otherProviders(parsed.provider)].join(","), [`TOKENWISE_${parsed.provider.toUpperCase()}_MODEL`]: parsed.id };
+    } else if (hint) {
+      env = { TOKENWISE_FREE_HINT: hint, TOKENWISE_FREE_MODEL: "" };
+      if (prov) env.TOKENWISE_FREE_PROVIDERS = [prov, ...otherProviders(prov)].join(",");
+    } else if (parsed.kind === "id") {
+      env = { TOKENWISE_FREE_MODEL: parsed.id };
+    }
     return { cmd: process.execPath, args: [FREEAGENT, ...(write ? ["--write"] : []), task], env };
   }
   if (agent === "codex") {

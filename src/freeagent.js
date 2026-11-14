@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { freeProviders, pickModels } from "./freechat.js";
+import { ensureModelReady, forcedModelFor, freeProviders, isDownError, isTimeoutError, pickModels, recordModelHealth } from "./freechat.js";
 
 const MAX_STEPS = Number(process.env.TOKENWISE_FREE_MAX_STEPS || 40);
 const MAX_MINUTES = Number(process.env.TOKENWISE_FREE_MAX_MINUTES) > 0 ? Number(process.env.TOKENWISE_FREE_MAX_MINUTES) : 15;
@@ -172,47 +172,80 @@ async function chat(p, model, messages, tools, timeoutMs = 180_000) {
   return res.json();
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
-  const write = argv.includes("--write");
-  const task = argv.filter((x) => x !== "--write").join(" ").trim();
+export async function runFreeAgent({ task, write = false, emit = out, probeTimeout } = {}) {
   const providers = freeProviders();
-  if (!providers.length) { out({ type: "free.error", status: 0, message: "no free provider: set NVIDIA_API_KEY, OPENROUTER_API_KEY, GROQ_API_KEY or MISTRAL_API_KEY" }); process.exit(2); }
-  if (!task) { out({ type: "free.error", status: 0, message: "empty task" }); process.exit(1); }
+  if (!providers.length) {
+    const message = "no free provider: set NVIDIA_API_KEY, OPENROUTER_API_KEY, GROQ_API_KEY or MISTRAL_API_KEY";
+    emit({ type: "free.error", status: 0, message });
+    return { ok: false, exitCode: 2, status: 0, message };
+  }
+  if (!task) {
+    emit({ type: "free.error", status: 0, message: "empty task" });
+    return { ok: false, exitCode: 1, status: 0, message: "empty task" };
+  }
 
   const tools = write ? [...READ_TOOLS, ...WRITE_TOOLS] : READ_TOOLS;
   const messages = [
     { role: "system", content: `You are a careful coding worker. Your working folder is the project root; use relative paths. Use the tools to look at the code before answering${write ? ", then make the smallest correct change. You cannot run commands or tests" : ". You cannot change files or run commands"}. Do exactly the task, nothing more. When done, reply with a short summary (what you found or changed${write ? ", and which test command the user should run to verify it" : ""}).` },
     { role: "user", content: task },
   ];
-  // Candidate (provider, model) pairs in order; the conversation is portable, so a rate limit
-  // mid-task just continues on the next pair.
+  // Candidate (provider, model, isForced) tuples in order; the conversation is portable, so a rate limit
+  // or unavailable model mid-task just continues on the next candidate.
   const pairs = [];
   for (const [i, p] of providers.entries()) {
-    try { for (const m of await pickModels(p, i === 0)) pairs.push([p, m]); }
-    catch (e) { out({ type: "free.skip", provider: p.name, status: Number(e?.status) || 0, message: String(e?.message || e).slice(0, 200) }); }
+    try {
+      const forced = forcedModelFor(p, i === 0);
+      for (const m of await pickModels(p, i === 0)) pairs.push([p, m, forced === m]);
+    } catch (e) {
+      emit({ type: "free.skip", provider: p.name, status: Number(e?.status) || 0, message: String(e?.message || e).slice(0, 200) });
+    }
   }
-  if (!pairs.length) { out({ type: "free.error", status: 0, message: "no usable free model" }); process.exit(1); }
+  if (!pairs.length) {
+    emit({ type: "free.error", status: 0, message: "no usable free model" });
+    return { ok: false, exitCode: 1, status: 0, message: "no usable free model" };
+  }
 
   let k = 0, usage = { prompt_tokens: 0, completion_tokens: 0 }, announced = -1, last = null;
   const deadline = Date.now() + MAX_MINUTES * 60_000;
-  const timeUp = () => {
-    if (Date.now() < deadline) return false;
-    out({ type: "free.usage", usage });
-    out({ type: "free.error", status: 0, message: `stopped after the ${MAX_MINUTES} minute time limit` });
-    process.exit(1);
+  const checkTimeUp = () => {
+    if (Date.now() < deadline) return null;
+    const message = `stopped after the ${MAX_MINUTES} minute time limit`;
+    emit({ type: "free.usage", usage });
+    emit({ type: "free.error", status: 0, message });
+    return { ok: false, exitCode: 1, status: 0, message, usage };
   };
   for (let step = 0; step < MAX_STEPS; step++) {
-    timeUp();
+    const expired = checkTimeUp();
+    if (expired) return expired;
     if (k >= pairs.length) break;
-    const [p, model] = pairs[k];
-    if (announced !== k) { out({ type: "free.init", provider: p.name, model, agent: true, write }); announced = k; }
+    const [p, model, isForced] = pairs[k];
+    if (announced !== k) {
+      if (!isForced) {
+        try {
+          await ensureModelReady(p, model, { forced: false, timeoutMs: probeTimeout });
+        } catch (e) {
+          const status = Number(e?.status) || 0;
+          const message = isTimeoutError(e) ? `probe to ${p.name} timed out` : String(e?.message || e).slice(0, 200);
+          last = { status, message };
+          emit({ type: "free.skip", provider: p.name, model, status, message });
+          if (status === 401 || status === 403 || status === 429) { const name = p.name; while (k < pairs.length && pairs[k][0].name === name) k++; } else k++;
+          step--; continue;
+        }
+      }
+      emit({ type: "free.init", provider: p.name, model, agent: true, write });
+      announced = k;
+    }
+    const perCallCap = k + 1 < pairs.length ? 60_000 : 180_000;
     let data;
-    try { data = await chat(p, model, messages, tools, Math.max(1000, Math.min(180_000, deadline - Date.now()))); }
-    catch (e) {
+    try {
+      data = await chat(p, model, messages, tools, Math.max(1000, Math.min(perCallCap, deadline - Date.now())));
+      recordModelHealth(p.name, model, true, "ok");
+    } catch (e) {
       const status = Number(e?.status) || 0;
-      last = { status, message: e?.name === "TimeoutError" ? `request to ${p.name} timed out` : String(e?.message || e).slice(0, 200) };
-      out({ type: "free.skip", provider: p.name, model, status, message: last.message });
+      const message = isTimeoutError(e) ? `request to ${p.name} timed out` : String(e?.message || e).slice(0, 200);
+      if (isDownError(e)) recordModelHealth(p.name, model, false, message);
+      last = { status, message };
+      emit({ type: "free.skip", provider: p.name, model, status, message });
       // Bad key or rate limit: skip this provider's other models too.
       if (status === 401 || status === 403 || status === 429) { const name = p.name; while (k < pairs.length && pairs[k][0].name === name) k++; } else k++;
       step--; continue;
@@ -222,13 +255,15 @@ async function main() {
     const msg = data?.choices?.[0]?.message || {};
     const calls = msg.tool_calls || [];
     if (!calls.length) {
-      out({ type: "free.message", text: msg.content || "" });
-      out({ type: "free.usage", usage });
-      return;
+      const text = msg.content || "";
+      emit({ type: "free.message", text });
+      emit({ type: "free.usage", usage });
+      return { ok: true, exitCode: 0, provider: p.name, model, text, usage };
     }
     messages.push({ role: "assistant", content: msg.content || null, tool_calls: calls });
     for (const c of calls) {
-      timeUp();
+      const expired2 = checkTimeUp();
+      if (expired2) return expired2;
       if (!c || typeof c !== "object") continue;
       let a = {}; try { a = JSON.parse(c.function?.arguments || "{}"); } catch {}
       if (!a || typeof a !== "object" || Array.isArray(a)) a = {};
@@ -237,17 +272,26 @@ async function main() {
       try {
         if (!tools.some((t) => t.function.name === name)) throw new Error(`tool ${name} is not available in this mode`);
         result = callTool(name, a);
-        out({ type: "free.tool", ...toolEvent(name, a) });
+        emit({ type: "free.tool", ...toolEvent(name, a) });
       } catch (e) {
         result = `ERROR: ${e.message}`;
-        out({ type: "free.tool", ...toolEvent(name, a), error: e.message });
+        emit({ type: "free.tool", ...toolEvent(name, a), error: e.message });
       }
       messages.push({ role: "tool", tool_call_id: c.id, content: String(result) });
     }
   }
-  out({ type: "free.usage", usage });
-  out({ type: "free.error", status: last?.status || 0, message: last ? (last.status === 429 || /rate limit/i.test(last.message) ? `rate limit reached on every free provider (${last.message})` : last.message) : `stopped after ${MAX_STEPS} steps without finishing` });
-  process.exit(1);
+  emit({ type: "free.usage", usage });
+  const message = last ? (last.status === 429 || /rate limit/i.test(last.message) ? `rate limit reached on every free provider (${last.message})` : last.message) : `stopped after ${MAX_STEPS} steps without finishing`;
+  emit({ type: "free.error", status: last?.status || 0, message });
+  return { ok: false, exitCode: 1, status: last?.status || 0, message, usage };
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const write = argv.includes("--write");
+  const task = argv.filter((x) => x !== "--write").join(" ").trim();
+  const res = await runFreeAgent({ task, write });
+  if (!res.ok) process.exit(res.exitCode);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
