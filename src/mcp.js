@@ -14,10 +14,11 @@ const repo = process.env.TOKENWISE_REPO || process.cwd();
 const jobs = new Jobs(repo);
 const server = new McpServer({ name: "tokenwise-studio", version: "0.1.0" });
 
-const brief = (j) => ({
+const brief = (j, { includeConflicts = false } = {}) => ({
   id: j.id, status: j.status, agent: j.agent, model: j.model, effort: j.effort, write: j.write, role: j.role || null,
   title: j.title, diffStat: j.diffStat, files: j.files, movedFrom: j.movedFrom || null, movedTo: j.movedTo || null, final: j.final ? String(j.final).slice(0, 4000) : null,
   images: (j.images || []).map((i) => i.path), tests: j.test ? j.test.status : null,
+  ...(includeConflicts ? { conflicts: j.write && j.status === "done" ? jobs.conflicts(j.id) : null } : {}),
 });
 const ok = (obj) => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }] });
 const fail = (e) => ({ isError: true, content: [{ type: "text", text: String(e.message || e) }] });
@@ -71,18 +72,27 @@ server.registerTool("job_wait", {
 
 server.registerTool("job_status", {
   title: "List or inspect jobs",
-  description: "Without id: list all jobs. With id: one job's status.",
+  description: "Without id: list all jobs. With id: one job's status. Finished write jobs include a `conflicts` field (overlaps with other unapplied jobs and apply cleanliness against the current tree) so you can sequence applies.",
   inputSchema: { id: z.string().optional() },
 }, async ({ id }) => {
-  try { return ok(id ? brief(jobs.get(id)) : jobs.list().map(brief)); } catch (e) { return fail(e); }
+  try {
+    return ok(id
+      ? brief(jobs.get(id), { includeConflicts: true })
+      : jobs.list().map((j) => brief(j, { includeConflicts: true })));
+  } catch (e) { return fail(e); }
 });
 
 server.registerTool("job_diff", {
   title: "Show a write job's changes",
-  description: "Return the unified diff a write job produced, for review before merging.",
+  description: "Return the unified diff a write job produced and a `conflicts` summary for review before merging.",
   inputSchema: { id: z.string() },
 }, async ({ id }) => {
-  try { const d = jobs.diff(id); return ok(d ? d.slice(0, 60000) : "(no changes)"); } catch (e) { return fail(e); }
+  try {
+    const j = jobs.get(id);
+    const d = jobs.diff(id);
+    const conflicts = j.write && j.status === "done" ? jobs.conflicts(id) : null;
+    return ok({ id: j.id, diff: d ? d.slice(0, 60000) : "(no changes)", conflicts });
+  } catch (e) { return fail(e); }
 });
 
 server.registerTool("job_test", {

@@ -387,7 +387,23 @@
   .wk-extra { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 0 10px 8px 54px; }
   .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; line-height: 18px; border-radius: 999px; padding: 0 8px; border: 1px solid var(--line2); color: var(--muted); white-space: nowrap; }
   .chip.pass { color: var(--ok); border-color: rgba(92,201,138,.45); } .chip.fail, .chip.error, .chip.timeout { color: var(--bad); border-color: rgba(240,113,120,.45); }
+  .chip.overlap { color: var(--accent); background: var(--accent-soft); border-color: rgba(139,143,255,.45); }
   .chip.running { color: var(--accent); }
+  .review-summary { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--line2); border-radius: 10px; background: var(--s2); padding: 10px 12px; margin-bottom: 14px; font-size: 13px; color: var(--text); line-height: 1.45; }
+  .review-summary .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--ok); }
+  .review-summary.overlap { border-color: rgba(139,143,255,.45); background: var(--accent-soft); }
+  .review-summary.overlap .dot { background: var(--accent); }
+  .review-summary.conflict { border-color: rgba(240,113,120,.45); }
+  .review-summary.conflict .dot { background: var(--bad); }
+  .file-conflict { padding: 7px 12px; border-top: 1px solid var(--line); background: var(--s1); font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+  .file-conflict .fc-overlap { color: var(--accent); }
+  .file-conflict .fc-bad { color: var(--bad); }
+  .conflict-bar { border: 1px solid rgba(240,113,120,.45); border-radius: 10px; background: var(--bg); padding: 10px 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+  .conflict-bar .cb-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .conflict-bar .cb-msg { flex: 1; min-width: 180px; color: var(--text); }
+  .conflict-bar .cb-err { font-size: 12.5px; color: var(--bad); }
+  .btn.accent { background: var(--accent-soft); color: var(--accent); border-color: rgba(139,143,255,.45); }
+  .btn.accent:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
   .lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.82); display: grid; place-items: center; padding: 24px; cursor: zoom-out; }
   .lightbox img { min-width: min(60vmin, 420px); object-fit: contain; max-width: 100%; max-height: calc(100vh - 80px); border-radius: 8px; background: #fff2; box-shadow: 0 10px 50px rgba(0,0,0,.5); }
   .lightbox .cap { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; color: #ddd; font: 13px var(--mono); }
@@ -1232,6 +1248,82 @@ const openJob = (id) => openDrawer("job", id);
 const openReview = () => openDrawer("review");
 const openDirect = () => openDrawer("direct");
 const path0 = () => S.project?.name || t("top.thisProject");
+const rebaseFailures = new Map();
+
+function conflictChip(fc) {
+  if (!fc) return null;
+  if (fc.status === "conflict") return h("span", { class: "chip fail" }, t("conflict.chip.conflict"));
+  if (fc.status === "overlap") return h("span", { class: "chip overlap" }, t("conflict.chip.overlap"));
+  return h("span", { class: "chip pass" }, t("conflict.chip.ok"));
+}
+
+function conflictNote(fc) {
+  if (!fc) return null;
+  const rows = [];
+  if (fc.alsoChangedBy?.length) {
+    const jobsText = fc.alsoChangedBy.map((o) => `${AGENT[o.agent] || o.agent} ${modelName(o.model)} · ${o.title}`).join(", ");
+    rows.push(h("div", { class: "fc-overlap" }, t("conflict.alsoChangedBy", { jobs: jobsText })));
+  }
+  if (!fc.appliesCleanly) {
+    const key = `conflict.reason.${fc.reason || "apply_failed"}`;
+    const msg = hasKey(key, lang) ? t(key) : t("conflict.reason.apply_failed");
+    rows.push(h("div", { class: "fc-bad" }, msg));
+  }
+  return rows.length ? h("div", { class: "file-conflict" }, rows) : null;
+}
+
+function conflictActionBar(j, conflicts) {
+  if (!conflicts || conflicts.clean) return null;
+  const failState = rebaseFailures.get(j.id) || null;
+  const rebaseBtn = h("button", { class: "btn", onclick: doRebase }, t("conflict.rebase"));
+  const resolveBtn = failState ? h("button", { class: "btn accent", onclick: doResolve }, t("conflict.askResolve")) : null;
+  async function doRebase() {
+    rebaseBtn.disabled = true; rebaseBtn.textContent = t("conflict.rebasing");
+    try {
+      const r = await api(`rebase/${j.id}`, {});
+      if (r.ok && r.conflicts?.clean) {
+        rebaseFailures.delete(j.id);
+        toast(t("conflict.rebaseOk"));
+      } else if (r.ok) {
+        rebaseFailures.set(j.id, { stillBlocked: true, conflictingFiles: r.conflicts.applyConflicts.map((x) => x.file) });
+        toast(t("conflict.rebaseStillBlocked"), true);
+      } else {
+        rebaseFailures.set(j.id, { conflictingFiles: r.conflictingFiles, failedHunks: r.failedHunks, error: r.error });
+        toast(t("conflict.rebaseFailed", { files: (r.conflictingFiles || []).join(", ") }), true);
+      }
+      await refresh();
+      renderDrawer(true);
+    } catch (e) {
+      toast(e.message, true);
+      rebaseBtn.disabled = false; rebaseBtn.textContent = t("conflict.rebase");
+    }
+  }
+  async function doResolve() {
+    resolveBtn.disabled = true; resolveBtn.textContent = t("conflict.askingResolve");
+    try {
+      const body = failState?.conflictingFiles ? { conflictingFiles: failState.conflictingFiles, failedHunks: failState.failedHunks } : {};
+      await api(`resolve/${j.id}`, body);
+      rebaseFailures.delete(j.id);
+      toast(t("conflict.resolveStarted"));
+      await refresh();
+      renderDrawer(true);
+    } catch (e) {
+      toast(e.message, true);
+      resolveBtn.disabled = false; resolveBtn.textContent = t("conflict.askResolve");
+    }
+  }
+  const failMsg = failState?.stillBlocked
+    ? t("conflict.rebaseStillBlocked")
+    : failState?.conflictingFiles?.length
+      ? t("conflict.rebaseFailed", { files: failState.conflictingFiles.join(", ") })
+      : null;
+  return h("div", { class: "conflict-bar" },
+    h("div", { class: "cb-row" },
+      h("span", { class: "cb-msg" }, tp("conflict.jobNotice", conflicts.applyConflicts.length)),
+      rebaseBtn,
+      resolveBtn),
+    failMsg ? h("div", { class: "cb-err" }, failMsg) : null);
+}
 
 async function renderDrawer(full) {
   if (!drawer) return;
@@ -1242,7 +1334,10 @@ async function renderDrawer(full) {
     drawer.lastStatus = j.status;
     const log = await api(`log/${j.id}`);
     const steps = log.items.filter((i) => !["meta", "usage"].includes(i.kind));
-    const files = j.write && j.status !== "running" ? (await api(`diff/${j.id}`)).files : [];
+    const diffData = j.write && j.status !== "running" ? await api(`diff/${j.id}`) : { files: [], conflicts: null };
+    const files = diffData.files || [];
+    const jobConflicts = j.status === "done" ? diffData.conflicts : null;
+    const allBlocked = !!(jobConflicts && !jobConflicts.clean && files.length && jobConflicts.applyConflicts.length >= files.length);
     set(d,
       h("div", { class: "d-head" }, h("span", { class: "badge " + j.agent }, BADGE[j.agent]),
         h("div", {}, h("h3", {}, j.title), h("div", { class: "meta" }, `${AGENT[j.agent]} · ${modelName(j.model)} · ${t("effort.ofJob", { effort: effortLabel(j.effort) })} · `, h("span", { class: "w-state " + j.status }, stateLabel(j.status)), " · ", h("span", { class: "w-time" }, clock(j.created, j.finished)))),
@@ -1251,11 +1346,12 @@ async function renderDrawer(full) {
         j.final ? h("div", { class: "section" }, h("h4", {}, t("job.result")), h("div", { class: "answer" }, richReply(j.final))) : j.status === "running" ? h("div", { class: "section muted" }, h("span", { class: "spin" }), "  ", t("job.workingOnIt")) : null,
         (j.images || []).length ? h("div", { class: "section" }, h("h4", {}, t("job.generatedImages")), jobThumbs(j, "flat big")) : null,
         j.write && j.status === "done" && files.length ? testPanel(j) : null,
-        files.length ? h("div", { class: "section" }, h("h4", {}, t(j.status === "merged" ? "job.appliedChanges" : "job.changes")), files.map((f) => fileBlock(f, null, null, j))) : null,
+        conflictActionBar(j, jobConflicts),
+        files.length ? h("div", { class: "section" }, h("h4", {}, t(j.status === "merged" ? "job.appliedChanges" : "job.changes")), files.map((f) => fileBlock(f, null, null, j, jobConflicts?.files?.[f.path] || null))) : null,
         h("div", { class: "section" }, h("h4", {}, t("job.task")), h("div", { class: "muted", style: "white-space:pre-wrap;font-size:14px" }, j.task)),
         h("details", { class: "tech" }, h("summary", {}, tp("job.techLog", steps.length)), h("div", { class: "steps", style: "margin-top:10px" }, steps.map((s) => s.kind === "think" ? thinkingRow(s.text) : h("div", { class: "step" + (s.kind === "error" ? " err" : "") }, s.text))))),
       j.write && j.status === "done" && files.length ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.stagedFoot")),
-        h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.discard")), h("button", { class: "btn primary", onclick: () => act("merge", j.id) }, t("job.apply"))) :
+        h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.discard")), h("button", { class: "btn primary", disabled: allBlocked, onclick: () => act("merge", j.id) }, t("job.apply"))) :
       j.write && j.status === "merged" && j.applySnapshot ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.stagedFoot")),
         h("button", { class: "btn", onclick: () => undoApplyJobs([j.id]) }, t("job.undoApply"))) :
       j.status === "running" ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.worktreeFoot")), h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.stop"))) : null);
@@ -1266,27 +1362,50 @@ async function renderDrawer(full) {
     const p = pending();
     const boxes = [];
     const blocks = [];
+    let blockedCount = 0;
+    let overlapCount = 0;
     for (const j of p) {
-      const { files } = await api(`diff/${j.id}`);
-      blocks.push(h("div", { class: "section", style: "margin-bottom:8px" }, h("h4", {}, `${AGENT[j.agent]} · ${modelName(j.model)} · ${j.title}`), testPanel(j)));
+      const { files, conflicts } = await api(`diff/${j.id}`);
+      blocks.push(h("div", { class: "section", style: "margin-bottom:8px" }, h("h4", {}, `${AGENT[j.agent]} · ${modelName(j.model)} · ${j.title}`), testPanel(j), conflictActionBar(j, conflicts)));
       for (const f of files) {
-        const cb = h("input", { type: "checkbox", checked: true, onclick: (e) => e.stopPropagation(), onchange: () => count() });
+        const fc = conflicts?.files?.[f.path] || { status: "ok", appliesCleanly: true, alsoChangedBy: [] };
+        if (!fc.appliesCleanly) blockedCount++;
+        else if (fc.alsoChangedBy?.length) overlapCount++;
+        const canApply = fc.appliesCleanly !== false;
+        const cb = h("input", { type: "checkbox", checked: canApply, disabled: !canApply, onclick: (e) => e.stopPropagation(), onchange: () => count() });
         cb.dataset.job = j.id; cb.dataset.path = f.path; boxes.push(cb);
-        blocks.push(fileBlock(f, cb, `${AGENT[j.agent]} · ${modelName(j.model)}`, j));
+        blocks.push(fileBlock(f, cb, `${AGENT[j.agent]} · ${modelName(j.model)}`, j, fc));
       }
+    }
+    let summaryBanner = null;
+    if (boxes.length) {
+      let cls = "review-summary", text = t("review.conflictBanner.ok");
+      if (blockedCount > 0 && overlapCount > 0) {
+        cls += " conflict";
+        text = t("review.conflictBanner.both", { blocked: tp("review.files", blockedCount), overlap: tp("review.files", overlapCount) });
+      } else if (blockedCount > 0) {
+        cls += " conflict";
+        text = tp("review.conflictBanner.blocked", blockedCount);
+      } else if (overlapCount > 0) {
+        cls += " overlap";
+        text = tp("review.conflictBanner.overlap", overlapCount);
+      }
+      summaryBanner = h("div", { class: cls }, h("span", { class: "dot" }), h("span", {}, text));
     }
     const applyBtn = h("button", { class: "btn primary", onclick: applySelected });
     const count = () => { const n = boxes.filter((b) => b.checked).length; applyBtn.textContent = tp("review.applyN", n); applyBtn.disabled = !n; };
     async function applySelected() {
       applyBtn.disabled = true;
+      const applied = [];
       try {
-        const applied = [];
         for (const j of p) {
-          const sel = boxes.filter((b) => b.dataset.job === j.id && b.checked).map((b) => b.dataset.path);
+          const jobBoxes = boxes.filter((b) => b.dataset.job === j.id);
+          const sel = jobBoxes.filter((b) => b.checked).map((b) => b.dataset.path);
+          const hasBlocked = jobBoxes.some((b) => b.disabled);
           if (sel.length) {
             await api(`merge/${j.id}`, { files: sel, autoCheck: false });
             applied.push(j.id);
-          } else {
+          } else if (!hasBlocked) {
             await api(`discard/${j.id}`, {});
           }
         }
@@ -1296,11 +1415,16 @@ async function renderDrawer(full) {
         closeDrawer(); await refresh();
         const n = boxes.filter((b) => b.checked).length;
         toast(tp("review.appliedToast", n), applied.length ? { actionLabel: t("job.undoApply"), onAction: () => undoApplyJobs([...applied].reverse()) } : false);
-      } catch (e) { toast(e.message, true); applyBtn.disabled = false; }
+      } catch (e) {
+        if (applied.length) { lastAppliedIds = applied; stagedAt = 0; }
+        await refresh();
+        await renderDrawer(true);
+        toast(e.message, true);
+      }
     }
     set(d,
       h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("review.title")), h("div", { class: "meta" }, t("review.meta", { files: tp("review.files", boxes.length), workers: tp("review.workers", p.length) }))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
-      h("div", { class: "d-body" }, blocks.length ? blocks : h("div", { class: "empty" }, t("review.empty"))),
+      h("div", { class: "d-body" }, summaryBanner, blocks.length ? blocks : h("div", { class: "empty" }, t("review.empty"))),
       blocks.length ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("review.note")),
         h("button", { class: "btn", onclick: async () => { for (const j of p) await api(`discard/${j.id}`, {}); closeDrawer(); refresh(); } }, t("review.discardAll")), applyBtn) : null);
     count();
@@ -1940,17 +2064,19 @@ async function renderDrawer(full) {
 
 // Files that can make code run later (CI, git hooks, package scripts, build files): flag them in review.
 const RUNS_CODE = /^(\.github\/workflows\/|\.husky\/|\.githooks\/|\.vscode\/)|(^|\/)(package\.json|Makefile|\.gitattributes|\.gitmodules|setup\.py|pyproject\.toml|Cargo\.toml|build\.rs|conftest\.py|\.pre-commit-config\.yaml)$/;
-function fileBlock(f, checkbox, tag, job) {
+function fileBlock(f, checkbox, tag, job, fc = null) {
   if (f.binary) {
     return h("details", { class: "file", open: true },
-      h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "tag" }, t(f.deleted ? "file.binaryDeleted" : "file.binary"))),
+      h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), conflictChip(fc), tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "tag" }, t(f.deleted ? "file.binaryDeleted" : "file.binary"))),
+      conflictNote(fc),
       h("div", { class: "binfile" }, f.image && job && !f.deleted
         ? h("button", { class: "thumb", title: f.path, "aria-label": t("image.openAria", { path: f.path }), onclick: (e) => { e.preventDefault(); lightbox(jobImageUrl(job, f.path), f.path); } }, h("img", { src: jobImageUrl(job, f.path), alt: f.path, loading: "lazy" })) : null,
         h("span", {}, t(f.deleted ? "file.deleted" : f.image ? "file.generatedImage" : "file.binaryNote"))));
   }
   const lines = f.patch.split("\n").filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode)/.test(l));
   return h("details", { class: "file", open: true },
-    h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), RUNS_CODE.test(f.path) ? h("span", { class: "tag", style: "color:var(--warn)", title: t("file.canRunCodeTip") }, t("file.canRunCode")) : null, tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "plus" }, "+" + f.add), h("span", { class: "minus" }, "−" + f.del)),
+    h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), RUNS_CODE.test(f.path) ? h("span", { class: "tag", style: "color:var(--warn)", title: t("file.canRunCodeTip") }, t("file.canRunCode")) : null, conflictChip(fc), tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "plus" }, "+" + f.add), h("span", { class: "minus" }, "−" + f.del)),
+    conflictNote(fc),
     h("div", { class: "diff" }, lines.map((l) => h("span", { class: l.startsWith("+") ? "a" : l.startsWith("-") ? "d" : l.startsWith("@@") ? "h" : "" }, l.startsWith("@@") ? "⋯" : l || " "))));
 }
 

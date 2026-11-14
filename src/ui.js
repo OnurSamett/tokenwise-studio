@@ -288,7 +288,8 @@ export const handler = async (req, res) => {
       if (what === "orchestrator") return send(res, 200, orchestratorNow(url.searchParams.get("model"), url.searchParams.get("effort")));
       if (what === "chatlog") return send(res, 200, chatTimeline(id, from));
       if (what === "log") return send(res, 200, jobTimeline(id, from));
-      if (what === "diff") return send(res, 200, { files: splitDiff(jobs.diff(id)) });
+      if (what === "diff") return send(res, 200, { files: splitDiff(jobs.diff(id)), conflicts: jobs.conflicts(id) });
+      if (what === "conflicts") return send(res, 200, jobs.conflicts(id));
     }
     if (req.method === "POST") {
       const b = await readBody(req, what === "upload" ? UPLOAD_BODY_LIMIT : undefined);
@@ -327,6 +328,8 @@ export const handler = async (req, res) => {
       if (what === "chat") return send(res, 200, chats.send(b));
       if (what === "stop") return send(res, 200, chats.stop(id));
       if (what === "merge") return send(res, 200, jobs.merge(id, b.files, { autoCheck: b.autoCheck !== false }));
+      if (what === "rebase") return send(res, 200, jobs.rebase(id));
+      if (what === "resolve") return send(res, 200, jobs.resolveConflict(id, b));
       if (what === "quit") {
         if (studioBusy() && b.force !== true) return send(res, 409, { error: "busy", busy: true });
         send(res, 200, { ok: true });

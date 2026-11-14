@@ -12,6 +12,7 @@ import { captureImages } from "./jobimages.js";
 import { runTests, stopTests, runCombinedCheck, combinedCheckRunning } from "./testrun.js";
 import { loadSettings } from "./settings.js";
 import { createSnapshot, captureFileStates, restoreSnapshot } from "./snapshots.js";
+import { checkJobConflicts, rebaseJob, resolveJobConflicts } from "./conflicts.js";
 
 // Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
 const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/node_modules/**", "**/.DS_Store",
@@ -313,6 +314,24 @@ export class Jobs {
     return fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "";
   }
 
+  /** Detect overlaps with other unapplied write jobs and whether the diff applies cleanly to the current tree/index. */
+  conflicts(id, files) {
+    return checkJobConflicts(this, id, { files });
+  }
+
+  /** Re-run a finished write job's diff with `git apply --3way` into a fresh worktree from current HEAD. */
+  rebase(id) {
+    return rebaseJob(this, id, {
+      artifacts: ARTIFACTS,
+      onImages: (j) => captureImages(this, j, j.files),
+    });
+  }
+
+  /** Start a follow-up write job for the same agent with the conflicting files and failed hunks in its task. */
+  resolveConflict(id, opts = {}) {
+    return resolveJobConflicts(this, id, opts);
+  }
+
   /** Apply the worker's changes (all files, or only `files`) to the main working tree as staged
    *  changes, then remove the worktree. Files not selected are dropped. */
   merge(id, files, { autoCheck = true } = {}) {
@@ -324,6 +343,13 @@ export class Jobs {
     const pick = hasDiff && Array.isArray(files) && files.length ? files : null;
     if (pick && pick.some((x) => !(j.files || []).includes(x))) throw new Error("unknown file in selection");
     const touched = hasDiff ? (pick || j.files || []) : [];
+
+    if (hasDiff && touched.length) {
+      const c = this.conflicts(id, touched);
+      if (!c.clean) {
+        throw new Error(`cannot apply: conflict in ${c.applyConflicts.map((x) => x.file).join(", ")}`);
+      }
+    }
 
     const snapshot = createSnapshot(this.repo, j.id, touched);
     if (hasDiff) {
