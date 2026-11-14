@@ -1,24 +1,232 @@
 #!/usr/bin/env node
-// Usage: tokenwise-studio [path] [--port N] [--no-open]
+// tokenwise-studio [path] [--port N] [--no-open] [--pick]
+// tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-app] | uninstall [--dry-run]
 import path from "node:path";
-import { spawn } from "node:child_process";
-import { startServer } from "./ui.js";
+import fs from "node:fs";
+import os from "node:os";
+import { fileURLToPath } from "node:url";
+import { spawn, execFileSync } from "node:child_process";
+
+const SRC = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.dirname(SRC);
+const MCP_NAME = "tokenwise-studio";
+const BUNDLE_ID = "com.nolienlabs.tokenwise-studio";
+const APP_NAME = "tokenwise studio.app";
+const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+
+const HELP = `tokenwise studio ${pkg.version}
+
+Usage:
+  tokenwise-studio [path] [--port N] [--no-open]   start the UI for a project (default: current folder)
+  tokenwise-studio --pick                          choose the project in a macOS folder dialog
+  tokenwise-studio doctor                          check which workers are ready
+  tokenwise-studio setup [--dry-run] [--no-mcp] [--no-app]
+                                                   register the MCP server with Claude Code (user scope)
+                                                   and, on macOS, create ~/Applications/tokenwise studio.app
+  tokenwise-studio uninstall [--dry-run]           undo what setup did
+  tokenwise-studio --version | --help
+`;
 
 const argv = process.argv.slice(2);
-const pi = argv.indexOf("--port");
-const first = pi >= 0 ? Number(argv[pi + 1]) : 4777;
-const dir = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--port");
-const repo = path.resolve(dir || process.cwd());
+const has = (f) => argv.includes(f);
+const home = () => os.homedir();
+const appPath = () => path.join(home(), "Applications", APP_NAME);
+const logPath = () => path.join(home(), ".tokenwise-studio", "launcher.log");
 
-let url = null;
-for (let p = first; p <= first + 10 && !url; p++) {
-  try { url = await startServer({ repo, port: p }); } catch (e) { if (e.code !== "EADDRINUSE") throw e; }
+// Run a command with an argument array; returns { ok, out }.
+const run = (cmd, args, opts = {}) => {
+  try {
+    const out = execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000, ...opts });
+    return { ok: true, out };
+  } catch (e) { return { ok: false, out: `${e.stdout || ""}${e.stderr || ""}` || String(e.message) }; }
+};
+// Stable node path: the PATH entry (e.g. /opt/homebrew/bin/node) survives `brew upgrade node`;
+// process.execPath points into a versioned Cellar folder that disappears on upgrade.
+function stableNode() {
+  const r = run("/bin/sh", ["-c", "command -v node"]);
+  const p = r.ok ? r.out.trim() : "";
+  try { if (p && path.isAbsolute(p) && fs.realpathSync(p) === fs.realpathSync(process.execPath)) return p; } catch {}
+  return process.execPath;
 }
-if (!url) { console.error(`tokenwise studio: ports ${first}-${first + 10} are all busy`); process.exit(1); }
-console.log(`tokenwise studio is running at ${url}  (project: ${path.basename(repo)})`);
+const hasClaude = () => run("claude", ["--version"]).ok;
+const mcpRegistered = () => run("claude", ["mcp", "get", MCP_NAME]).ok;
 
-if (!argv.includes("--no-open")) {
-  const [cmd, args] = process.platform === "darwin" ? ["open", [url]]
-    : process.platform === "win32" ? ["cmd", ["/c", "start", '""', url]] : ["xdg-open", [url]];
-  try { spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref(); } catch {}
+function doDoctor() {
+  return import("./doctor.js").then(({ doctor }) => {
+    const d = doctor();
+    const rows = [];
+    const row = (name, ok, detail, fix) => rows.push({ name, ok, detail, fix: ok ? "" : fix });
+    row("git", d.git.installed, d.git.installed ? "installed" : "missing", "install git (https://git-scm.com)");
+    const cli = (name, x, fixIn, fixAuth) => {
+      const ok = x.installed && x.signedIn;
+      row(name, ok, !x.installed ? "not installed" : x.signedIn ? "ready" : "installed, not signed in", !x.installed ? fixIn : fixAuth);
+    };
+    cli("claude", d.claude, "npm install -g @anthropic-ai/claude-code", "claude auth login");
+    cli("codex", d.codex, "npm install -g @openai/codex", "codex login");
+    const g = d.gemini;
+    row("gemini", g.installed && g.signedIn, g.via === "antigravity" ? (g.signedIn ? "ready (Antigravity)" : "Antigravity found, not signed in") : !g.installed ? "not installed" : g.signedIn ? "ready (API key)" : "installed, no API key",
+      g.via === "antigravity" ? "open Antigravity (agy) once and sign in" : !g.installed ? "install Antigravity, or Gemini CLI + set GEMINI_API_KEY" : "set GEMINI_API_KEY");
+    const l = d.local;
+    row("local", l.installed && l.signedIn, !l.installed ? "ollama not installed" : l.signedIn ? `ready (${l.model})` : `model ${l.model} not ready`, l.fix || "");
+    const f = d.free;
+    row("free", f.installed && f.signedIn, !f.installed ? "no API key" : f.signedIn ? `ready (${f.via})` : `key found (${f.via}), not enabled`, f.fix || "");
+    const w = Math.max(...rows.map((r) => r.name.length));
+    const w2 = Math.max(...rows.map((r) => r.detail.length));
+    console.log("tokenwise studio readiness\n");
+    for (const r of rows) {
+      console.log(`  ${r.ok ? "ok " : "-- "} ${r.name.padEnd(w)}  ${r.detail.padEnd(w2)}${r.fix ? "  -> " + r.fix : ""}`);
+    }
+    console.log("\nAt least one worker needs to be ready. Key values are never printed.");
+  });
 }
+
+function buildIcon(resourcesDir) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tws-icon-"));
+  const set = path.join(tmp, "AppIcon.iconset");
+  try {
+    fs.mkdirSync(set);
+    const src = path.join(ROOT, "assets", "logo.png");
+    for (const s of [16, 32, 128, 256, 512]) {
+      for (const [scale, suffix] of [[1, ""], [2, "@2x"]]) {
+        const px = s * scale;
+        const r = run("sips", ["-z", String(px), String(px), src, "--out", path.join(set, `icon_${s}x${s}${suffix}.png`)]);
+        if (!r.ok) throw new Error(r.out.trim());
+      }
+    }
+    const r = run("iconutil", ["-c", "icns", set, "-o", path.join(resourcesDir, "AppIcon.icns")]);
+    if (!r.ok) throw new Error(r.out.trim());
+    return true;
+  } catch (e) {
+    console.warn(`  warning: could not build the app icon (${String(e.message).split("\n")[0]}); continuing without it`);
+    return false;
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
+function buildApp() {
+  const app = appPath();
+  if (fs.existsSync(app) && !ownedApp()) throw new Error(`${app} already exists and was not created by tokenwise studio; leaving it alone`);
+  fs.rmSync(app, { recursive: true, force: true });
+  const macos = path.join(app, "Contents", "MacOS"), res = path.join(app, "Contents", "Resources");
+  fs.mkdirSync(macos, { recursive: true });
+  fs.mkdirSync(res, { recursive: true });
+  const hasIcon = buildIcon(res);
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
+  <key>CFBundleName</key><string>tokenwise studio</string>
+  <key>CFBundleDisplayName</key><string>tokenwise studio</string>
+  <key>CFBundleExecutable</key><string>launcher</string>
+${hasIcon ? "  <key>CFBundleIconFile</key><string>AppIcon</string>\n" : ""}  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>${pkg.version}</string>
+  <key>CFBundleShortVersionString</key><string>${pkg.version}</string>
+  <key>LSUIElement</key><false/>
+</dict>
+</plist>
+`;
+  fs.writeFileSync(path.join(app, "Contents", "Info.plist"), plist);
+  const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+  const launcher = `#!/bin/bash
+# Generated by "tokenwise-studio setup". GUI apps get no shell PATH, so node is an absolute path.
+LOG=${q(logPath())}
+mkdir -p "$(dirname "$LOG")"
+export PATH="/opt/homebrew/bin:/usr/local/bin:$(dirname ${q(stableNode())}):$PATH"
+echo "--- $(date) launch" >> "$LOG"
+exec ${q(stableNode())} ${q(path.join(SRC, "cli.js"))} --pick >> "$LOG" 2>&1
+`;
+  const lp = path.join(macos, "launcher");
+  fs.writeFileSync(lp, launcher);
+  fs.chmodSync(lp, 0o755);
+  return app;
+}
+
+async function doSetup() {
+  const dry = has("--dry-run"), mac = process.platform === "darwin";
+  const wantMcp = !has("--no-mcp"), wantApp = !has("--no-app") && mac;
+  const mcpPath = path.join(SRC, "mcp.js");
+  const claude = wantMcp && hasClaude();
+  const registered = claude && mcpRegistered();
+  console.log(`tokenwise studio setup${dry ? " (dry run, nothing will be changed)" : ""}\n`);
+  console.log("This will:");
+  if (!wantMcp) console.log("  - skip MCP registration (--no-mcp)");
+  else if (!claude) console.log("  - skip MCP registration: the `claude` CLI was not found (install Claude Code, then re-run setup)");
+  else if (registered) console.log(`  - skip MCP registration: "${MCP_NAME}" is already registered with Claude Code`);
+  else console.log(`  - register the MCP server with Claude Code (user scope):\n      claude mcp add ${MCP_NAME} --scope user -- ${stableNode()} ${mcpPath}`);
+  if (has("--no-app")) console.log("  - skip the launcher app (--no-app)");
+  else if (!mac) console.log("  - skip the launcher app (macOS only)");
+  else console.log(`  - create the launcher app ${appPath()}\n      (log: ${logPath()})`);
+  console.log("");
+  if (!dry) {
+    if (claude && !registered) {
+      const r = run("claude", ["mcp", "add", MCP_NAME, "--scope", "user", "--", stableNode(), mcpPath]);
+      console.log(r.ok ? "registered MCP server with Claude Code" : `MCP registration failed: ${r.out.trim()}`);
+    }
+    if (wantApp) {
+      try { console.log(`created ${buildApp()}`); } catch (e) { console.error(`could not create the launcher app: ${e.message}`); }
+    }
+    console.log("");
+  }
+  await doDoctor();
+  if (!dry) console.log(`\nDone. Start it with: cd your-project && tokenwise-studio${wantApp ? "  (or open the app from ~/Applications)" : ""}`);
+}
+
+function ownedApp() {
+  const plist = path.join(appPath(), "Contents", "Info.plist");
+  try { return fs.readFileSync(plist, "utf8").includes(`<string>${BUNDLE_ID}</string>`); } catch { return false; }
+}
+
+function doUninstall() {
+  const dry = has("--dry-run");
+  console.log(`tokenwise studio uninstall${dry ? " (dry run, nothing will be changed)" : ""}\n`);
+  const claude = hasClaude(), registered = claude && mcpRegistered();
+  if (registered) {
+    console.log(`  - remove the MCP registration: claude mcp remove ${MCP_NAME} --scope user`);
+    if (!dry) {
+      const r = run("claude", ["mcp", "remove", MCP_NAME, "--scope", "user"]);
+      console.log(r.ok ? "    removed" : `    failed: ${r.out.trim()}`);
+    }
+  } else console.log("  - MCP registration: nothing to remove");
+  if (ownedApp()) {
+    console.log(`  - delete ${appPath()}`);
+    if (!dry) { fs.rmSync(appPath(), { recursive: true, force: true }); console.log("    deleted"); }
+  } else if (fs.existsSync(appPath())) console.log(`  - ${appPath()} exists but is not ours (bundle id mismatch); leaving it alone`);
+  else console.log("  - launcher app: nothing to remove");
+  console.log("\nTo finish, run: npm uninstall -g tokenwise-studio");
+}
+
+function pickFolder() {
+  if (process.platform !== "darwin") { console.error("tokenwise studio: --pick needs macOS. Pass a folder instead: tokenwise-studio /path/to/project"); process.exit(1); }
+  try {
+    const out = execFileSync("osascript", ["-e", 'POSIX path of (choose folder with prompt "Choose a project for tokenwise studio")'], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    return out || null;
+  } catch { return null; } // cancelled
+}
+
+async function startUi() {
+  const { startServer } = await import("./ui.js");
+  const pi = argv.indexOf("--port");
+  const first = pi >= 0 ? Number(argv[pi + 1]) : 4777;
+  let dir = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--port");
+  if (has("--pick")) { dir = pickFolder(); if (!dir) process.exit(0); }
+  const repo = path.resolve(dir || process.cwd());
+  let url = null;
+  for (let p = first; p <= first + 10 && !url; p++) {
+    try { url = await startServer({ repo, port: p }); } catch (e) { if (e.code !== "EADDRINUSE") throw e; }
+  }
+  if (!url) { console.error(`tokenwise studio: ports ${first}-${first + 10} are all busy`); process.exit(1); }
+  console.log(`tokenwise studio is running at ${url}  (project: ${path.basename(repo)})`);
+  if (!has("--no-open")) {
+    const [cmd, args] = process.platform === "darwin" ? ["open", [url]]
+      : process.platform === "win32" ? ["cmd", ["/c", "start", '""', url]] : ["xdg-open", [url]];
+    try { spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref(); } catch {}
+  }
+}
+
+const cmd = argv[0];
+if (has("--help") || has("-h") || cmd === "help") console.log(HELP);
+else if (has("--version") || has("-v")) console.log(pkg.version);
+else if (cmd === "doctor") await doDoctor();
+else if (cmd === "setup") await doSetup();
+else if (cmd === "uninstall") doUninstall();
+else await startUi();

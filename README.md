@@ -37,33 +37,34 @@ Companion to [tokenwise](https://github.com/OnurSamett/tokenwise): tokenwise dec
 - Node 20+, git
 - At least one worker CLI, signed in: [Codex CLI](https://github.com/openai/codex) (`codex login`), [Claude Code](https://www.npmjs.com/package/@anthropic-ai/claude-code) (`claude auth login`), Gemini via [Google Antigravity](https://antigravity.google) (`agy`, included in Gemini.app on macOS; run it once to sign in with your Google account; models `hydrogen` (fast, default) and `argon` (frontier)) or [Gemini CLI](https://github.com/google-gemini/gemini-cli) with `GEMINI_API_KEY` (Gemini CLI's own Google sign-in no longer works for individuals)
 
-## Setup
-
-The simplest start, from inside your project folder (opens the studio in your browser):
+## Install
 
 ```bash
-npx github:OnurSamett/tokenwise-studio
+npm install -g github:OnurSamett/tokenwise-studio
+tokenwise-studio setup
 ```
 
-Or from a clone:
+`setup` prints what it will change, then does two things:
+
+- registers the MCP server with Claude Code at user scope (`claude mcp add tokenwise-studio --scope user`), if the `claude` CLI is installed and it isn't registered yet;
+- on macOS, creates a launcher app at `~/Applications/tokenwise studio.app` that asks you for a project folder and opens the studio.
+
+It ends with a readiness check. Use `tokenwise-studio setup --dry-run` to see the plan without changing anything (`--no-mcp` and `--no-app` skip a part).
+
+Then start it from your project:
+
+```bash
+cd your-project && tokenwise-studio     # options: --port N, --no-open, --pick
+```
+
+Other commands: `tokenwise-studio doctor` shows which workers are ready and how to fix the rest; `tokenwise-studio uninstall` removes the MCP registration and the launcher app (then run `npm uninstall -g tokenwise-studio`).
+
+From a clone (development):
 
 ```bash
 git clone https://github.com/OnurSamett/tokenwise-studio.git
 cd tokenwise-studio && npm install
-node src/cli.js /path/to/project   # options: --port N, --no-open
-```
-
-Register the MCP server with Claude Code (once, for all projects):
-
-```bash
-claude mcp add tokenwise-studio --scope user -- node "$PWD/src/mcp.js"
-```
-
-The server works on the project Claude Code is opened in. To start only the UI (no browser) for that project:
-
-```bash
-node /path/to/tokenwise-studio/src/ui.js /path/to/your/project
-# → http://127.0.0.1:4777
+node src/cli.js /path/to/project
 ```
 
 ## Use
@@ -117,7 +118,7 @@ Jobs fall back automatically along `codex → gemini → claude → free → loc
 
 ## Status
 
-Early (v0.1). Codex and Claude workers are tested end to end; Gemini is wired up but less tested. Issues and PRs welcome.
+Early (v0.3). Codex and Claude workers are tested end to end; Gemini is wired up but less tested. Issues and PRs welcome.
 
 ## License
 
