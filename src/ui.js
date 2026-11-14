@@ -25,6 +25,7 @@ import { resolveJobImage, imageType } from "./jobimages.js";
 import { runTests, testRunning, testTail, detectTestCommand, loadTestOverride, loadLintOverride, saveTestConfig, runCombinedCheck, loadCombinedCheck, combinedCheckRunning, combinedTail } from "./testrun.js";
 import { createSnapshot } from "./snapshots.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
+import { parseStudioErrors, formatStudioPrompt } from "./studiolog.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
@@ -262,6 +263,11 @@ export const handler = async (req, res) => {
     if (req.method === "POST") {
       const b = await readBody(req, what === "upload" ? UPLOAD_BODY_LIMIT : undefined);
       if (what === "upload") return send(res, 200, saveUpload(repo, b));
+      if (what === "studiolog") {
+        if (b?.action === "format") return send(res, 200, { message: formatStudioPrompt(b.selected) });
+        if (typeof b?.text !== "string") throw new Error("text must be a string");
+        return send(res, 200, parseStudioErrors(b.text, { repo }));
+      }
       if (what === "settings") {
         saveSettings(b);
         orchCache.clear();
