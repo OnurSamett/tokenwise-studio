@@ -47,15 +47,17 @@ tokenwise-studio setup
 `setup` prints what it will change, then does two things:
 
 - registers the MCP server with Claude Code at user scope (`claude mcp add tokenwise-studio --scope user`), if the `claude` CLI is installed and it isn't registered yet;
-- on macOS, creates a launcher app at `~/Applications/tokenwise studio.app` that asks you for a project folder and opens the studio.
+- on macOS, creates the app `~/Applications/tokenwise studio.app`: a normal Mac app with its own window and Dock icon (no browser tab). Opening it asks for a project folder; ⌘O opens another project (File > Open Recent lists earlier ones), each project gets its own window. Servers keep running when you quit the app, so they stay shared with terminal use.
 
 It ends with a readiness check. Use `tokenwise-studio setup --dry-run` to see the plan without changing anything (`--no-mcp` and `--no-app` skip a part).
 
 Then start it from your project:
 
 ```bash
-cd your-project && tokenwise-studio     # options: --port N, --no-open, --pick
+cd your-project && tokenwise-studio     # options: --port N, --no-open, --browser, --pick
 ```
+
+With the app installed, `tokenwise-studio` opens the project in the app window; pass `--browser` to use a browser tab instead (the default when the app isn't installed). `--no-open` just starts the server.
 
 Other commands: `tokenwise-studio doctor` shows which workers are ready and how to fix the rest; `tokenwise-studio uninstall` removes the MCP registration and the launcher app (then run `npm uninstall -g tokenwise-studio`).
 

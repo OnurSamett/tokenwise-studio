@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// tokenwise-studio [path] [--port N] [--no-open] [--pick]
+// tokenwise-studio [path] [--port N] [--no-open] [--browser] [--pick]
 // tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-app] | uninstall [--dry-run]
 import path from "node:path";
 import fs from "node:fs";
@@ -18,7 +18,9 @@ const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
 const HELP = `tokenwise studio ${pkg.version}
 
 Usage:
-  tokenwise-studio [path] [--port N] [--no-open]   start the UI for a project (default: current folder)
+  tokenwise-studio [path] [--port N] [--no-open] [--browser]
+                                                   start the UI for a project (default: current folder);
+                                                   opens in the tokenwise studio app if installed, --browser forces a browser tab
   tokenwise-studio --pick                          choose the project in a macOS folder dialog
   tokenwise-studio doctor                          check which workers are ready
   tokenwise-studio setup [--dry-run] [--no-mcp] [--no-app]
@@ -32,6 +34,16 @@ const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
 const home = () => os.homedir();
 const appPath = () => path.join(home(), "Applications", APP_NAME);
+// The native app counts only if it is ours and has its executable.
+const nativeAppInstalled = () => {
+  try {
+    const plist = fs.readFileSync(path.join(appPath(), "Contents", "Info.plist"), "utf8");
+    return plist.includes(`<string>${BUNDLE_ID}</string>`) && fs.existsSync(path.join(appPath(), "Contents", "MacOS", EXE));
+  } catch { return false; }
+};
+// How to show a running server: "none" | "browser" | "app".
+const decideOpen = ({ noOpen, browser, platform, installed }) =>
+  noOpen ? "none" : platform === "darwin" && !browser && installed ? "app" : "browser";
 const logPath = () => path.join(home(), ".tokenwise-studio", "launcher.log");
 
 // Run a command with an argument array; returns { ok, out }.
@@ -125,7 +137,7 @@ exec ${q(stableNode())} ${q(path.join(SRC, "cli.js"))} --pick >> "$LOG" 2>&1
   const swift = path.join(ROOT, "launcher", "TokenwiseStudio.swift");
   if (run("xcrun", ["--find", "swiftc"]).ok || run("swiftc", ["--version"]).ok) {
     console.log("  compiling the native app (swiftc) ...");
-    const r = run("swiftc", ["-O", "-framework", "AppKit", "-framework", "UserNotifications", swift, "-o", path.join(macos, EXE)], { timeout: 240000 });
+    const r = run("swiftc", ["-O", "-framework", "AppKit", "-framework", "WebKit", "-framework", "UserNotifications", swift, "-o", path.join(macos, EXE)], { timeout: 240000 });
     if (r.ok) native = true;
     else console.warn(`  warning: compiling failed (${r.out.trim().split("\n")[0]})`);
   }
@@ -149,7 +161,17 @@ exec ${q(stableNode())} ${q(path.join(SRC, "cli.js"))} --pick >> "$LOG" 2>&1
 ${hasIcon ? "  <key>CFBundleIconFile</key><string>AppIcon</string>\n" : ""}  <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>${pkg.version}</string>
   <key>CFBundleShortVersionString</key><string>${pkg.version}</string>
-  <key>LSUIElement</key>${native ? "<true/>" : "<false/>"}
+  <key>LSUIElement</key><false/>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>${BUNDLE_ID}</string>
+      <key>CFBundleURLSchemes</key>
+      <array><string>tokenwise-studio</string></array>
+    </dict>
+  </array>
 </dict>
 </plist>
 `;
@@ -242,11 +264,19 @@ async function startUi() {
   }
   if (!url) { console.error(`tokenwise studio: ports ${first}-${first + 10} are all busy`); process.exit(1); }
   console.log(`tokenwise studio is running at ${url}  (project: ${path.basename(repo)})`);
-  if (!has("--no-open")) {
-    const [cmd, args] = process.platform === "darwin" ? ["open", [url]]
-      : process.platform === "win32" ? ["cmd", ["/c", "start", '""', url]] : ["xdg-open", [url]];
-    try { spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref(); } catch {}
-  }
+  const mode = decideOpen({ noOpen: has("--no-open"), browser: has("--browser"), platform: process.platform, installed: process.platform === "darwin" && nativeAppInstalled() });
+  const appUrl = `tokenwise-studio://open?repo=${encodeURIComponent(repo)}&url=${encodeURIComponent(url)}`;
+  if (process.env.TOKENWISE_DRY_OPEN === "1") { console.log(`open-mode: ${mode}${mode === "app" ? ` ${appUrl}` : ""}`); process.exit(0); }
+  if (mode === "app" && !run("open", ["-a", appPath(), appUrl]).ok) {
+    console.warn("tokenwise studio: could not open the app; falling back to the browser");
+    openBrowser(url);
+  } else if (mode === "browser") openBrowser(url);
+}
+
+function openBrowser(url) {
+  const [cmd, args] = process.platform === "darwin" ? ["open", [url]]
+    : process.platform === "win32" ? ["cmd", ["/c", "start", '""', url]] : ["xdg-open", [url]];
+  try { spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref(); } catch {}
 }
 
 const cmd = argv[0];
