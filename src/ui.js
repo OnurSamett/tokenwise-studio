@@ -90,6 +90,12 @@ function allowed(req) {
   return true;
 }
 
+// Benchmark table (src/benchmarks.json): read fresh each time so edits show up without a restart.
+function loadBenchmarks() {
+  try { return JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "benchmarks.json"), "utf8")); }
+  catch { return null; }
+}
+
 const handler = async (req, res) => {
   if (!allowed(req)) return send(res, 403, { error: "forbidden" });
   const url = new URL(req.url, "http://x");
@@ -128,6 +134,7 @@ const handler = async (req, res) => {
           catalog: CATALOG,
           available: { codex: ["luna", "terra", "sol", "astra"], claude: ["haiku", "sonnet", "opus"], gemini: geminiFamilies(), free: (await listFreeModels()).map((m) => m.id) },
           ready: { codex: ok("codex"), claude: ok("claude"), gemini: ok("gemini"), free: ok("free") },
+          benchmarks: loadBenchmarks(),
         });
       }
       if (what === "limits") return send(res, 200, limits(jobs.home));

@@ -43,6 +43,22 @@ export const freeProvider = () => freeProviders()[0] || null;
 
 const picked = new Map();
 /** All usable chat models for this provider, best first (cached per provider). */
+// Benchmarks (benchmarks.json next to this file): models with a Terminal-Bench score go first, best first.
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+let BENCH = null;
+function terminalScore(id) {
+  if (BENCH === null) {
+    try { BENCH = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "benchmarks.json"), "utf8")).models || []; }
+    catch { BENCH = []; }
+  }
+  const m = BENCH.find((b) => b.agent === "free" && b.match && new RegExp(b.match, "i").test(id));
+  if (!m) return null;
+  // Terminal-Bench 2.1 is the most widely reported; fall back to 3.0 (scaled, it's much harder) when 2.1 is missing.
+  return typeof m.terminalBench21 === "number" ? m.terminalBench21 : typeof m.terminalBench30 === "number" ? 50 + m.terminalBench30 : null;
+}
+
 async function rankedModels(p) {
   if (picked.has(p.name)) return picked.get(p.name);
   const res = await fetch(`${p.base}/models`, { headers: { Authorization: `Bearer ${p.key}` }, signal: AbortSignal.timeout(30_000) });
@@ -55,7 +71,12 @@ async function rankedModels(p) {
     .filter((id) => !/embed|rerank|guard|safety|vision|-vl\b|-vl-|vlm|tts|whisper|asr|ocr|parse|reward/i.test(id));
   const score = (id) => { const i = p.rank.findIndex((re) => re.test(id)); return i < 0 ? p.rank.length : i; };
   const size = (id) => Number((id.match(/(\d+(?:\.\d+)?)b\b/i) || [])[1] || 0);
-  ids.sort((a, b) => score(a) - score(b) || size(b) - size(a));
+  const tb = (id) => terminalScore(id);
+  ids.sort((a, b) => {
+    const ta = tb(a), tbb = tb(b);
+    if (ta !== null || tbb !== null) { if (ta === null) return 1; if (tbb === null) return -1; if (tbb !== ta) return tbb - ta; }
+    return score(a) - score(b) || size(b) - size(a);
+  });
   if (!ids.length) throw new Error(`no usable model found on ${p.name}`);
   picked.set(p.name, ids);
   return ids;
