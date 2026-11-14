@@ -153,6 +153,9 @@
   .crow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
   .pill { appearance: none; background: var(--s2); border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 4px 26px 4px 11px; font-size: 12.5px; background-image: linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%); background-position: right 12px center, right 8px center; background-size: 4px 4px; background-repeat: no-repeat; }
   .crow .grow { flex: 1; }
+  .pillwrap { position: relative; display: inline-flex; align-items: center; }
+  .pillwrap .pilllogo { position: absolute; left: 9px; width: 13px; height: 13px; pointer-events: none; }
+  .pill.with-logo { padding-left: 27px; }
   .err { color: var(--bad); font-size: 13px; }
   .send { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--text); color: var(--bg); display: grid; place-items: center; font-size: 16px; font-weight: 700; }
   .send:disabled { opacity: .3; cursor: default; }
@@ -340,7 +343,7 @@
       <textarea id="input" rows="1" placeholder="Ask the team…"></textarea>
       <div class="crow">
         <button class="pill" id="teambtn" title="Who does the work (team settings)" style="background-image:none;padding-right:11px">Team: Auto</button>
-        <select class="pill" id="omodel" title="Orchestrator model"><option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option></select>
+        <span class="pillwrap" title="Orchestrator: Claude"><img class="plogo pilllogo" src="/providers/claude.svg" alt=""><select class="pill with-logo" id="omodel" title="Orchestrator model"><option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option></select></span>
         <select class="pill" id="oeffort" title="Orchestrator effort"><option value="medium">medium</option><option value="low">low</option><option value="high">high</option><option value="xhigh">xhigh</option></select>
         <span class="grow"><span class="err" id="cerr"></span><span class="hint" id="khint">↵ send · ⇧↵ new line</span></span>
         <button class="stop" id="stop" title="Stop" hidden><i></i></button>
