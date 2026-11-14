@@ -56,7 +56,7 @@ export function resolve({ agent, model, effort, allowAstra = false }) {
 }
 
 /** Build the CLI invocation. `lastFile` receives Codex's final message. */
-export function command({ agent, model, effort, via }, { task, cwd, write, lastFile, images = [] }) {
+export function command({ agent, model, effort, via }, { task, cwd, write, role = null, lastFile, images = [] }) {
   if (agent === "gemini" && via === "antigravity") {
     const args = ["-p", task, "--model", model, "--output-format", "stream-json", "--print-timeout", "0s",
       "--mode", write ? "accept-edits" : "plan"];
@@ -94,15 +94,20 @@ export function command({ agent, model, effort, via }, { task, cwd, write, lastF
       args: ["exec", "--json", "--skip-git-repo-check", "-C", cwd,
         "--sandbox", write ? "workspace-write" : "read-only",
         "-m", model, "-c", `model_reasoning_effort="${effort}"`,
+        "-c", role === "research" ? 'web_search="live"' : 'web_search="disabled"',
         "-o", lastFile, ...images.flatMap((p) => ["-i", p]), "--", task],
     };
   }
   if (agent === "claude") {
+    const allowed = [
+      ...(images.length ? ["Read"] : []),
+      ...(role === "research" ? ["WebSearch", "WebFetch"] : []),
+    ];
     return {
       cmd: "claude",
       args: ["-p", [task, imageNote(images)].filter(Boolean).join("\n\n"), "--model", model, "--effort", effort,
         ...images.flatMap((p) => ["--add-dir", path.dirname(p)]),
-        ...(images.length ? ["--allowedTools", "Read"] : []),
+        ...(allowed.length ? ["--allowedTools", ...allowed] : []),
         "--output-format", "stream-json", "--verbose",
         "--permission-mode", write ? "acceptEdits" : "plan"],
     };

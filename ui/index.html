@@ -103,6 +103,20 @@
   .avatar { width: 28px; height: 28px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-size: 15px; flex: none; margin-top: 1px; }
   .orch-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
   .say p { margin: 0 0 8px; } .say p:last-child { margin-bottom: 0; } .say ul, .say ol { margin: 0 0 8px; padding-left: 22px; } .say li { margin: 2px 0; }
+  .say a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+  .say a:hover { opacity: .88; }
+  .say a.cite { display: inline-block; text-decoration: none; background: var(--accent-soft); color: var(--accent); border-radius: 5px; padding: 0 5px; font: 600 12px/1.45 var(--mono); margin: 0 1px; }
+  .say a.cite:hover { background: var(--accent); color: var(--bg); opacity: 1; }
+  .sources { margin-top: 8px; padding: 8px 11px; border: 1px solid var(--line); background: var(--s1); border-radius: 10px; font-size: 12.5px; }
+  .answer .sources { background: var(--bg); }
+  .sources-h { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin-bottom: 5px; }
+  .sources-list { display: flex; flex-direction: column; gap: 4px; }
+  .source-item { display: flex; align-items: baseline; gap: 7px; min-width: 0; line-height: 1.4; }
+  .source-num { font: 600 11.5px var(--mono); color: var(--accent); flex: none; }
+  .source-link { color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .source-link:hover { color: var(--accent); text-decoration: underline; }
+  .source-text { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .source-host { color: var(--dim); font: 11px var(--mono); flex: none; margin-left: auto; padding-left: 8px; }
 
   .activity { font-size: 13.5px; color: var(--dim); }
   .activity summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px; padding: 2px 0; user-select: none; }
@@ -469,6 +483,7 @@
 
 <script type="module">
 import { t as tr, tp as trp, hasKey, resolveLanguage, translateReason, translateNotice } from "/i18n.js";
+import { parseCitations, renderMarkdownHtml } from "/citations.js";
 
 // ---------- i18n ----------
 let langSetting = "auto";
@@ -528,25 +543,34 @@ const modelName = (m = "") => { const f = String(m).match(/(luna|terra|sol|astra
 const effortBars = (e) => { const n = { low: 1, medium: 2, high: 3, xhigh: 4 }[e] || 2; return h("span", { class: "effort", title: t("effort.title", { effort: effortLabel(e) }) }, ...[1, 2, 3].map((i) => h("i", { class: i <= Math.min(n, 3) ? "on" : "" }))); };
 const stateLabel = (s) => t(`state.${s}`) || s;
 
-// Tiny safe markdown: escape first, then inline code / bold, lists and fenced code.
-function md(text) {
-  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
-  const out = []; let list = null, code = null;
-  const flush = () => { if (list) { out.push(`<${list.t}>` + list.items.join("") + `</${list.t}>`); list = null; } };
-  for (const line of String(text).split("\n")) {
-    if (/^\s*```/.test(line)) { if (code) { out.push("<pre>" + esc(code.join("\n")) + "</pre>"); code = null; } else { flush(); code = []; } continue; }
-    if (code) { code.push(line); continue; }
-    const ol = line.match(/^\s*\d+[.)] (.*)/), ul = line.match(/^\s*[-*] (.*)/);
-    if (ol || ul) { const t = ol ? "ol" : "ul"; if (!list || list.t !== t) { flush(); list = { t, items: [] }; } list.items.push("<li>" + inline((ol || ul)[1]) + "</li>"); continue; }
-    flush();
-    const hd = line.match(/^#{1,4}\s+(.*)/);
-    if (hd) { out.push("<h4>" + inline(hd[1]) + "</h4>"); continue; }
-    if (line.trim()) out.push("<p>" + inline(line) + "</p>");
-  }
-  if (code) out.push("<pre>" + esc(code.join("\n")) + "</pre>");
-  flush();
-  const d = document.createElement("div"); d.className = "say"; d.innerHTML = out.join(""); return d;
+// Tiny safe markdown: escape first, then inline code / bold / safe http(s) links & citations, lists and fenced code.
+function md(text, opts = {}) {
+  const d = document.createElement("div");
+  d.className = "say";
+  d.innerHTML = renderMarkdownHtml(text, opts);
+  return d;
+}
+function sourcesBlock(sources) {
+  if (!sources || !sources.length) return null;
+  return h("div", { class: "sources" },
+    h("div", { class: "sources-h" }, t("team.sources")),
+    h("div", { class: "sources-list" }, sources.map((s) => h("div", { class: "source-item" },
+      h("span", { class: "source-num" }, `[${s.num}]`),
+      s.url
+        ? h("a", { class: "source-link", href: s.url, target: "_blank", rel: "noopener noreferrer", title: s.url }, s.title || s.host || s.url)
+        : h("span", { class: "source-text" }, s.title || s.rawUrl || ""),
+      s.host ? h("span", { class: "source-host" }, s.host) : null))));
+}
+function richReply(text) {
+  const { body, sources } = parseCitations(text);
+  const bodyEl = body ? md(body, { sources }) : null;
+  const srcEl = sourcesBlock(sources);
+  if (!srcEl) return bodyEl || md(text);
+  const wrap = document.createElement("div");
+  wrap.className = "reply-wrap";
+  if (bodyEl) wrap.append(bodyEl);
+  wrap.append(srcEl);
+  return wrap;
 }
 
 // ---------- popovers ----------
@@ -681,9 +705,9 @@ const tierLabel = (tier) => t(`models.tier.${tier}`) || tier;
 
 // Mirrors the server presets so the panel can preview them before saving (the server validates on save).
 const PRESET_ROLES = {
-  quality: { code: { agent: "codex", model: "sol", effort: "high" }, quick: { agent: "gemini", model: "hydrogen", effort: "medium" }, review: { agent: "claude", model: "opus", effort: "high" }, images: { agent: "codex" } },
-  balanced: { code: { agent: "codex", model: "sol", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "medium" }, review: { agent: "claude", model: "sonnet", effort: "medium" }, images: { agent: "codex" } },
-  cheap: { code: { agent: "free", model: "auto", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "low" }, review: { agent: "gemini", model: "hydrogen", effort: "low" }, images: { agent: "codex" } },
+  quality: { code: { agent: "codex", model: "sol", effort: "high" }, quick: { agent: "gemini", model: "hydrogen", effort: "medium" }, review: { agent: "claude", model: "opus", effort: "high" }, research: { agent: "claude", model: "sonnet", effort: "high" }, images: { agent: "codex" } },
+  balanced: { code: { agent: "codex", model: "sol", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "medium" }, review: { agent: "claude", model: "sonnet", effort: "medium" }, research: { agent: "gemini", model: "hydrogen", effort: "medium" }, images: { agent: "codex" } },
+  cheap: { code: { agent: "free", model: "auto", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "low" }, review: { agent: "gemini", model: "hydrogen", effort: "low" }, research: { agent: "free", model: "auto", effort: "medium" }, images: { agent: "codex" } },
 };
 
 // ---------- state ----------
@@ -891,7 +915,7 @@ function addItem(it) {
   const tb = turnBlock(it.turn ?? 0);
   if (it.kind === "user") { userContent(tb.user, it.text, it.images); return; }
   if (it.kind === "think") { tb.thinking.hidden = false; tb.thinkingText.append(h("div", {}, it.text), "\n\n"); return; }
-  if (it.kind === "say") { tb.replies.append(md(it.text)); return; }
+  if (it.kind === "say") { tb.replies.append(richReply(it.text)); return; }
   if (it.kind === "handoff") {
     const mdl = modelName(curChat()?.turns?.[it.turn]?.model || "");
     const to = `${AGENT[it.to] || it.to}${mdl ? " " + mdl : ""}`;
@@ -1102,7 +1126,7 @@ async function renderDrawer(full) {
         h("div", {}, h("h3", {}, j.title), h("div", { class: "meta" }, `${AGENT[j.agent]} · ${modelName(j.model)} · ${t("effort.ofJob", { effort: effortLabel(j.effort) })} · `, h("span", { class: "w-state " + j.status }, stateLabel(j.status)), " · ", h("span", { class: "w-time" }, clock(j.created, j.finished)))),
         h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
       h("div", { class: "d-body" },
-        j.final ? h("div", { class: "section" }, h("h4", {}, t("job.result")), h("div", { class: "answer" }, md(j.final))) : j.status === "running" ? h("div", { class: "section muted" }, h("span", { class: "spin" }), "  ", t("job.workingOnIt")) : null,
+        j.final ? h("div", { class: "section" }, h("h4", {}, t("job.result")), h("div", { class: "answer" }, richReply(j.final))) : j.status === "running" ? h("div", { class: "section muted" }, h("span", { class: "spin" }), "  ", t("job.workingOnIt")) : null,
         (j.images || []).length ? h("div", { class: "section" }, h("h4", {}, t("job.generatedImages")), jobThumbs(j, "flat big")) : null,
         j.write && j.status === "done" && files.length ? testPanel(j) : null,
         files.length ? h("div", { class: "section" }, h("h4", {}, t(j.status === "merged" ? "job.appliedChanges" : "job.changes")), files.map((f) => fileBlock(f, null, null, j))) : null,
@@ -1187,10 +1211,10 @@ async function renderDrawer(full) {
     if (!full) return;
     let data; try { [data] = await Promise.all([api("team"), loadCatalog()]); } catch (e) { toast(e.message, true); return closeDrawer(); }
     const opt = data.options, tm = JSON.parse(JSON.stringify(data.team));
-    const RL = { code: t("team.role.code"), quick: t("team.role.quick"), review: t("team.role.review"), images: t("team.role.images") };
-    const SUB = { code: t("team.role.codeSub"), quick: t("team.role.quickSub"), review: t("team.role.reviewSub"), images: t("team.role.imagesSub") };
+    const RL = { code: t("team.role.code"), quick: t("team.role.quick"), review: t("team.role.review"), research: t("team.role.research"), images: t("team.role.images") };
+    const SUB = { code: t("team.role.codeSub"), quick: t("team.role.quickSub"), review: t("team.role.reviewSub"), research: t("team.role.researchSub"), images: t("team.role.imagesSub") };
     const body = h("div", { class: "d-body" });
-    const sameRoles = (x, y) => ["code", "quick", "review"].every((k) => x?.[k]?.agent === y?.[k]?.agent && x?.[k]?.model === y?.[k]?.model && x?.[k]?.effort === y?.[k]?.effort) && x?.images?.agent === y?.images?.agent;
+    const sameRoles = (x, y) => ["code", "quick", "review", "research"].every((k) => x?.[k]?.agent === y?.[k]?.agent && x?.[k]?.model === y?.[k]?.model && x?.[k]?.effort === y?.[k]?.effort) && x?.images?.agent === y?.images?.agent;
     const draw = () => {
       if (!tm.preset) tm.preset = Object.keys(PRESET_ROLES).find((p) => sameRoles(tm.roles, PRESET_ROLES[p])) || null;
       const seg = h("div", { class: "seg" },
@@ -1200,20 +1224,28 @@ async function renderDrawer(full) {
         tm.preset = p; tm.roles = PRESET_ROLES[p] ? JSON.parse(JSON.stringify(PRESET_ROLES[p])) : tm.roles; draw();
       } }, t(`team.preset.${p}`))), h("button", { class: tm.preset ? "" : "on", onclick: () => { tm.preset = null; draw(); } }, t("team.preset.custom")));
       const agentOpts = (role) => (role === "images" ? ["codex", "gemini"] : ["codex", "claude", "gemini", "free"]);
+      const isUnsupported = (agent, role) => !!(opt.agents[agent]?.unsupportedRoles?.includes(role) || opt.roles?.find((x) => x.id === role)?.unsupportedAgents?.includes(agent));
       const rows = (opt.roles || Object.keys(RL).map((id) => ({ id }))).map(({ id }) => {
         const r = tm.roles[id] || (tm.roles[id] = { agent: "codex", model: "auto", effort: "medium" });
         const a = opt.agents[r.agent] || { models: [], ready: false };
         const models = (a.models && a.models.length ? a.models : ["auto"]);
         if (id !== "images" && !models.includes(r.model)) r.model = models[0];
         const sel = (val, list, on, label) => h("select", { onchange: (e) => { on(e.target.value); tm.preset = null; draw(); } }, list.map((v) => h("option", { value: v, selected: v === val ? true : null }, label ? label(v) : v)));
+        const agentSel = h("select", { onchange: (e) => { r.agent = e.target.value; r.model = (opt.agents[r.agent]?.models || ["auto"])[0]; tm.preset = null; draw(); } },
+          agentOpts(id).map((v) => {
+            const unsup = isUnsupported(v, id);
+            const suffix = unsup ? t("team.unsupportedRole") : (opt.agents[v]?.ready ? "" : t("team.notReady"));
+            return h("option", { value: v, selected: v === r.agent ? true : null, disabled: unsup && v !== r.agent ? true : null }, `${AGENT[v] || v}${suffix}`);
+          }));
+        const roleUnsup = isUnsupported(r.agent, id);
         return h("div", { class: "rolerow" },
           h("div", { class: "rl" }, h("b", {}, RL[id] || id), h("small", {}, SUB[id] || "")),
           h("div", { class: "ctl with-badge" },
             (() => { const lg = agentLogo(r.agent, r.model); return h("span", { class: "badge " + r.agent + (lg ? " has-logo" : ""), title: AGENT[r.agent] || r.agent }, lg || BADGE[r.agent] || "?"); })(),
-            sel(r.agent, agentOpts(id), (v) => { r.agent = v; r.model = (opt.agents[v]?.models || ["auto"])[0]; }, (v) => `${AGENT[v] || v}${opt.agents[v]?.ready ? "" : t("team.notReady")}`),
+            agentSel,
             id === "images" ? h("span", { class: "fixed", title: t("team.imageModelTip") }, t("team.imageModel")) : sel(r.model, models, (v) => { r.model = v; }, (v) => (v === "auto" ? (r.agent === "free" ? t("team.autoBest") : t("team.autoModel")) : a.labels?.[v] || describeModel(r.agent, v)?.label || modelName(v) || v)),
             id === "images" ? h("span", { class: "fixed" }, "—") : sel(r.effort || "medium", ["low", "medium", "high", "xhigh"], (v) => { r.effort = v; }, (v) => effortLabel(v))),
-          (() => {
+          roleUnsup ? h("div", { class: "goodat" }, h("i", {}, t("team.researchUnsupported"))) : (() => {
             const m = id === "images" ? null : describeModel(r.agent, r.model);
             const goodAt = m ? (hasKey(`model.${m.family}.goodAt`, lang) ? t(`model.${m.family}.goodAt`) : m.goodAt) : "";
             return m ? h("div", { class: "goodat" }, r.agent === "free" ? makerBadge(r.model) : null, h("span", { class: "tier " + m.tier }, tierLabel(m.tier)), h("span", {}, t("team.goodAt"), goodAt)) : r.model === "auto" && id !== "images" ? h("div", { class: "goodat" }, h("i", {}, t(r.agent === "free" ? "team.freeAutoDesc" : "team.ruleAutoDesc"))) : null;

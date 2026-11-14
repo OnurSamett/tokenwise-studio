@@ -50,6 +50,8 @@ function toolUse(t, base) {
   if (n === "Edit" || n === "Write" || n === "MultiEdit") return { kind: "edit", text: `${n.toLowerCase()} ${rel(i.file_path, base)}` };
   if (n === "Bash") return { kind: "cmd", text: short(i.command, 200) };
   if (n === "Grep" || n === "Glob") return { kind: "search", text: `${n.toLowerCase()} ${i.pattern || ""}` };
+  if (n === "WebSearch") return { kind: "search", text: short(i.query || "web search", 120) };
+  if (n === "WebFetch") return { kind: "read", text: short(i.url || "web page", 120) };
   return { kind: "tool", text: `${n} ${short(JSON.stringify(i), 120)}` };
 }
 
@@ -76,6 +78,7 @@ function claude(e, base) {
 
 const AGY_TOOL = {
   read_file: "read", view_file: "read", list_dir: "search", grep_search: "search", find_by_name: "search",
+  search_web: "search", read_url_content: "read", view_web_page: "read",
   edit_file: "edit", write_to_file: "edit", replace_file_content: "edit", multi_replace_file_content: "edit", sed_file: "edit",
   run_command: "cmd",
 };
@@ -94,7 +97,7 @@ function antigravity(e, base) {
   if (e.event === "result" && e.result) {
     const r = e.result, u = r.usage || {};
     const out = [];
-    if (r.response) out.push({ kind: "say", text: r.response.replace(/\]\(file:\/\/[^)]*\)/g, "]").replace(/\[`?([^\]`]+)`?\]/g, "`$1`") });
+    if (r.response) out.push({ kind: "say", text: r.response.replace(/\[`?([^\]`]+)`?\]\(file:\/\/[^)]*\)/g, "`$1`") });
     out.push({ kind: "usage", text: `${(u.input_tokens || 0).toLocaleString()} in (${(u.cache_read_tokens || 0).toLocaleString()} cached) · ${(u.output_tokens || 0).toLocaleString()} out` });
     out.push({ kind: r.status === "SUCCESS" ? "done" : "error", text: `${(r.status || "").toLowerCase()} · ${Math.round(r.duration_seconds || 0)}s` });
     return out;

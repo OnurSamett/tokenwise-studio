@@ -5,7 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { Jobs } from "./jobs.js";
-import { loadTeam, teamGuide } from "./team.js";
+import { loadTeam, teamGuide, ROLES } from "./team.js";
 import { loadSettings } from "./settings.js";
 import { budgetGate } from "./budget.js";
 import { runTests, testRunning, testTail } from "./testrun.js";
@@ -15,7 +15,7 @@ const jobs = new Jobs(repo);
 const server = new McpServer({ name: "tokenwise-studio", version: "0.1.0" });
 
 const brief = (j) => ({
-  id: j.id, status: j.status, agent: j.agent, model: j.model, effort: j.effort, write: j.write,
+  id: j.id, status: j.status, agent: j.agent, model: j.model, effort: j.effort, write: j.write, role: j.role || null,
   title: j.title, diffStat: j.diffStat, files: j.files, movedFrom: j.movedFrom || null, movedTo: j.movedTo || null, final: j.final ? String(j.final).slice(0, 4000) : null,
   images: (j.images || []).map((i) => i.path), tests: j.test ? j.test.status : null,
 });
@@ -31,6 +31,7 @@ server.registerTool("delegate", {
     "'claude' (haiku [default], sonnet, opus) or 'gemini' (via Google Antigravity: hydrogen [default, fast], argon [frontier, strongest]). effort: low|medium|high|xhigh.",
     "write=false: read-only answer. write=true: the worker edits files in its own git worktree branched from HEAD",
     "(uncommitted changes in the main tree are NOT visible to it); review with job_diff, then job_merge or job_discard.",
+    "role: optional ('code', 'quick', 'review', 'research', 'images'). Use role='research' with write=false for questions needing current web information (enables web search on claude/codex; free/local are not supported for web research).",
     "The worker cannot see this conversation: put every detail it needs in `task` (files, constraints, done-condition).",
     "Dispatch independent tasks in parallel, then job_wait each.",
     "If a worker's plan is near its usage limit or it hits a rate limit, the job is automatically moved to the next worker (codex → gemini → claude → free → local); job_wait follows the move.",
@@ -42,11 +43,15 @@ server.registerTool("delegate", {
     model: z.string().optional(),
     effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
     write: z.boolean().optional(),
+    role: z.enum(ROLES).optional().describe("Optional job role; pass 'research' (with write=false) for current web research"),
     title: z.string().optional(),
     timeout_min: z.number().int().min(1).max(120).optional(),
   },
 }, async (a) => {
   try {
+    if (a.role === "research" && a.write) {
+      return fail(new Error("research jobs must be read-only (write=false)"));
+    }
     if (a.write && loadSettings().permissionMode === "plan-only") {
       return fail(new Error("write jobs are disabled in plan-only mode"));
     }

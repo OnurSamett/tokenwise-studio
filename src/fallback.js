@@ -29,7 +29,8 @@ export function nearLimit(agent, home) {
   return null;
 }
 
-export function available(agent, { write }, home) {
+export function available(agent, { write, role } = {}, home) {
+  if (role === "research" && (agent === "free" || agent === "local")) return false;
   const d = doctor()[agent];
   if (!d || !d.installed || !d.signedIn) return false;
   if (agent === "free") return loadSettings().allowFree && (!home || loadTeam(home).allow.free !== false);
@@ -37,10 +38,10 @@ export function available(agent, { write }, home) {
 }
 
 /** Next agent to try after `tried`, skipping unavailable ones and plans near their limit. */
-export function nextAgent({ tried, write, home }) {
+export function nextAgent({ tried, write, role, home }) {
   for (const a of chain()) {
     if (tried.includes(a)) continue;
-    if (!available(a, { write }, home)) continue;
+    if (!available(a, { write, role }, home)) continue;
     if (nearLimit(a, home)) continue;
     return a;
   }

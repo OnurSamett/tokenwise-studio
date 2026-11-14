@@ -8,27 +8,42 @@ import { freeProviders } from "./freechat.js";
 import { CATALOG, describe } from "./models.js";
 import { loadSettings } from "./settings.js";
 
-export const ROLES = ["code", "quick", "review", "images"];
-const LABELS = { code: "Writes code", quick: "Quick & mechanical work", review: "Reviews and second opinions", images: "Images" };
-const WORK = { code: "Writing code", quick: "Quick & mechanical work", review: "Reviews and second opinions", images: "Images" };
+export const ROLES = ["code", "quick", "review", "research", "images"];
+const LABELS = {
+  code: "Writes code",
+  quick: "Quick & mechanical work",
+  review: "Reviews and second opinions",
+  research: "Web research",
+  images: "Images",
+};
+const WORK = {
+  code: "Writing code",
+  quick: "Quick & mechanical work",
+  review: "Reviews and second opinions",
+  research: "Web research",
+  images: "Images",
+};
 
 export const PRESETS = {
   quality: {
     code: { agent: "codex", model: "sol", effort: "high" },
     quick: { agent: "gemini", model: "hydrogen", effort: "medium" },
     review: { agent: "claude", model: "opus", effort: "high" },
+    research: { agent: "claude", model: "sonnet", effort: "high" },
     images: { agent: "codex" },
   },
   balanced: {
     code: { agent: "codex", model: "sol", effort: "medium" },
     quick: { agent: "free", model: "auto", effort: "medium" },
     review: { agent: "claude", model: "sonnet", effort: "medium" },
+    research: { agent: "gemini", model: "hydrogen", effort: "medium" },
     images: { agent: "codex" },
   },
   cheap: {
     code: { agent: "free", model: "auto", effort: "medium" },
     quick: { agent: "free", model: "auto", effort: "low" },
     review: { agent: "gemini", model: "hydrogen", effort: "low" },
+    research: { agent: "free", model: "auto", effort: "medium" },
     images: { agent: "codex" },
   },
 };
@@ -120,12 +135,17 @@ export function teamOptions(freeModels = []) {
   const freeIds = (freeModels || []).map((m) => m.id);
   return {
     agents: {
-      codex: { ready: ready("codex"), models: ["luna", "terra", "sol", "astra"], labels: fam("codex") },
-      claude: { ready: ready("claude"), models: ["haiku", "sonnet", "opus"], labels: fam("claude") },
-      gemini: { ready: ready("gemini"), models: geminiFamilies(), labels: fam("gemini") },
-      free: { ready: providers.length > 0, models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: loadSettings().allowFree },
+      codex: { ready: ready("codex"), models: ["luna", "terra", "sol", "astra"], labels: fam("codex"), unsupportedRoles: [] },
+      claude: { ready: ready("claude"), models: ["haiku", "sonnet", "opus"], labels: fam("claude"), unsupportedRoles: [] },
+      gemini: { ready: ready("gemini"), models: geminiFamilies(), labels: fam("gemini"), unsupportedRoles: [] },
+      free: { ready: providers.length > 0, models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: loadSettings().allowFree, unsupportedRoles: ["research"] },
+      local: { ready: ready("local"), models: [], labels: {}, unsupportedRoles: ["research"] },
     },
-    roles: ROLES.map((id) => ({ id, label: LABELS[id] })),
+    roles: ROLES.map((id) => ({
+      id,
+      label: LABELS[id],
+      ...(id === "research" ? { unsupportedAgents: ["free", "local"] } : id === "images" ? { supportedAgents: ["codex", "gemini"] } : {}),
+    })),
     presets: Object.keys(PRESETS),
   };
 }
@@ -141,6 +161,10 @@ export function teamGuide(team) {
     if (w.agent === "free" && team.allow?.free === false) continue;
     const bits = [];
     if (r === "images") { lines.push(`- ${WORK[r]}: ${w.agent}`); continue; }
+    if (r === "research" && (w.agent === "free" || w.agent === "local")) {
+      lines.push(`- ${WORK[r]}: ${w.agent} (does not support live web search; use claude, gemini or codex if live web info is needed)`);
+      continue;
+    }
     if (w.model) bits.push(w.model === "auto" ? `${w.agent} (auto model)` : `${w.agent} ${w.model}`); else bits.push(w.agent);
     lines.push(`- ${WORK[r]}: ${bits[0]}${w.effort ? ` (${w.effort} effort)` : ""}`);
   }

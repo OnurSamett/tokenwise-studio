@@ -4,7 +4,7 @@ import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { command, resolve, textOf } from "./workers.js";
-import { loadTeam } from "./team.js";
+import { loadTeam, ROLES } from "./team.js";
 import { RATE_LIMIT, available, nearLimit, nextAgent } from "./fallback.js";
 import { notify, jobNotice } from "./notify.js";
 import { withProjectNotes } from "./instructions.js";
@@ -60,18 +60,25 @@ export class Jobs {
 
   isGit() { try { git(this.repo, "rev-parse", "--is-inside-work-tree"); return true; } catch { return false; } }
 
-  start({ agent, model, effort, task, write = false, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
+  start({ agent, model, effort, task, write = false, role = null, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
     tried = [], movedFrom = null, noFallback = false, images = [] }) {
+    if (role !== null && role !== undefined && !ROLES.includes(role)) throw new Error(`unknown role '${role}' (roles: ${ROLES.join(", ")})`);
+    if (role === "research" && write) throw new Error("research jobs must be read-only (write=false)");
     const attachments = validateImages(this.repo, images);
     const team = loadTeam(this.home);
     if (agent === "free" && team.allow.free === false) throw new Error("free workers are disabled in the team settings");
     // Before starting: if this plan is near its limit or the worker isn't usable, pick the next one in the chain.
     if (!noFallback) {
-      const why = nearLimit(agent, this.home) || (!available(agent, { write }, this.home) ? `${agent} not available` : null);
+      const why = nearLimit(agent, this.home) || (!available(agent, { write, role }, this.home)
+        ? (role === "research" && (agent === "free" || agent === "local") ? `${agent} does not support web research` : `${agent} not available`)
+        : null);
       if (why) {
-        const alt = nextAgent({ tried: [...tried, agent], write, home: this.home });
+        const alt = nextAgent({ tried: [...tried, agent], write, role, home: this.home });
         if (alt) { movedFrom = movedFrom || { agent, reason: why }; tried = [...tried, agent]; agent = alt; model = undefined; }
       }
+    }
+    if (role === "research" && (agent === "free" || agent === "local")) {
+      throw new Error(`${agent} does not support web research; use claude, gemini or codex`);
     }
     const spec = resolve({ agent, model, effort, allowAstra: team.allow.astra === true });
     const id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
@@ -83,14 +90,17 @@ export class Jobs {
       git(this.repo, "worktree", "add", "-q", "-b", branch, cwd, "HEAD");
     }
     const job = this.save({
-      id, title: title || task.slice(0, 80), task, images: attachments.map((i) => i.rel), ...spec, write, cwd, branch, parent,
+      id, title: title || task.slice(0, 80), task, images: attachments.map((i) => i.rel), ...spec, write, role: role || null, cwd, branch, parent,
       tried: [...tried, agent], movedFrom, movedTo: null,
       status: "running", created: new Date().toISOString(), finished: null, exitCode: null,
       final: null, diffStat: null, files: [], pid: null,
     });
 
     const lastFile = this.file(id, "last");
-    const { cmd, args, env: extraEnv } = command(spec, { task: withProjectNotes(task, this.repo), cwd, write, lastFile, images: attachments.map((i) => i.abs) });
+    const researchNote = role === "research"
+      ? "\n\nWeb research requirements:\n- Use web search/fetch to look up current information.\n- Cite facts inline with numbered brackets like [1], [2].\n- End with a \"Sources\" list containing ONLY the real http/https URLs you actually opened."
+      : "";
+    const { cmd, args, env: extraEnv } = command(spec, { task: withProjectNotes(task, this.repo) + researchNote, cwd, write, role: role || null, lastFile, images: attachments.map((i) => i.abs) });
     const log = fs.createWriteStream(this.file(id, "log"), { flags: "a" });
     const write1 = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line }) + "\n");
     write1("meta", `$ ${cmd} ${args.map((a) => (a.length > 60 ? a.slice(0, 57) + "..." : a)).join(" ")}`);
@@ -123,10 +133,10 @@ export class Jobs {
       if (j.status === "failed" && !noFallback) {
         let tail = ""; try { tail = fs.readFileSync(this.file(id, "log"), "utf8").slice(-30000); } catch {}
         if (RATE_LIMIT.test(tail)) {
-          const alt = nextAgent({ tried: j.tried, write, home: this.home });
+          const alt = nextAgent({ tried: j.tried, write, role: j.role || null, home: this.home });
           if (alt) {
             try {
-              const nj = this.start({ agent: alt, effort, task, images: job.images, write, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" } });
+              const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" } });
               j.status = "moved"; j.movedTo = nj.id;
               write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
             } catch (e) { write1("meta", `fallback failed: ${e.message}`); }
