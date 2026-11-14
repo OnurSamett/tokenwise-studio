@@ -169,7 +169,7 @@
   <div class="wrap">
     <span class="eyebrow">Open source · <b>by NolienLabs</b></span>
     <h1>Make your AI limits <em>last longer.</em></h1>
-    <p class="lede">tokenwise routes every piece of coding work to the right model and effort, across Claude, ChatGPT Codex, Gemini and free models. When one plan runs low, the work moves on to the next.</p>
+    <p class="lede">tokenwise routes every piece of coding work to the right model and effort, across Claude, ChatGPT Codex, Gemini and free models. When one plan runs low, the work moves on to the next. A Mac app (and a local web app elsewhere).</p>
     <div class="cta">
       <a class="btn primary" href="#get">Get tokenwise studio</a>
       <a class="btn" href="https://github.com/OnurSamett/tokenwise">tokenwise skill on GitHub</a>
@@ -177,8 +177,8 @@
     <div class="install-line"><span>$ <b>npm install -g github:OnurSamett/tokenwise-studio</b></span><button class="copy" data-copy="npm install -g github:OnurSamett/tokenwise-studio">Copy</button></div>
 
     <div class="shot">
-      <div class="bar"><i></i><i></i><i></i><span>tokenwise studio</span></div>
-      <img src="assets/studio-home.jpg" alt="tokenwise studio: describe a task, the orchestrator hands pieces to Codex, Claude or Gemini workers" width="800" height="499">
+      <div class="bar"><i></i><i></i><i></i><span>tokenwise studio — my-project</span></div>
+      <img src="assets/studio-app.jpg" alt="tokenwise studio as a Mac app window: describe a task, the orchestrator hands pieces to Codex, Claude or Gemini workers" width="800" height="514">
     </div>
   </div>
 </header>
@@ -222,7 +222,7 @@
       <div class="feat"><div class="ic">▤</div><h3>Live plan limits</h3><p>See your Claude and ChatGPT 5-hour and weekly usage in the sidebar, plus who will handle your next message. Stale readings past their reset time are ignored.</p></div>
       <div class="feat"><div class="ic">⚙</div><h3>Pick your team</h3><p>Automatic mode, or choose who writes code, who reviews and who draws images, with Best quality, Balanced and Cheapest presets.</p></div>
       <div class="feat"><div class="ic">🔔</div><h3>Desktop notifications</h3><p>A job is ready for review, finished or failed; an orchestrator turn is done; Codex took over. Click one to open that project's studio. A bell in the sidebar turns them off.</p></div>
-      <div class="feat"><div class="ic">⌘</div><h3>Mac app</h3><p><code>tokenwise-studio setup</code> adds a tokenwise studio app to ~/Applications. Pick a folder and the studio opens.</p></div>
+      <div class="feat"><div class="ic">⌘</div><h3>Mac app</h3><p>A native app with a Dock icon. Every project opens in its own window, and <code>⌘O</code> opens another. Notifications open the right window.</p></div>
     </div>
   </div>
 </section>
@@ -268,7 +268,7 @@
         <div class="code"><button class="copy" data-copy="npm install -g github:OnurSamett/tokenwise-studio&#10;tokenwise-studio setup&#10;cd your-project &amp;&amp; tokenwise-studio">Copy</button>npm install -g github:OnurSamett/tokenwise-studio
 tokenwise-studio setup   <span class="c"># Claude Code MCP + Mac app, once</span>
 cd your-project &amp;&amp; tokenwise-studio   <span class="c"># opens in your browser</span></div>
-        <ul><li>Needs Node 20+, git and at least one of Claude Code, Codex CLI or Antigravity.</li><li><code>setup</code> also creates the Mac app (~/Applications/tokenwise studio.app). <code>tokenwise-studio doctor</code> shows which workers are ready; <code>uninstall</code> removes only what setup added.</li><li>Free models: add an NVIDIA API key (optional).</li></ul>
+        <ul><li>Needs Node 20+, git and at least one of Claude Code, Codex CLI or Antigravity.</li><li><code>setup</code> creates the Mac app in ~/Applications. <code>tokenwise-studio</code> opens your project in the app; add <code>--browser</code> for a browser tab. <code>tokenwise-studio doctor</code> shows which workers are ready; <code>uninstall</code> removes only what setup added.</li><li>Free models: add an NVIDIA API key (optional).</li></ul>
         <div class="foot"><a class="btn primary sm" href="https://github.com/OnurSamett/tokenwise-studio">View on GitHub</a></div>
       </div>
       <div class="card">
@@ -295,7 +295,7 @@ cd your-project &amp;&amp; tokenwise-studio   <span class="c"># opens in your br
       <details><summary>Can a worker break my project?</summary><p>Workers that edit files work in their own git worktree. Nothing reaches your project until you review the diff and press Apply, and applied changes are staged, not committed.</p></details>
       <details><summary>What happens when Claude runs out?</summary><p>When Claude is at 90% or more of its 5-hour or weekly limit, or hits it mid-turn, Codex takes over the same message. It is read-only, has the same studio tools and sees the conversation so far. The chat shows "↪ Codex took over · Claude hit its usage limit", and the sidebar card shows who handles the next message. Turn this off with <code>TOKENWISE_ORCH_FALLBACK=0</code>. Gemini can't take over as orchestrator, because Antigravity has no per-session MCP; it still works as a worker.</p></details>
       <details><summary>Do notifications need anything?</summary><p>macOS only. The first notification asks for permission, and <code>tokenwise-studio setup</code> triggers that prompt. After that, the tokenwise studio app notifies you when a job is ready for review, finished or failed, once per orchestrator turn in chats, and when Codex takes over. Clicking one opens that project's studio. The bell in the sidebar turns them off.</p></details>
-      <details><summary>What do I need?</summary><p>Node 20+, git, and at least one of Claude Code, the Codex CLI or Google Antigravity, signed in. macOS is the most tested platform.</p></details>
+      <details><summary>What do I need?</summary><p>Node 20+, git, and at least one of Claude Code, the Codex CLI or Google Antigravity, signed in. macOS is the most tested platform. On macOS, <code>setup</code> builds the app with the Xcode command line tools if they are installed; otherwise the studio opens in the browser. Other platforms run it in the browser.</p></details>
     </div>
   </div>
 </section>
