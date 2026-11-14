@@ -157,6 +157,12 @@ ${hasIcon ? "  <key>CFBundleIconFile</key><string>AppIcon</string>\n" : ""}  <ke
   if (native) {
     const r = run("codesign", ["--force", "--deep", "-s", "-", app]);
     if (!r.ok) console.warn(`  warning: ad-hoc signing failed (${r.out.trim().split("\n")[0]}); notifications may not work`);
+    // macOS only asks for notification permission for apps it knows about and that were started by
+    // LaunchServices; a binary run directly is refused silently. Register the app, then post a first
+    // notification through `open` so the permission prompt shows up now.
+    run("/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister", ["-f", app]);
+    const o = run("open", ["-n", "-a", app, "--args", "--notify", "--title", "tokenwise studio", "--message", "Notifications are on. Click one to open the studio.", "--subtitle", "Setup"]);
+    console.log(o.ok ? "  asked macOS for notification permission (click Allow if prompted)" : "  could not request notification permission; notifications may come from Script Editor");
   }
   return app;
 }
