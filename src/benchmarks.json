@@ -37,7 +37,8 @@
           "date": "2026-11-14"
         }
       ],
-      "terminalBench40": 41.8
+      "terminalBench40": 41.8,
+      "servedTerminalBench40": 36.7
     },
     {
       "key": "kimi-k3",
@@ -165,7 +166,8 @@
           "date": "2026-11-14"
         }
       ],
-      "terminalBench40": 40
+      "terminalBench40": 40,
+      "servedTerminalBench40": 40
     },
     {
       "key": "nemotron-3-ultra",

@@ -852,7 +852,8 @@ async function renderDrawer(full) {
     if (drawer.tab === "benchmarks") {
       const B = M.benchmarks;
       const cols = [["swebenchVerified", "SWE-bench Verified", "fixing real GitHub issues"], ["terminalBench21", "Terminal-Bench 2.1", "working in a terminal"], ["terminalBench30", "Terminal-Bench 3.0", "harder terminal tasks"], ["terminalBench40", "Terminal-Bench 4.0", "newest, hardest terminal tasks"], ["osworld", "OSWorld", "computer use"]];
-      const rows = (B?.models || []).slice().sort((a, b) => (b.terminalBench21 ?? (b.terminalBench30 != null ? 50 + b.terminalBench30 : -1)) - (a.terminalBench21 ?? (a.terminalBench30 != null ? 50 + a.terminalBench30 : -1)));
+      const rank = (r) => (typeof r.terminalBench40 === "number" ? 1000 + r.terminalBench40 : r.terminalBench21 ?? (r.terminalBench30 != null ? 50 + r.terminalBench30 : -1));
+      const rows = (B?.models || []).slice().sort((a, b) => rank(b) - rank(a));
       const best = Object.fromEntries(cols.map(([k]) => [k, Math.max(...rows.map((r) => (typeof r[k] === "number" ? r[k] : -Infinity)))]));
       const logoFor = (r) => (r.agent === "free" ? makerLogo(r.match) : agentLogo(r.agent));
       set(d,
@@ -873,7 +874,7 @@ async function renderDrawer(full) {
                   }).flat())) : null),
               cols.map(([k]) => typeof r[k] === "number" ? h("td", { class: r[k] === best[k] ? "best" : "" }, r[k].toFixed(1)) : h("td", { class: "na" }, "—"))))))),
           h("p", { class: "muted", style: "font-size:12.5px;margin-top:14px" }, B?.disclaimer || ""),
-          h("p", { class: "muted", style: "font-size:12.5px" }, "Free models are tried in Terminal-Bench order (higher first); models without a score follow."),
+          h("p", { class: "muted", style: "font-size:12.5px" }, "Sorted by Terminal-Bench 4.0, the newest independent run. Free models are tried in that order, using the score of the version actually served; models without a 4.0 score follow."),
           h("p", { class: "brandnote" }, "Logos and names are trademarks of their respective owners and are shown only to identify each provider or model. tokenwise studio is not affiliated with, endorsed by, or sponsored by these companies.")),
         h("div", { class: "d-foot" }, h("span", { class: "note" }), h("button", { class: "btn", onclick: () => openDrawer("team") }, "Open Team"), h("button", { class: "btn primary", onclick: closeDrawer }, "Done")));
       return;
