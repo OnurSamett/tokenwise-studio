@@ -515,8 +515,9 @@
   body.ws-resizing { user-select: none; cursor: col-resize; }
   .ws-panel { flex: none; width: 460px; min-width: 320px; background: var(--s1); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .ws-head { height: 56px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; border-bottom: 1px solid var(--line); }
-  .ws-tabs { display: flex; gap: 2px; height: 100%; align-items: stretch; flex: 1; min-width: 0; }
-  .ws-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 0 10px; font-size: 13px; font-weight: 550; color: var(--muted); white-space: nowrap; }
+  .ws-tabs { display: flex; gap: 2px; height: 100%; align-items: stretch; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .ws-tabs::-webkit-scrollbar { display: none; }
+  .ws-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 0 8px; font-size: 12.5px; font-weight: 550; color: var(--muted); white-space: nowrap; flex: none; }
   .ws-tabs button:hover { color: var(--text); }
   .ws-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
   .ws-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -561,6 +562,25 @@
   .ws-md-preview blockquote { margin: 8px 0; padding: 4px 12px; border-left: 2px solid var(--accent); color: var(--muted); }
   .ws-md-preview hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
   .ws-empty { color: var(--dim); text-align: center; padding: 36px 18px; font-size: 13.5px; line-height: 1.5; }
+  .ws-chat-summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+  .ws-chat-group { margin-bottom: 14px; }
+  .ws-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+  .ws-chat-list { display: flex; flex-direction: column; gap: 4px; }
+  .ws-chat-item { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; background: var(--s2); border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; transition: background .12s, border-color .12s; }
+  .ws-chat-item:hover { background: var(--s3); border-color: var(--line2); }
+  .ws-chat-item.on { background: var(--accent-soft); border-color: var(--accent); }
+  .ws-chat-row { display: flex; align-items: center; gap: 7px; min-width: 0; width: 100%; }
+  .ws-chat-name { font-family: var(--mono); font-size: 12.5px; font-weight: 550; color: var(--text); white-space: nowrap; flex-shrink: 0; max-width: 65%; overflow: hidden; text-overflow: ellipsis; }
+  .ws-chat-dir { font-family: var(--mono); font-size: 11.5px; color: var(--dim); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-chat-stat { font: 11.5px var(--mono); display: inline-flex; gap: 4px; flex: none; }
+  .ws-chat-meta { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--dim); min-width: 0; }
+  .ws-chat-meta .jt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-chat-badge { font-size: 11px; font-weight: 550; border-radius: 6px; padding: 1px 6px; white-space: nowrap; flex: none; }
+  .ws-chat-badge.read { background: var(--s3); color: var(--muted); }
+  .ws-chat-badge.edited { background: var(--accent-soft); color: var(--accent); }
+  .ws-chat-badge.new { background: rgba(92,201,138,.14); color: var(--ok); }
+  .ws-chat-badge.applied { background: rgba(92,201,138,.12); color: var(--ok); border: 1px solid rgba(92,201,138,.25); }
+  .file.is-focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
   .file-ref { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; cursor: pointer; }
   .file-ref:hover { opacity: .88; text-decoration-style: solid; }
   .file-ref.code-ref { text-decoration: none; }
@@ -625,6 +645,7 @@
   <div class="ws-head">
     <div class="ws-tabs" id="ws-tabs" role="tablist">
       <button type="button" role="tab" data-tab="files" id="ws-tab-files">Files</button>
+      <button type="button" role="tab" data-tab="chat" id="ws-tab-chat">This chat</button>
       <button type="button" role="tab" data-tab="changes" id="ws-tab-changes">Changes</button>
       <button type="button" role="tab" data-tab="preview" id="ws-tab-preview">Preview</button>
     </div>
@@ -693,6 +714,7 @@ function applyStaticI18n() {
   $("#wstogglelbl").textContent = t("top.workspace");
   $("#wstoggle").title = t("top.workspaceTitle");
   $("#ws-tab-files").textContent = t("ws.tab.files");
+  $("#ws-tab-chat").textContent = t("ws.tab.chat");
   $("#ws-tab-changes").textContent = t("ws.tab.changes");
   $("#ws-tab-preview").textContent = t("ws.tab.preview");
   $("#ws-refresh").title = t("ws.refresh");
@@ -811,6 +833,7 @@ function applyLanguage(nextSetting) {
   renderBanner();
   renderLimits();
   renderVersion();
+  if (typeof ws !== "undefined" && ws.open) renderWorkspace();
   renderWorkspace();
   if (drawer) {
     const prevScroll = $("#drawer .d-body")?.scrollTop || 0;
@@ -1364,19 +1387,24 @@ async function pollChat() {
   if (gen !== chatGen) return;
   r.items.forEach(addItem); chatFrom = r.next;
   renderTurnChrome();
-  if (r.items.length) { if (atBottom || r.items.some((i) => i.kind === "user")) sc.scrollTop = sc.scrollHeight; else $("#jump").hidden = false; }
+  if (r.items.length) {
+    if (atBottom || r.items.some((i) => i.kind === "user")) sc.scrollTop = sc.scrollHeight; else $("#jump").hidden = false;
+    if (ws.open && ws.tab === "chat") loadWsChatFiles(false);
+  }
 }
 
 function openChat(id) {
   if (sending) return;
   clearAttachments();
   chatId = id; chatFrom = 0; turns = []; chatGen++; chatBusy = false; set($("#col")); for (const k in drawn) delete drawn[k];
+  resetWsChatFiles(id);
   renderSide(); renderTop(); renderBanner(); pollChat();
 }
 function newTask() {
   if (sending) return;
   clearAttachments(); chatId = null; turns = []; chatGen++; chatBusy = false;
   for (const k in drawn) delete drawn[k];
+  resetWsChatFiles(null);
   if (appSettings?.settings) {
     if (appSettings.settings.defaultModel) $("#omodel").value = appSettings.settings.defaultModel;
     if (appSettings.settings.defaultEffort) $("#oeffort").value = appSettings.settings.defaultEffort;
@@ -1455,8 +1483,8 @@ const STUDIO_CAP = 20 * 1024;
 let studioDraft = { raw: "", result: null, selected: new Set() };
 
 // ---------- drawer ----------
-function openDrawer(kind, id) {
-  const current = drawer = { kind, id };
+function openDrawer(kind, id, focusPath = null) {
+  const current = drawer = { kind, id, ...(focusPath ? { focusPath } : {}) };
   const panel = $("#drawer");
   panel.classList.remove("wide");
   set(panel, h("div", { class: "d-head" }, h("h3", {}, t("drawer.loading")), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")), h("div", { class: "d-body muted", role: "status" }, t("drawer.loading")));
@@ -1464,7 +1492,7 @@ function openDrawer(kind, id) {
   renderDrawer(true).catch((e) => { if (drawer === current) { closeDrawer(); toast(e.message || t("drawer.failed"), true); } });
 }
 function closeDrawer() { drawer = null; document.body.classList.remove("drawer-open"); }
-const openJob = (id) => openDrawer("job", id);
+const openJob = (id, focusPath = null) => openDrawer("job", id, focusPath);
 const openReview = () => openDrawer("review");
 const openDirect = () => openDrawer("direct");
 const path0 = () => S.project?.name || t("top.thisProject");
@@ -1575,6 +1603,18 @@ async function renderDrawer(full) {
       j.write && j.status === "merged" && j.applySnapshot ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.stagedFoot")),
         h("button", { class: "btn", onclick: () => undoApplyJobs([j.id]) }, t("job.undoApply"))) :
       j.status === "running" ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.worktreeFoot")), h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.stop"))) : null);
+    if (drawer.focusPath) {
+      const targetPath = drawer.focusPath;
+      drawer.focusPath = null;
+      requestAnimationFrame(() => {
+        const target = [...d.querySelectorAll("details.file")].find((el) => el.dataset.file === targetPath);
+        if (target) {
+          target.open = true;
+          target.classList.add("is-focus");
+          target.scrollIntoView({ block: "center" });
+        }
+      });
+    }
     return;
   }
   if (drawer.kind === "review") {
@@ -2508,7 +2548,7 @@ async function renderDrawer(full) {
 const RUNS_CODE = /^(\.github\/workflows\/|\.husky\/|\.githooks\/|\.vscode\/)|(^|\/)(package\.json|Makefile|\.gitattributes|\.gitmodules|setup\.py|pyproject\.toml|Cargo\.toml|build\.rs|conftest\.py|\.pre-commit-config\.yaml)$/;
 function fileBlock(f, checkbox, tag, job, fc = null) {
   if (f.binary) {
-    return h("details", { class: "file", open: true },
+    return h("details", { class: "file", open: true, "data-file": f.path },
       h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), conflictChip(fc), tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "tag" }, t(f.deleted ? "file.binaryDeleted" : "file.binary"))),
       conflictNote(fc),
       h("div", { class: "binfile" }, f.image && job && !f.deleted
@@ -2516,7 +2556,7 @@ function fileBlock(f, checkbox, tag, job, fc = null) {
         h("span", {}, t(f.deleted ? "file.deleted" : f.image ? "file.generatedImage" : "file.binaryNote"))));
   }
   const lines = f.patch.split("\n").filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode)/.test(l));
-  return h("details", { class: "file", open: true },
+  return h("details", { class: "file", open: true, "data-file": f.path },
     h("summary", {}, checkbox, h("span", { class: "fp" }, f.path), RUNS_CODE.test(f.path) ? h("span", { class: "tag", style: "color:var(--warn)", title: t("file.canRunCodeTip") }, t("file.canRunCode")) : null, conflictChip(fc), tag ? h("span", { class: "tag" }, tag) : null, h("span", { class: "plus" }, "+" + f.add), h("span", { class: "minus" }, "−" + f.del)),
     conflictNote(fc),
     h("div", { class: "diff" }, lines.map((l) => h("span", { class: l.startsWith("+") ? "a" : l.startsWith("-") ? "d" : l.startsWith("@@") ? "h" : "" }, l.startsWith("@@") ? "⋯" : l || " "))));
@@ -2615,6 +2655,12 @@ const ws = {
   diffError: null,
   diffAt: 0,
   collapsedDiffs: new Set(),
+  chatFilesData: null,
+  chatFilesId: null,
+  chatFilesLoading: false,
+  chatFilesError: null,
+  chatFilesSig: "",
+  chatFilesGen: 0,
 };
 
 try {
@@ -2663,8 +2709,10 @@ function resetWorkspace() {
   ws.diffLoading = false;
   ws.diffAt = 0;
   ws.collapsedDiffs.clear();
+  resetWsChatFiles(chatId);
   if (ws.open) {
     if (ws.tab === "changes") loadWsDiff(true);
+    else if (ws.tab === "chat") loadWsChatFiles(true);
     else loadWsDir("", { reset: true });
   }
   renderWorkspace();
@@ -2735,12 +2783,68 @@ async function loadWsDiff(force = false) {
   renderWorkspace();
 }
 
+function chatFilesSig() {
+  const c = curChat();
+  return JSON.stringify([
+    chatId,
+    chatFrom,
+    c?.status || null,
+    chatJobs().map((j) => [j.id, j.status, j.finished, (j.files || []).length, (j.applied || []).length]),
+  ]);
+}
+
+function resetWsChatFiles(id) {
+  ws.chatFilesGen++;
+  ws.chatFilesData = null;
+  ws.chatFilesId = id || null;
+  ws.chatFilesLoading = false;
+  ws.chatFilesError = null;
+  ws.chatFilesSig = "";
+  if (ws.open && ws.tab === "chat") {
+    if (id) loadWsChatFiles(true);
+    else renderWorkspace();
+  }
+}
+
+async function loadWsChatFiles(force = false) {
+  if (!chatId) {
+    ws.chatFilesData = null;
+    ws.chatFilesId = null;
+    ws.chatFilesError = null;
+    ws.chatFilesLoading = false;
+    renderWorkspace();
+    return;
+  }
+  const sig = chatFilesSig();
+  if (!force && ws.chatFilesId === chatId && ws.chatFilesData && ws.chatFilesSig === sig) return;
+  if (ws.chatFilesLoading && !force) return;
+  const gen = ++ws.chatFilesGen;
+  const targetId = chatId;
+  ws.chatFilesId = targetId;
+  ws.chatFilesLoading = true;
+  if (!ws.chatFilesData) renderWorkspace();
+  try {
+    const data = await api(`chatfiles/${encodeURIComponent(targetId)}`);
+    if (gen !== ws.chatFilesGen || chatId !== targetId) return;
+    ws.chatFilesData = data;
+    ws.chatFilesError = null;
+    ws.chatFilesSig = chatFilesSig();
+  } catch (e) {
+    if (gen !== ws.chatFilesGen || chatId !== targetId) return;
+    ws.chatFilesError = e.message;
+  } finally {
+    if (gen === ws.chatFilesGen) ws.chatFilesLoading = false;
+  }
+  renderWorkspace();
+}
+
 function toggleWorkspace(force) {
   ws.open = force === undefined ? !ws.open : !!force;
   saveWsPrefs();
   applyWorkspaceChrome();
   if (ws.open) {
     if (ws.tab === "changes") loadWsDiff(true);
+    else if (ws.tab === "chat") loadWsChatFiles(true);
     else if (!ws.tree.get("")?.loaded) loadWsDir("");
   }
   renderWorkspace();
@@ -2750,6 +2854,7 @@ function setWsTab(tab) {
   ws.tab = tab;
   if (ws.open) {
     if (tab === "changes") loadWsDiff(true);
+    else if (tab === "chat") loadWsChatFiles(true);
     else if (tab === "files" && !ws.tree.get("")?.loaded) loadWsDir("");
   }
   applyWorkspaceChrome();
@@ -2871,10 +2976,86 @@ function renderWsDiffFile(f, kind) {
   return det;
 }
 
+function renderWsChatFileRow(item) {
+  const parts = String(item.path || "").split("/");
+  const base = parts.pop() || item.path;
+  const dir = parts.length ? parts.join("/") + "/" : "";
+  const isSelected = !item.unapplied && ws.selectedPath === item.path;
+  const actionLabel = ({
+    read: t("ws.chatLabel.read"),
+    edited: t("ws.chatLabel.edited"),
+    new: t("ws.chatLabel.new"),
+    applied: t("ws.chatLabel.applied"),
+  })[item.action] || item.action;
+  const canOpenJob = (item.unapplied || item.deleted || item.running) && item.jobId && S.jobs.some((j) => j.id === item.jobId);
+  const title = canOpenJob
+    ? t("ws.chatOpenDiffTitle", { path: item.path })
+    : t("ws.chatOpenFileTitle", { path: item.path });
+  const statNode = item.unapplied
+    ? (item.binary
+        ? h("span", { class: "tag" }, t(item.deleted ? "ws.deleted" : "ws.binary"))
+        : (item.add != null || item.del != null)
+          ? h("span", { class: "ws-chat-stat" }, h("span", { class: "plus" }, "+" + (item.add || 0)), h("span", { class: "minus" }, "−" + (item.del || 0)))
+          : null)
+    : (item.deleted ? h("span", { class: "tag" }, t("ws.deleted")) : null);
+  const metaText = item.unapplied && item.jobTitle
+    ? `${AGENT[item.agent] || item.agent || ""}${item.model ? " " + modelName(item.model) : ""} · ${item.jobTitle}`
+    : null;
+
+  return h("button", {
+    type: "button",
+    class: "ws-chat-item" + (isSelected ? " on" : ""),
+    title,
+    onclick: () => {
+      if (canOpenJob) openJob(item.jobId, item.path);
+      else openWorkspaceFile(item.path, { line: 0, tab: "files" });
+    },
+  },
+    h("div", { class: "ws-chat-row" },
+      h("span", { class: "ws-chat-name" }, base),
+      h("span", { class: "ws-chat-dir" }, dir),
+      statNode,
+      h("span", { class: "ws-chat-badge " + item.action }, actionLabel)),
+    metaText ? h("div", { class: "ws-chat-meta" }, h("span", { class: "jt" }, metaText)) : null);
+}
+
+function renderWsChatFiles() {
+  if (!chatId) return h("div", { class: "ws-empty" }, t("ws.chatNoChat"));
+  if (ws.chatFilesLoading && !ws.chatFilesData) return h("div", { class: "ws-empty" }, t("ws.loading"));
+  if (ws.chatFilesError) return h("div", { class: "ws-empty" }, h("span", { class: "err" }, ws.chatFilesError));
+  const data = ws.chatFilesData;
+  const files = data?.files || [];
+  if (!files.length) return h("div", { class: "ws-empty" }, t("ws.chatEmpty"));
+
+  const groups = [
+    ["unapplied", t("ws.chatGroup.unapplied")],
+    ["changed", t("ws.chatGroup.changed")],
+    ["applied", t("ws.chatGroup.applied")],
+    ["read", t("ws.chatGroup.read")],
+  ];
+  const unappliedCount = files.filter((f) => f.group === "unapplied").length;
+
+  return h("div", { class: "ws-scroll" },
+    h("div", { class: "ws-chat-summary" },
+      h("span", { class: "tag" }, tp("ws.chatCount", files.length)),
+      unappliedCount ? h("span", { class: "tag staged" }, t("ws.chatUnappliedCount", { n: unappliedCount })) : null),
+    groups.map(([key, label]) => {
+      const items = files.filter((f) => f.group === key);
+      if (!items.length) return null;
+      return h("div", { class: "ws-chat-group" },
+        h("div", { class: "ws-chat-head" }, h("span", {}, label), h("span", {}, String(items.length))),
+        h("div", { class: "ws-chat-list" }, items.map(renderWsChatFileRow)));
+    }));
+}
+
 function renderWorkspace() {
   applyWorkspaceChrome();
   if (!ws.open) return;
   const body = $("#ws-body");
+  if (ws.tab === "chat") {
+    set(body, renderWsChatFiles());
+    return;
+  }
   if (ws.tab === "files") {
     const prevTreeScroll = body.querySelector(".ws-tree-wrap")?.scrollTop || 0;
     const showTree = ws.treeOpen || !ws.selectedPath;
@@ -2936,6 +3117,7 @@ $("#wstoggle").onclick = () => toggleWorkspace();
 $("#ws-close").onclick = () => toggleWorkspace(false);
 $("#ws-refresh").onclick = () => {
   if (ws.tab === "changes") loadWsDiff(true);
+  else if (ws.tab === "chat") loadWsChatFiles(true);
   else {
     loadWsDir("", { reset: true });
     for (const dir of ws.expanded) loadWsDir(dir, { reset: true });
@@ -2981,6 +3163,7 @@ document.addEventListener("keydown", (e) => {
 applyWorkspaceChrome();
 if (ws.open) {
   if (ws.tab === "changes") loadWsDiff(true);
+  else if (ws.tab === "chat") loadWsChatFiles(true);
   else loadWsDir("");
 }
 
@@ -2990,7 +3173,10 @@ async function refresh() {
   await pollStaged();
   renderSide(); renderTop(); renderBanner(); renderTurnChrome();
   if (drawer) renderDrawer(false);
-  if (ws.open && ws.tab === "changes") loadWsDiff(false);
+  if (ws.open) {
+    if (ws.tab === "changes") loadWsDiff(false);
+    else if (ws.tab === "chat") loadWsChatFiles(false);
+  }
 }
 
 function autosize() { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 220) + "px"; }

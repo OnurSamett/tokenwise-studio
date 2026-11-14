@@ -27,7 +27,7 @@ import { createSnapshot } from "./snapshots.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
 import { runAutoUpdate, readyFor, readUpdateState, needsAppSetup, runSetup, quitStudioServers, logUpdate } from "./autoupdate.js";
 import { parseStudioErrors, formatStudioPrompt } from "./studiolog.js";
-import { listRepoFiles, readRepoTextFile, resolveRepoImage, worktreeDiff, splitDiff } from "./workspace.js";
+import { listRepoFiles, readRepoTextFile, resolveRepoImage, worktreeDiff, splitDiff, chatFiles } from "./workspace.js";
 import { prPreconditions, commitAndOpenPr, selectAppliedJobs, formatChangesBy } from "./pr.js";
 import { notify, prNotice } from "./notify.js";
 
@@ -312,6 +312,7 @@ export const handler = async (req, res) => {
         return res.end(fs.readFileSync(img.abs));
       }
       if (what === "worktree-diff") return send(res, 200, worktreeDiff(repo));
+      if (what === "chatfiles") return send(res, 200, chatFiles({ repo, chats, jobs, chatId: id || url.searchParams.get("id") }));
       if (what === "git-setup") return send(res, 200, gitSetupPreview(repo));
     }
     if (req.method === "POST") {

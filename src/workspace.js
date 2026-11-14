@@ -334,3 +334,295 @@ export function worktreeDiff(repo) {
 
   return { isGit: true, staged, unstaged };
 }
+
+function stripBasePrefix(absPath, base) {
+  if (!base) return null;
+  const cleanBase = String(base).replace(/[\\/]+$/, "");
+  if (!cleanBase) return null;
+  if (absPath === cleanBase) return "";
+  const sep = cleanBase.includes("\\") ? "\\" : "/";
+  if (absPath.startsWith(cleanBase + "/") || absPath.startsWith(cleanBase + sep)) {
+    return absPath.slice(cleanBase.length + 1);
+  }
+  return null;
+}
+
+/** Normalize a file path from chat/job events into a safe repo-relative path, or null if outside/blocked. */
+export function normalizeChatFilePath(rawPath, { repo, realRepo, cwd, realCwd } = {}) {
+  if (typeof rawPath !== "string") return null;
+  let s = rawPath.trim();
+  if (!s || s.includes("\0") || /^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return null;
+
+  const fwd = s.replace(/\\/g, "/");
+  const wt = fwd.match(/\.tokenwise-studio\/worktrees\/[^/]+\/(.*)$/);
+  if (wt) {
+    s = wt[1];
+  } else if (path.isAbsolute(s) || /^[\\/]/.test(s)) {
+    let stripped = null;
+    for (const base of [cwd, realCwd, repo, realRepo]) {
+      stripped = stripBasePrefix(s, base);
+      if (stripped !== null) break;
+    }
+    if (stripped === null) return null;
+    s = stripped;
+  }
+
+  s = s.replace(/\\/g, "/").replace(/^(\.\/)+/, "");
+  if (!s || s === "." || s.endsWith("/")) return null;
+  const parts = s.split("/");
+  if (parts.some((p) => !p || p === "." || p === "..")) return null;
+  if (isHiddenPath(s) || isBlockedRel(s, { file: true })) return null;
+  return s;
+}
+
+function collectLogFileEvents(entries, defaultAgent, { cwd = null, allowWrites = false, job = null, record }) {
+  for (const entry of entries) {
+    if (!entry || entry.stream !== "out") continue;
+    let e;
+    try { e = JSON.parse(entry.line); } catch { continue; }
+    if (!e || typeof e !== "object") continue;
+    const t = Number(entry.t) || 0;
+    const agent = entry.agent || defaultAgent || "claude";
+
+    if (agent === "claude") {
+      if (e.type !== "assistant" || !Array.isArray(e.message?.content)) continue;
+      for (const c of e.message.content) {
+        if (c?.type !== "tool_use") continue;
+        const name = c.name || "";
+        const inp = c.input || {};
+        if (name === "Read") record({ rawPath: inp.file_path, action: "read", priority: 1, t, cwd });
+        else if (allowWrites && (name === "Edit" || name === "MultiEdit")) {
+          record({ rawPath: inp.file_path, action: "edited", priority: 2, t, cwd, job, running: !!job });
+        } else if (allowWrites && name === "Write") {
+          record({ rawPath: inp.file_path, action: "new", priority: 2, t, cwd, job, running: !!job });
+        }
+      }
+      continue;
+    }
+
+    if (agent === "codex" || agent === "local") {
+      if (allowWrites && e.type === "item.completed" && e.item?.type === "file_change") {
+        for (const ch of e.item.changes || []) {
+          const action = ch?.kind === "add" || ch?.kind === "create" ? "new" : "edited";
+          record({ rawPath: ch?.path, action, priority: 2, t, cwd, job, running: !!job });
+        }
+      }
+      continue;
+    }
+
+    if (e.type === "free.tool" && !e.error) {
+      const txt = String(e.text || "");
+      if (e.kind === "read") record({ rawPath: txt, action: "read", priority: 1, t, cwd });
+      else if (allowWrites && e.kind === "edit") {
+        if (txt.startsWith("write ")) record({ rawPath: txt.slice(6), action: "new", priority: 2, t, cwd, job, running: !!job });
+        else if (txt.startsWith("edit ")) record({ rawPath: txt.slice(5), action: "edited", priority: 2, t, cwd, job, running: !!job });
+      }
+      continue;
+    }
+
+    if (e.step_update?.state === "DONE" && e.step_update.step_type === "tool") {
+      const s = e.step_update;
+      const p = s.tool_info?.parameters || {};
+      const target = p.Path || p.TargetFile || p.AbsolutePath || "";
+      if (s.tool_name === "read_file" || s.tool_name === "view_file") {
+        record({ rawPath: target, action: "read", priority: 1, t, cwd });
+      } else if (allowWrites && s.tool_name === "write_to_file") {
+        record({ rawPath: target, action: "new", priority: 2, t, cwd, job, running: !!job });
+      } else if (allowWrites && ["edit_file", "replace_file_content", "multi_replace_file_content", "sed_file"].includes(s.tool_name)) {
+        record({ rawPath: target, action: "edited", priority: 2, t, cwd, job, running: !!job });
+      }
+    }
+  }
+}
+
+const CHAT_FILE_GROUP_ORDER = { unapplied: 0, changed: 1, applied: 2, read: 3 };
+
+/** Collect files read, edited, created, or applied in the given chat, grouped and ordered newest first. */
+export function chatFiles({ repo, chats, jobs, chatId } = {}) {
+  if (!chatId) throw httpError(400, "missing chat id");
+  try {
+    chats.get(chatId);
+  } catch (e) {
+    if (e?.code === "ENOENT") throw httpError(404, "chat not found");
+    throw e;
+  }
+
+  let realRepo = repo;
+  try { realRepo = fs.realpathSync(repo); } catch {}
+  const realCache = new Map();
+  const realOf = (dir) => {
+    if (!dir) return null;
+    if (realCache.has(dir)) return realCache.get(dir);
+    let r = dir;
+    try { r = fs.realpathSync(dir); } catch {}
+    realCache.set(dir, r);
+    return r;
+  };
+
+  const byPath = new Map();
+  let seq = 0;
+  const record = ({
+    rawPath,
+    action,
+    priority,
+    t = 0,
+    cwd = null,
+    unapplied = false,
+    applied = false,
+    deleted = false,
+    running = false,
+    job = null,
+    add = null,
+    del = null,
+    binary = false,
+  }) => {
+    const rel = normalizeChatFilePath(rawPath, {
+      repo,
+      realRepo,
+      cwd,
+      realCwd: cwd ? realOf(cwd) : null,
+    });
+    if (!rel) return;
+    if (action === "read") {
+      try {
+        if (fs.lstatSync(path.join(repo, rel)).isDirectory()) return;
+      } catch {}
+    }
+    const curSeq = ++seq;
+    const next = {
+      path: rel,
+      action,
+      priority,
+      unapplied,
+      applied,
+      deleted,
+      running,
+      jobId: job?.id || null,
+      jobTitle: job?.title || null,
+      agent: job?.agent || null,
+      model: job?.model || null,
+      add,
+      del,
+      binary,
+      t: Number(t) || 0,
+      seq: curSeq,
+    };
+    const cur = byPath.get(rel);
+    if (!cur) {
+      byPath.set(rel, next);
+      return;
+    }
+    if (next.priority > cur.priority) {
+      byPath.set(rel, next);
+    } else if (next.priority === cur.priority && (next.t > cur.t || (next.t === cur.t && next.seq > cur.seq))) {
+      byPath.set(rel, next);
+    }
+  };
+
+  // 1. Orchestrator tool events
+  const { entries } = chats.log(chatId, 0);
+  collectLogFileEvents(entries, "claude", { cwd: repo, allowWrites: true, record });
+
+  // 2. Worker jobs belonging to this chat
+  const chatJobs = jobs.list().filter((j) => j.parent === chatId);
+  for (const j of chatJobs) {
+    if (j.status === "discarded") continue;
+
+    // Parse worker log for reads (and live edits while running)
+    try {
+      const logFile = jobs.file(j.id, "log");
+      if (fs.existsSync(logFile)) {
+        const logEntries = fs.readFileSync(logFile, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+          .filter(Boolean);
+        collectLogFileEvents(logEntries, j.agent, {
+          cwd: j.cwd || repo,
+          allowWrites: !!j.write && j.status === "running",
+          job: j,
+          record,
+        });
+      }
+    } catch {}
+
+    if (!j.write) continue;
+    const jobTime = Date.parse(j.finished || j.created) || 0;
+
+    if (j.status === "done") {
+      const diffFiles = splitDiff(jobs.diff(j.id));
+      const byDiff = new Map(diffFiles.map((df) => [df.path, df]));
+      const fileList = (j.files && j.files.length) ? j.files : diffFiles.map((df) => df.path);
+      for (const fp of fileList) {
+        const df = byDiff.get(fp);
+        const isNew = df ? /^new file mode /m.test(df.patch || "") : false;
+        const isDeleted = df ? (!!df.deleted || /^deleted file mode /m.test(df.patch || "")) : false;
+        record({
+          rawPath: fp,
+          action: isNew ? "new" : "edited",
+          priority: 3,
+          t: jobTime,
+          cwd: j.cwd || repo,
+          unapplied: true,
+          applied: false,
+          deleted: isDeleted,
+          job: j,
+          add: df && !df.binary ? df.add : null,
+          del: df && !df.binary ? df.del : null,
+          binary: !!df?.binary,
+        });
+      }
+    } else if (j.status === "merged") {
+      const diffFiles = splitDiff(jobs.diff(j.id));
+      const byDiff = new Map(diffFiles.map((df) => [df.path, df]));
+      const appliedList = Array.isArray(j.applied) ? j.applied : (j.files || []);
+      for (const fp of appliedList) {
+        const df = byDiff.get(fp);
+        const isDeleted = df ? (!!df.deleted || /^deleted file mode /m.test(df.patch || "")) : false;
+        record({
+          rawPath: fp,
+          action: "applied",
+          priority: 2,
+          t: jobTime,
+          cwd: j.cwd || repo,
+          unapplied: false,
+          applied: true,
+          deleted: isDeleted,
+          job: j,
+          add: df && !df.binary ? df.add : null,
+          del: df && !df.binary ? df.del : null,
+          binary: !!df?.binary,
+        });
+      }
+    }
+  }
+
+  const files = [...byPath.values()].map(({ priority, ...rest }) => ({
+    ...rest,
+    group: rest.unapplied
+      ? "unapplied"
+      : rest.action === "applied"
+        ? "applied"
+        : rest.action === "read"
+          ? "read"
+          : "changed",
+  }));
+
+  files.sort((a, b) => {
+    if (CHAT_FILE_GROUP_ORDER[a.group] !== CHAT_FILE_GROUP_ORDER[b.group]) {
+      return CHAT_FILE_GROUP_ORDER[a.group] - CHAT_FILE_GROUP_ORDER[b.group];
+    }
+    if (b.t !== a.t) return b.t - a.t;
+    return b.seq - a.seq;
+  });
+
+  const counts = {
+    unapplied: files.filter((f) => f.group === "unapplied").length,
+    changed: files.filter((f) => f.group === "changed").length,
+    applied: files.filter((f) => f.group === "applied").length,
+    read: files.filter((f) => f.group === "read").length,
+    total: files.length,
+  };
+
+  return { chatId, files, counts };
+}
