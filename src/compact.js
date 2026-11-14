@@ -2,6 +2,7 @@
 // deterministic fallback from stored turns + job list, and output capping.
 import { spawn } from "node:child_process";
 import { available } from "./fallback.js";
+import { scrub } from "./export.js";
 
 export const COMPACT_MIN = 60_000;
 export const COMPACT_MAX = 400_000;
@@ -85,7 +86,7 @@ export function buildSummaryPrompt(chat, chatJobs = []) {
   const turnBlocks = turns.map((t, idx) => {
     const n = start + idx + 1;
     const who = t.agent || "claude";
-    return `Turn ${n} (${who}):\nUser: ${clip(t.user, 1200)}\nAssistant: ${t.reply ? clip(t.reply, 2000) : "(no reply)"}`;
+    return `Turn ${n} (${who}):\nUser: ${clip(scrub(t.user), 1200)}\nAssistant: ${t.reply ? clip(scrub(t.reply), 2000) : "(no reply)"}`;
   });
 
   // Keep the most recent turns within INPUT_MAX_CHARS so Haiku stays cheap and fast.
