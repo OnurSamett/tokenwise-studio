@@ -851,7 +851,7 @@ async function renderDrawer(full) {
     d.classList.toggle("wide", drawer.tab === "benchmarks");
     if (drawer.tab === "benchmarks") {
       const B = M.benchmarks;
-      const cols = [["swebenchVerified", "SWE-bench Verified", "fixing real GitHub issues"], ["terminalBench21", "Terminal-Bench 2.1", "working in a terminal"], ["terminalBench30", "Terminal-Bench 3.0", "harder terminal tasks"], ["osworld", "OSWorld", "computer use"]];
+      const cols = [["swebenchVerified", "SWE-bench Verified", "fixing real GitHub issues"], ["terminalBench21", "Terminal-Bench 2.1", "working in a terminal"], ["terminalBench30", "Terminal-Bench 3.0", "harder terminal tasks"], ["terminalBench40", "Terminal-Bench 4.0", "newest, hardest terminal tasks"], ["osworld", "OSWorld", "computer use"]];
       const rows = (B?.models || []).slice().sort((a, b) => (b.terminalBench21 ?? (b.terminalBench30 != null ? 50 + b.terminalBench30 : -1)) - (a.terminalBench21 ?? (a.terminalBench30 != null ? 50 + a.terminalBench30 : -1)));
       const best = Object.fromEntries(cols.map(([k]) => [k, Math.max(...rows.map((r) => (typeof r[k] === "number" ? r[k] : -Infinity)))]));
       const logoFor = (r) => (r.agent === "free" ? makerLogo(r.match) : agentLogo(r.agent));
