@@ -534,10 +534,12 @@ test("Codex orchestrator stores per-turn deltas, leaves context unset, and never
       let compactRuns = 0;
       const chats = new Chats(jobs, { summarize: async () => { compactRuns++; return "summary"; }, spawn });
 
-      const c0 = chats.send({ message: "First codex turn", force: "codex" });
+      const c0 = chats.send({ message: "First codex turn", force: "codex", model: "sol" });
       await waitTurnDone(chats, c0.id);
       const after1 = chats.get(c0.id);
       assert.equal(after1.codexThread, "thr-codex-1");
+      assert.equal(after1.turns[0].agent, "codex");
+      assert.equal(after1.turns[0].model, "sol");
       assert.deepEqual(after1.turns[0].tokens, { input: 90_000, cached: 70_000, output: 1000 });
       assert.equal(after1.turns[0].tokens.context, undefined);
       assert.equal(shouldCompact(after1, loadSettings()), false);

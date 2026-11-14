@@ -1,20 +1,91 @@
 {
-  "updated": "2026-11-14",
+  "updated": "2026-11-15",
   "disclaimer": "Benchmark numbers are mostly vendor-reported and not re-run under one harness; versions and dates differ. Free providers may serve smaller variants (e.g. flash) than the model a number was measured on.",
   "models": [
     {
+      "key": "kimi-k3.1-pro",
+      "label": "Kimi K3.1 Pro",
+      "maker": "Moonshot",
+      "match": "kimi-k3\\.1-pro",
+      "agent": "free",
+      "servedAs": "NVIDIA Playground only; API unavailable as of 2026-11-15",
+      "swebenchVerified": null,
+      "terminalBench21": null,
+      "terminalBench30": null,
+      "terminalBench40": 65.7,
+      "osworld": null,
+      "vendorReported": true,
+      "notes": "Vendor-reported Terminal-Bench 4.0: 65.7%, Claude Code harness, max effort. NVIDIA states programmatic API access is not available yet.",
+      "sources": [
+        {
+          "name": "NVIDIA model card",
+          "url": "https://build.nvidia.com/moonshotai/kimi-k3_1-pro/modelcard",
+          "date": "2026-11-15"
+        },
+        {
+          "name": "NVIDIA API availability",
+          "url": "https://build.nvidia.com/moonshotai/kimi-k3_1-pro/build",
+          "date": "2026-11-15"
+        }
+      ]
+    },
+    {
+      "key": "laguna-xs-2.1",
+      "label": "Laguna XS 2.1",
+      "maker": "Poolside",
+      "match": "laguna-xs-2\\.1",
+      "agent": "free",
+      "servedAs": "poolside/laguna-xs-2.1 (NVIDIA)",
+      "swebenchVerified": 70.9,
+      "terminalBench21": null,
+      "terminalBench30": null,
+      "terminalBench40": null,
+      "osworld": null,
+      "vendorReported": true,
+      "notes": "Vendor-reported SWE-bench Verified 70.9%; Terminal-Bench 2.0 37.5% is a different version and is not shown in the 2.1 column. Poolside harness, pass@1 averaged across attempts.",
+      "sources": [
+        {
+          "name": "NVIDIA model card",
+          "url": "https://build.nvidia.com/poolside/laguna-xs-2.1/modelcard",
+          "date": "2026-11-15"
+        }
+      ]
+    },
+    {
+      "key": "nemotron-bolt",
+      "label": "Nemotron 3.5 Bolt E4B",
+      "maker": "NVIDIA",
+      "match": "nemotron-3\\.5-bolt-e4b",
+      "agent": "free",
+      "servedAs": "nvidia/nemotron-3.5-bolt-e4b (NVIDIA)",
+      "swebenchVerified": null,
+      "terminalBench21": null,
+      "terminalBench30": null,
+      "terminalBench40": null,
+      "osworld": null,
+      "vendorReported": true,
+      "notes": "NVIDIA model card does not provide a matching coding benchmark here. Tool-call smoke test passed on 2026-11-15; this is not a coding benchmark.",
+      "sources": [
+        {
+          "name": "NVIDIA model card",
+          "url": "https://build.nvidia.com/nvidia/nemotron-3.5-bolt-e4b/modelcard",
+          "date": "2026-11-15"
+        }
+      ]
+    },
+    {
       "key": "glm-5.3",
-      "label": "GLM-5.3",
+      "label": "GLM 5.3 Flash",
       "maker": "Z.ai",
       "match": "glm-5",
       "agent": "free",
       "servedAs": "glm-5.3-flash (NVIDIA free)",
-      "swebenchVerified": 94.2,
-      "terminalBench21": 88.2,
-      "terminalBench30": 28.3,
+      "swebenchVerified": null,
+      "terminalBench21": null,
+      "terminalBench30": null,
       "osworld": null,
       "vendorReported": true,
-      "notes": "Numbers are for full GLM-5.3 (753B), not the flash variant. TB 2.1 88.2 and TB 3.0 28.3 are from the Z.ai Hugging Face card (Claude Code harness; TB 3.0 avg@3, max effort). FriendliAI measured TB 2.1 86.5. SWE-bench Verified 94.2 is from FriendliAI only (not on the HF card; unverified). No OSWorld result found. TB 4.0: 41.8 Claude Code, max. GLM-5.3-Flash (what NVIDIA serves) scored 36.7.",
+      "notes": "Flash-specific Terminal-Bench 4.0 result from the previously recorded leaderboard; full GLM 5.3 figures are not assigned to Flash.",
       "sources": [
         {
           "name": "Z.ai Hugging Face model card",
@@ -37,22 +108,22 @@
           "date": "2026-11-14"
         }
       ],
-      "terminalBench40": 41.8,
+      "terminalBench40": 36.7,
       "servedTerminalBench40": 36.7
     },
     {
       "key": "kimi-k3",
       "label": "Kimi K3",
       "maker": "Moonshot",
-      "match": "kimi-k3",
+      "match": "kimi-k3(?!\\.1)",
       "agent": "free",
-      "servedAs": "kimi-k3 (not confirmed served; app lists K2.6)",
+      "servedAs": "Kimi K3; availability depends on provider",
       "swebenchVerified": 93.8,
       "terminalBench21": 88.3,
       "terminalBench30": 17.4,
       "osworld": 84.8,
       "vendorReported": true,
-      "notes": "TB 2.1 88.3 and OSWorld-Verified 84.8 from Moonshot's table (Kimi Code harness). FriendliAI measured TB 2.1 80.9. TB 3.0 17.4 is from Z.ai's comparison table. SWE-bench Verified 93.8 is FriendliAI only; other aggregators list 70.7 or 60.4 and Moonshot's table does not report it, so treat as unverified. No sources found for a K3.1 Pro. TB 4.0: 22.4 Claude Code, max. Kimi K3.1 Pro (a newer variant) scored 60.9.",
+      "notes": "Kimi K3 only. Results and setup vary by source. K3.1 Pro is a different model and has its own row.",
       "sources": [
         {
           "name": "Moonshot Kimi-K3 repo",
@@ -176,22 +247,17 @@
       "match": "nemotron-3-ultra",
       "agent": "free",
       "servedAs": "nemotron-3-ultra-550b-a55b (NVIDIA)",
-      "swebenchVerified": 71.9,
-      "terminalBench21": 56.4,
+      "swebenchVerified": 69.7,
+      "terminalBench21": 53.9,
       "terminalBench30": null,
       "osworld": null,
       "vendorReported": true,
-      "notes": "BF16 card values (NVFP4: 69.7 / 53.9). Another NVIDIA table lists SWE-bench Verified 70.7; Vals mini-SWE-agent 69.0; Vals TB 2.1 50.9.",
+      "notes": "NVIDIA NVFP4 model card results for the hosted quantized variant: SWE-bench Verified 69.7%, Terminal-Bench 2.1 53.9%. Vendor-reported; different harnesses affect comparability.",
       "sources": [
         {
-          "name": "Hugging Face model card",
-          "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
-          "date": "2026"
-        },
-        {
-          "name": "NVIDIA tech report",
-          "url": "https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Ultra-Technical-Report.pdf",
-          "date": "2026"
+          "name": "NVIDIA NVFP4 model card",
+          "url": "https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b/modelcard",
+          "date": "2026-11-15"
         }
       ],
       "terminalBench40": null
@@ -225,35 +291,25 @@
     },
     {
       "key": "minimax-m3.1",
-      "label": "MiniMax M3.1",
+      "label": "MiniMax M3.1 Flash",
       "maker": "MiniMax",
-      "match": "minimax-m3",
+      "match": "minimax-m3\\.1-flash",
       "agent": "free",
       "servedAs": "minimax-m3.1-flash (NVIDIA free)",
-      "swebenchVerified": 80.5,
-      "terminalBench21": 66,
+      "swebenchVerified": null,
+      "terminalBench21": null,
       "terminalBench30": null,
       "osworld": null,
       "vendorReported": true,
-      "notes": "Numbers are for MiniMax M3 (no M3.1 or flash figures found) as vendor-reported. TB 2.1 independent runs: Vals 53.6, Artificial Analysis 65.2. SWE-bench Verified is considered contaminated. TB 4.0: Only MiniMax M3 is listed (7.3).",
+      "notes": "Vendor-reported Terminal-Bench 4.0: 38.1%, Codex 0.149.1 harness; DeepSWE v1.1: 73.7%. Do not substitute MiniMax M3 scores for this Flash variant.",
       "sources": [
         {
-          "name": "BenchLM",
-          "url": "https://benchlm.ai/models/minimax-m3",
-          "date": "2026"
-        },
-        {
-          "name": "LLM Stats TB 2.1",
-          "url": "https://llm-stats.com/benchmarks/terminal-bench-2.1",
-          "date": "2026"
-        },
-        {
-          "name": "Terminal-Bench 4.0 official leaderboard (Harbor Hub)",
-          "url": "https://hub.harborframework.com/datasets/terminal-bench/terminal-bench/4?tab=leaderboard&leaderboard=4-0-0",
-          "date": "2026-11-14"
+          "name": "NVIDIA model card",
+          "url": "https://build.nvidia.com/minimaxai/minimax-m3.1-flash/modelcard",
+          "date": "2026-11-15"
         }
       ],
-      "terminalBench40": null
+      "terminalBench40": 38.1
     },
     {
       "key": "gpt-6.1-sol",

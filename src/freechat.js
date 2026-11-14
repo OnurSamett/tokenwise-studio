@@ -77,6 +77,9 @@ async function rankedModels(p) {
   const size = (id) => Number((id.match(/(\d+(?:\.\d+)?)b\b/i) || [])[1] || 0);
   const tb = (id) => terminalScore(id);
   ids.sort((a, b) => {
+    // Coding-oriented candidates first. Only models present in the live API catalog can be chosen.
+    const checked = (id) => p.name !== "nvidia" ? 4 : /^moonshotai\/kimi-k3\.1-pro$/i.test(id) ? 0 : /^nvidia\/nemotron-3-ultra-550b-a55b$/i.test(id) ? 1 : /^mistralai\/mistral-large-4-1t-a52b$/i.test(id) ? 2 : /^nvidia\/nemotron-3\.5-bolt-e4b$/i.test(id) ? 3 : 4;
+    if (checked(a) !== checked(b)) return checked(a) - checked(b);
     const ta = tb(a), tbb = tb(b);
     if (ta !== null || tbb !== null) { if (ta === null) return 1; if (tbb === null) return -1; if (tbb !== ta) return tbb - ta; }
     return score(a) - score(b) || size(b) - size(a);

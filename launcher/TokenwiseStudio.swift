@@ -154,6 +154,7 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
     let spinner = NSProgressIndicator()
     let label = NSTextField(labelWithString: "Starting…")
     var onClose: ((String) -> Void)?
+    var onChooseProject: (() -> Void)?
     var restarted = false // one automatic restart per page load when the server disappears
     var downloadTargets: [ObjectIdentifier: URL] = [:]
 
@@ -162,6 +163,7 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         let name = (repo as NSString).lastPathComponent
         let cfg = WKWebViewConfiguration()
         cfg.defaultWebpagePreferences.allowsContentJavaScript = true
+        cfg.userContentController.addUserScript(WKUserScript(source: "window.__tokenwiseNative = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         web = WKWebView(frame: .zero, configuration: cfg)
         if #available(macOS 13.3, *), ProcessInfo.processInfo.environment["TOKENWISE_DEBUG"] == "1" { web.isInspectable = true }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
@@ -244,6 +246,12 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
     func webView(_ w: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
+        if url.scheme == "tokenwise-native", url.host == "choose-project", action.sourceFrame.isMainFrame,
+           let source = action.sourceFrame.request.url, source.scheme == "http", isLocalHost(source.host) {
+            decisionHandler(.cancel)
+            onChooseProject?()
+            return
+        }
         // <a download> (chat export, blob: URLs) and other explicit downloads: save them instead of navigating.
         if action.shouldPerformDownload { decisionHandler(.download); return }
         let scheme = url.scheme ?? ""
@@ -408,6 +416,7 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         }
         let w = StudioWindow(repo: repo)
         w.onClose = { [weak self] r in self?.windows[r] = nil }
+        w.onChooseProject = { [weak self] in self?.showOpenPanel() }
         windows[repo] = w
         w.show()
         if let url = url { w.load(url); return }

@@ -199,7 +199,8 @@ export class Chats {
     const attachments = validateImages(this.jobs.repo, images);
     if (typeof message !== "string") throw new Error("message must be a string");
     if (!message.trim() && !attachments.length) throw new Error("empty message");
-    if (!["opus", "sonnet", "haiku"].includes(model)) throw new Error("orchestrator model must be opus, sonnet or haiku");
+    const codexModels = ["luna", "terra", "sol", "astra"];
+    if (!["opus", "sonnet", "haiku"].includes(model) && !(force === "codex" && codexModels.includes(model))) throw new Error("unsupported orchestrator model");
     if (!["low", "medium", "high", "xhigh"].includes(effort)) throw new Error("effort must be low|medium|high|xhigh");
     if (force !== undefined && force !== null && !["codex", "claude"].includes(force)) throw new Error("force must be codex or claude");
     if (explicit !== undefined && typeof explicit !== "boolean") throw new Error("explicit must be true or false");
@@ -220,10 +221,9 @@ export class Chats {
     let pick;
     if (force === "codex") {
       if (available("codex", { write: false }, this.jobs.home)) {
-        const pre = pickOrchestrator(this.jobs.home, model, effort);
-        pick = { agent: "codex", ...codexPick(model, effort), reason: pre.reason || "chosen by user" };
+        pick = { agent: "codex", ...(codexModels.includes(model) ? { model, effort } : codexPick(model, effort)), reason: null };
       } else {
-        pick = { agent: "claude", model, effort, reason: null };
+        throw new Error("Codex is not available. Sign in to Codex and try again.");
       }
     } else if (force === "claude") {
       pick = { agent: "claude", model, effort, reason: null };

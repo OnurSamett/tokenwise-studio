@@ -51,6 +51,7 @@ export const DICT = {
     "top.teamAuto": "Auto",
 
     // Project popover
+    "project.browse": "Open folder…",
     "project.placeholder": "Open folder: /path/to/project",
     "project.current": "Current",
     "project.recent": "Recent",
@@ -129,6 +130,7 @@ export const DICT = {
     "welcome.ex3.title": "Add tests for the least-tested module",
     "welcome.ex3.sub": "A Codex worker writes them in its own branch, then the tests are run.",
 
+    "doctor.configuredFree": "configured · {detail} (connection untested)",
     "doctor.readyAntigravity": "ready · Antigravity",
     "doctor.readyWith": "ready · {detail}",
     "doctor.ready": "ready",
@@ -210,6 +212,8 @@ export const DICT = {
     "limits.empty": "Shows up after the first run.",
 
     // Common drawer labels
+    "drawer.loading": "Loading…",
+    "drawer.failed": "Could not open this panel.",
     "drawer.close": "Close",
     "drawer.cancel": "Cancel",
     "drawer.save": "Save",
@@ -413,6 +417,7 @@ export const DICT = {
     "team.toastSaved": "Team saved",
 
     // Models drawer
+    "models.benchInlineTip": "Reported results vary by model version, harness and test. Open Model guide for sources.",
     "models.title": "Model guide",
     "models.tabStrengths": "Strengths",
     "models.tabBenchmarks": "Benchmarks",
@@ -820,6 +825,7 @@ export const DICT = {
     "top.teamAuto": "Otomatik",
 
     // Project popover
+    "project.browse": "Klasör aç…",
     "project.placeholder": "Klasör aç: /proje/yolu",
     "project.current": "Geçerli",
     "project.recent": "Son kullanılanlar",
@@ -898,6 +904,7 @@ export const DICT = {
     "welcome.ex3.title": "En az test edilmiş modüle test ekle",
     "welcome.ex3.sub": "Bir Codex çalışanı testleri kendi dalında yazar, ardından testler çalıştırılır.",
 
+    "doctor.configuredFree": "yapılandırıldı · {detail} (bağlantı sınanmadı)",
     "doctor.readyAntigravity": "hazır · Antigravity",
     "doctor.readyWith": "hazır · {detail}",
     "doctor.ready": "hazır",
@@ -979,6 +986,8 @@ export const DICT = {
     "limits.empty": "İlk çalıştırmadan sonra görünür.",
 
     // Common drawer labels
+    "drawer.loading": "Yükleniyor…",
+    "drawer.failed": "Bu panel açılamadı.",
     "drawer.close": "Kapat",
     "drawer.cancel": "İptal",
     "drawer.save": "Kaydet",
@@ -1182,6 +1191,7 @@ export const DICT = {
     "team.toastSaved": "Ekip kaydedildi",
 
     // Models drawer
+    "models.benchInlineTip": "Bildirilen sonuçlar model sürümüne, test aracına ve teste göre değişir. Kaynaklar için Model rehberini aç.",
     "models.title": "Model rehberi",
     "models.tabStrengths": "Güçlü yönler",
     "models.tabBenchmarks": "Karşılaştırmalar",

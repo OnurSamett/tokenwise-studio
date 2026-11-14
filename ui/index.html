@@ -190,7 +190,7 @@
   .composer:focus-within { border-color: #44444f; }
   .composer textarea { width: 100%; background: none; border: 0; outline: 0; color: var(--text); font: inherit; resize: none; min-height: 26px; max-height: 220px; }
   .composer textarea::placeholder { color: var(--dim); }
-  .crow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .crow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
   .pill { appearance: none; background: var(--s2); border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 4px 26px 4px 11px; font-size: 12.5px; background-image: linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%); background-position: right 12px center, right 8px center; background-size: 4px 4px; background-repeat: no-repeat; }
   .crow .grow { flex: 1; }
   .pillwrap { position: relative; display: inline-flex; align-items: center; }
@@ -568,6 +568,18 @@
   .file-ref.code-ref:hover code { border-color: var(--accent); }
   @media (max-width: 899px) { .ws-panel, .ws-resizer, .ws-toggle { display: none !important; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+  /* Softer translucent surfaces while retaining system light and dark themes. */
+  :root { --bg: #202126; --s1: #282a30; --s2: #303239; --s3: #393b44; --line: #3a3c45; --line2: #4b4e59; --dim: #a0a2ae; --muted: #bfc1cc; }
+  .side { background: color-mix(in srgb, var(--s1) 88%, transparent); backdrop-filter: blur(24px); }
+  .top { background: color-mix(in srgb, var(--s1) 65%, transparent); backdrop-filter: blur(22px); }
+  .composer { background: color-mix(in srgb, var(--s1) 88%, transparent); backdrop-filter: blur(28px); box-shadow: 0 12px 36px rgba(0,0,0,.14), inset 0 1px rgba(255,255,255,.06); border-radius: 20px; }
+  .drawer { background: color-mix(in srgb, var(--s1) 94%, transparent); backdrop-filter: blur(30px); }
+  .scrim { background: rgba(0,0,0,.22); }
+  .pill { background-color: color-mix(in srgb, var(--s2) 80%, transparent); border-color: var(--line2); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-contrast: more) { .side, .top, .composer, .drawer { backdrop-filter: none; background: var(--s1); } }
+
 </style>
 </head>
 <body>
@@ -597,9 +609,8 @@
       <textarea id="input" rows="1" placeholder="Ask the team…"></textarea>
       <div class="crow">
         <button class="icon-btn attach" id="attach" title="Attach images" aria-label="Attach images"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m8 13 7-7a3 3 0 0 1 4 4L9 20a5 5 0 0 1-7-7L13 2m-7 12 8-8"/></svg></button>
-        <button class="studio-btn" id="studiobtn" title="Paste Studio errors" aria-label="Paste Studio errors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span id="studiobtnlbl">Studio errors</span></button>
         <button class="pill" id="teambtn" title="Who does the work (team settings)" style="background-image:none;padding-right:11px">Team: Auto</button>
-        <span class="pillwrap" title="Orchestrator: Claude"><img class="plogo pilllogo" src="/providers/claude.svg" alt=""><select class="pill with-logo" id="omodel" title="Orchestrator model"><option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option></select></span>
+        <span class="pillwrap"><img class="plogo pilllogo" id="orchlogo" src="/providers/claude.svg" alt=""><select class="pill with-logo" id="omodel" title="Orchestrator model"><optgroup label="Claude"><option value="opus">Claude Opus</option><option value="sonnet">Claude Sonnet</option><option value="haiku">Claude Haiku</option></optgroup><optgroup label="Codex"><option value="sol">Codex Sol</option><option value="terra">Codex Terra</option><option value="luna">Codex Luna</option></optgroup></select></span>
         <select class="pill" id="oeffort" title="Orchestrator effort"><option value="medium">medium</option><option value="low">low</option><option value="high">high</option><option value="xhigh">xhigh</option></select>
         <span class="grow"><span class="err" id="cerr"></span><span class="hint" id="khint">↵ send · ⇧↵ new line</span></span>
         <button class="stop" id="stop" title="Stop" hidden><i></i></button>
@@ -672,9 +683,6 @@ function applyStaticI18n() {
   $("#input").placeholder = t("composer.placeholder");
   $("#attach").title = t("composer.attach");
   $("#attach").setAttribute("aria-label", t("composer.attach"));
-  $("#studiobtn").title = t("studio.action");
-  $("#studiobtn").setAttribute("aria-label", t("studio.action"));
-  $("#studiobtnlbl").textContent = t("studio.btn");
   $("#teambtn").title = t("composer.teamTitle");
   $("#omodel").title = t("composer.orchModel");
   $("#oeffort").title = t("composer.orchEffort");
@@ -881,6 +889,15 @@ function describeModel(agent, model) {
   return list.find((c) => c.family && c.family === id) || list.find((c) => c.match && new RegExp(c.match, "i").test(id)) || null;
 }
 const tierLabel = (tier) => t(`models.tier.${tier}`) || tier;
+function freeBenchmark(model) {
+  const id = String(model || "").replace(/^nvidia:/, "");
+  const row = (CATALOG?.benchmarks?.models || []).find((r) => r.agent === "free" && r.match && new RegExp(r.match, "i").test(id));
+  if (!row) return null;
+  for (const [key, label] of [["terminalBench40", "TB 4.0"], ["terminalBench21", "TB 2.1"], ["swebenchVerified", "SWE Verified"]]) {
+    if (typeof row[key] === "number") return `${label}: ${row[key].toFixed(1)}%`;
+  }
+  return null;
+}
 
 // Mirrors the server presets so the panel can preview them before saving (the server validates on save).
 const PRESET_ROLES = {
@@ -1043,7 +1060,7 @@ function doctorRow() {
       const v = d[k] || {};
       const cls = v.installed && v.signedIn ? "" : v.installed ? " warn" : " off";
       const fixNode = v.fix === "enable in Settings or TOKENWISE_ALLOW_FREE=1" ? h("span", {}, t("doctor.enableFree")) : h("code", {}, v.fix);
-      const label = v.installed && v.signedIn ? (v.via === "antigravity" ? t("doctor.readyAntigravity") : k === "local" ? t("doctor.readyWith", { detail: v.model }) : k === "free" ? t("doctor.readyWith", { detail: v.via }) : t("doctor.ready"))
+      const label = v.installed && v.signedIn ? (v.via === "antigravity" ? t("doctor.readyAntigravity") : k === "local" ? t("doctor.readyWith", { detail: v.model }) : k === "free" ? t("doctor.configuredFree", { detail: v.via }) : t("doctor.ready"))
         : v.fix ? fixNode
         : v.installed ? (v.via === "antigravity" ? [t("doctor.signIn"), h("code", {}, "agy")] : [k === "gemini" ? t("doctor.apiKey") : t("doctor.signIn"), h("code", {}, fix[k])]) : t("doctor.notInstalled");
       return h("span", { class: "doc" + cls, title: v.installed ? "" : `npm i -g ${k === "claude" ? "@anthropic-ai/claude-code" : k === "codex" ? "@openai/codex" : "@google/gemini-cli"}` }, (k === "free" ? logoImg("nvidia") : agentLogo(k)) || h("i"), AGENT[k], " · ", label);
@@ -1392,7 +1409,9 @@ async function sendChatMessage(message, { withAttachments = false } = {}) {
   const hasAtt = withAttachments && attachments.length > 0;
   if (sending || curChat()?.status === "running" || (!text && !hasAtt)) return false;
   let force, explicit;
-  if (appSettings?.settings?.orchFallback === "ask") {
+  const directCodex = ["sol", "terra", "luna"].includes($("#omodel").value);
+  if (directCodex) force = "codex";
+  if (!directCodex && appSettings?.settings?.orchFallback === "ask") {
     try {
       const o = await api(`orchestrator?model=${encodeURIComponent($("#omodel").value)}&effort=${encodeURIComponent($("#oeffort").value)}`);
       if (o && o.agent === "codex") {
@@ -1436,7 +1455,14 @@ const STUDIO_CAP = 20 * 1024;
 let studioDraft = { raw: "", result: null, selected: new Set() };
 
 // ---------- drawer ----------
-function openDrawer(kind, id) { drawer = { kind, id }; $("#drawer").classList.remove("wide"); document.body.classList.add("drawer-open"); renderDrawer(true); }
+function openDrawer(kind, id) {
+  const current = drawer = { kind, id };
+  const panel = $("#drawer");
+  panel.classList.remove("wide");
+  set(panel, h("div", { class: "d-head" }, h("h3", {}, t("drawer.loading")), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")), h("div", { class: "d-body muted", role: "status" }, t("drawer.loading")));
+  document.body.classList.add("drawer-open");
+  renderDrawer(true).catch((e) => { if (drawer === current) { closeDrawer(); toast(e.message || t("drawer.failed"), true); } });
+}
 function closeDrawer() { drawer = null; document.body.classList.remove("drawer-open"); }
 const openJob = (id) => openDrawer("job", id);
 const openReview = () => openDrawer("review");
@@ -1875,7 +1901,9 @@ async function renderDrawer(full) {
   }
   if (drawer.kind === "team") {
     if (!full) return;
-    let data; try { [data] = await Promise.all([api("team"), loadCatalog()]); } catch (e) { toast(e.message, true); return closeDrawer(); }
+    const opening = drawer;
+    let data; try { [data] = await Promise.all([api("team"), loadCatalog()]); } catch (e) { if (drawer === opening) { toast(e.message, true); closeDrawer(); } return; }
+    if (drawer !== opening) return;
     const opt = data.options, tm = JSON.parse(JSON.stringify(data.team));
     const RL = { code: t("team.role.code"), quick: t("team.role.quick"), review: t("team.role.review"), research: t("team.role.research"), images: t("team.role.images") };
     const SUB = { code: t("team.role.codeSub"), quick: t("team.role.quickSub"), review: t("team.role.reviewSub"), research: t("team.role.researchSub"), images: t("team.role.imagesSub") };
@@ -1911,12 +1939,12 @@ async function renderDrawer(full) {
           h("div", { class: "ctl with-badge" },
             (() => { const lg = agentLogo(r.agent, r.model); return h("span", { class: "badge " + r.agent + (lg ? " has-logo" : ""), title: AGENT[r.agent] || r.agent }, lg || BADGE[r.agent] || "?"); })(),
             agentSel,
-            id === "images" ? h("span", { class: "fixed", title: t("team.imageModelTip") }, t("team.imageModel")) : sel(r.model, models, (v) => { r.model = v; }, (v) => (v === "auto" ? (r.agent === "free" ? t("team.autoBest") : t("team.autoModel")) : a.labels?.[v] || describeModel(r.agent, v)?.label || modelName(v) || v)),
+            id === "images" ? h("span", { class: "fixed", title: t("team.imageModelTip") }, t("team.imageModel")) : sel(r.model, models, (v) => { r.model = v; }, (v) => (v === "auto" ? (r.agent === "free" ? t("team.autoBest") : t("team.autoModel")) : (a.labels?.[v] || describeModel(r.agent, v)?.label || modelName(v) || v) + (r.agent === "free" && freeBenchmark(v) ? " · " + freeBenchmark(v) : ""))),
             id === "images" ? h("span", { class: "fixed" }, "—") : sel(r.effort || "medium", ["low", "medium", "high", "xhigh"], (v) => { r.effort = v; }, (v) => effortLabel(v))),
           roleUnsup ? h("div", { class: "goodat" }, h("i", {}, t("team.researchUnsupported"))) : (() => {
             const m = id === "images" ? null : describeModel(r.agent, r.model);
             const goodAt = m ? (hasKey(`model.${m.family}.goodAt`, lang) ? t(`model.${m.family}.goodAt`) : m.goodAt) : "";
-            return m ? h("div", { class: "goodat" }, r.agent === "free" ? makerBadge(r.model) : null, h("span", { class: "tier " + m.tier }, tierLabel(m.tier)), h("span", {}, t("team.goodAt"), goodAt)) : r.model === "auto" && id !== "images" ? h("div", { class: "goodat" }, h("i", {}, t(r.agent === "free" ? "team.freeAutoDesc" : "team.ruleAutoDesc"))) : null;
+            return m ? h("div", { class: "goodat" }, r.agent === "free" ? makerBadge(r.model) : null, h("span", { class: "tier " + m.tier }, tierLabel(m.tier)), h("span", {}, t("team.goodAt"), goodAt), r.agent === "free" && freeBenchmark(r.model) ? h("span", { title: t("models.benchInlineTip") }, " · ", freeBenchmark(r.model)) : null) : r.model === "auto" && id !== "images" ? h("div", { class: "goodat" }, h("i", {}, t(r.agent === "free" ? "team.freeAutoDesc" : "team.ruleAutoDesc"))) : null;
           })());
       });
       const freeOk = opt.agents.free?.ready || opt.agents.free?.optIn;
@@ -1953,7 +1981,7 @@ async function renderDrawer(full) {
     if (drawer.tab === "benchmarks") {
       const B = M.benchmarks;
       const cols = [["swebenchVerified", "SWE-bench Verified", t("models.colSweTip")], ["terminalBench21", "Terminal-Bench 2.1", t("models.colTb21Tip")], ["terminalBench30", "Terminal-Bench 3.0", t("models.colTb30Tip")], ["terminalBench40", "Terminal-Bench 4.0", t("models.colTb40Tip")], ["osworld", "OSWorld", t("models.colOsTip")]];
-      const rank = (r) => (typeof r.terminalBench40 === "number" ? 1000 + r.terminalBench40 : r.terminalBench21 ?? (r.terminalBench30 != null ? 50 + r.terminalBench30 : -1));
+      const rank = (r) => (typeof r.terminalBench40 === "number" ? r.terminalBench40 : -1);
       const rows = (B?.models || []).slice().sort((a, b) => rank(b) - rank(a));
       const best = Object.fromEntries(cols.map(([k]) => [k, Math.max(...rows.map((r) => (typeof r[k] === "number" ? r[k] : -Infinity)))]));
       const logoFor = (r) => (r.agent === "free" ? makerLogo(r.match) : agentLogo(r.agent));
@@ -2517,11 +2545,15 @@ async function renderLimits() {
   let L; try { L = await api("limits"); } catch { return; }
   const plan = (name, agent, d) => d ? h("div", { class: "plan" }, h("div", { class: "pname" }, agentLogo(agent) || h("span", { class: "badge " + agent }, BADGE[agent]), name), meter(t("limits.fiveHour"), d.fiveHour), meter(t("limits.weekly"), d.week)) : null;
   const blocks = [plan("Claude", "claude", L.claude), plan("ChatGPT Codex", "codex", L.codex)].filter(Boolean);
-  let O = null; try { O = await api(`orchestrator?model=${$("#omodel").value}&effort=${$("#oeffort").value}`); } catch {}
+  const model = $("#omodel").value;
+  let O = null;
+  if (["sol", "terra", "luna"].includes(model)) O = { agent: "codex", model, reason: null };
+  else try { O = await api(`orchestrator?model=${model}&effort=${$("#oeffort").value}`); } catch {}
+  $("#orchlogo").src = `/providers/${["sol", "terra", "luna"].includes(model) ? "codex" : "claude"}.svg`;
   const why = O?.reason ? translateReason(O.reason, lang).replace(/^Claude\s+/i, "") : "";
   const orch = O ? h("div", { class: "orchnow" + (O.agent === "codex" ? " moved" : ""), title: t(O.agent === "codex" ? "limits.codexTitle" : "limits.claudeTitle") },
     h("div", { class: "on" }, agentLogo(O.agent), `${AGENT[O.agent] || O.agent} ${modelName(O.model)}`, h("span", { class: "dot" })),
-    h("div", { class: "why" }, O.agent === "codex" ? t("limits.insteadOfClaude", { reason: why }) : t("limits.orchReady"))) : null;
+    h("div", { class: "why" }, O.agent === "codex" && why ? t("limits.insteadOfClaude", { reason: why }) : t("limits.orchReady"))) : null;
   set($("#usage"), orch, blocks.length ? blocks : h("div", { class: "none" }, t("limits.empty")));
 }
 
@@ -2538,6 +2570,7 @@ function projectMenu() {
   inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && inp.value.trim()) open(inp.value.trim()); });
   const rec = (S.recents || []).filter((p) => p !== S.repo);
   popover($("#project"),
+    window.__tokenwiseNative ? h("button", { onclick: () => { closePop(); window.location.href = "tokenwise-native://choose-project"; } }, t("project.browse")) : null,
     h("div", { class: "ph" }, t("project.current")), h("button", { disabled: true, style: "opacity:1;cursor:default" }, S.project?.name, h("span", { class: "path" }, S.repo)),
     rec.length ? [h("div", { class: "sep" }), h("div", { class: "ph" }, t("project.recent"))] : null,
     rec.map((p) => h("button", { onclick: () => open(p) }, p.split("/").filter(Boolean).pop(), h("span", { class: "path" }, p))),
@@ -2965,7 +2998,6 @@ $("#input").addEventListener("input", autosize);
 $("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
 $("#input").addEventListener("input", updateSend);
 $("#attach").onclick = () => { if (!sending) $("#imagefiles").click(); };
-$("#studiobtn").onclick = () => openDrawer("studiolog");
 $("#imagefiles").onchange = (e) => { addImages(e.target.files); e.target.value = ""; };
 $(".composer").addEventListener("paste", (e) => {
   const files = [...(e.clipboardData?.items || [])].filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter(Boolean);

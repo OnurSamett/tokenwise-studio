@@ -316,7 +316,7 @@ test("UI handler: POST /api/studiolog parses, formats, and GET / renders Studio 
 
       const page = await callHandler("GET", "/");
       assert.equal(page.status, 200);
-      assert.match(page.text, /id="studiobtn"/);
+      assert.doesNotMatch(page.text, /id="studiobtn"/);
       assert.match(page.text, /drawer\.kind === "studiolog"/);
 
       const parsed = await callHandler("POST", "/api/studiolog", {
