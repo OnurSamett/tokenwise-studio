@@ -6,6 +6,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { Jobs } from "./jobs.js";
 import { loadTeam, teamGuide } from "./team.js";
+import { loadSettings } from "./settings.js";
 
 const repo = process.env.TOKENWISE_REPO || process.cwd();
 const jobs = new Jobs(repo);
@@ -34,6 +35,7 @@ server.registerTool("delegate", {
   inputSchema: {
     agent: z.enum(["codex", "claude", "gemini", "local", "free"]),
     task: z.string().min(10),
+    images: z.array(z.string()).max(6).optional().describe("Repo-relative paths inside .tokenwise-studio/uploads; forwarded to Codex and Claude"),
     model: z.string().optional(),
     effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
     write: z.boolean().optional(),
@@ -41,7 +43,12 @@ server.registerTool("delegate", {
     timeout_min: z.number().int().min(1).max(120).optional(),
   },
 }, async (a) => {
-  try { return ok(brief(jobs.start({ ...a, timeoutMin: a.timeout_min }))); } catch (e) { return fail(e); }
+  try {
+    if (a.write && loadSettings().permissionMode === "plan-only") {
+      return fail(new Error("write jobs are disabled in plan-only mode"));
+    }
+    return ok(brief(jobs.start({ ...a, timeoutMin: a.timeout_min })));
+  } catch (e) { return fail(e); }
 });
 
 server.registerTool("job_wait", {
@@ -73,7 +80,10 @@ server.registerTool("job_merge", {
   description: "Optionally pass `files` to apply only those paths. Apply a finished write job's changes to the main working tree as staged, uncommitted changes (so you can still review or commit) and remove its worktree.",
   inputSchema: { id: z.string(), files: z.array(z.string()).optional() },
 }, async ({ id, files }) => {
-  try { return ok(brief(jobs.merge(id, files))); } catch (e) { return fail(e); }
+  try {
+    if (loadSettings().permissionMode === "plan-only") return fail(new Error("applying changes is disabled in plan-only mode"));
+    return ok(brief(jobs.merge(id, files)));
+  } catch (e) { return fail(e); }
 });
 
 server.registerTool("job_discard", {

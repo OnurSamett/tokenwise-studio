@@ -6,6 +6,7 @@ import { doctor } from "./doctor.js";
 import { agyModels } from "./antigravity.js";
 import { freeProviders } from "./freechat.js";
 import { CATALOG, describe } from "./models.js";
+import { loadSettings } from "./settings.js";
 
 export const ROLES = ["code", "quick", "review", "images"];
 const LABELS = { code: "Writes code", quick: "Quick & mechanical work", review: "Reviews and second opinions", images: "Images" };
@@ -122,7 +123,7 @@ export function teamOptions(freeModels = []) {
       codex: { ready: ready("codex"), models: ["luna", "terra", "sol", "astra"], labels: fam("codex") },
       claude: { ready: ready("claude"), models: ["haiku", "sonnet", "opus"], labels: fam("claude") },
       gemini: { ready: ready("gemini"), models: geminiFamilies(), labels: fam("gemini") },
-      free: { ready: providers.length > 0, models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: process.env.TOKENWISE_ALLOW_FREE === "1" },
+      free: { ready: providers.length > 0, models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: loadSettings().allowFree },
     },
     roles: ROLES.map((id) => ({ id, label: LABELS[id] })),
     presets: Object.keys(PRESETS),

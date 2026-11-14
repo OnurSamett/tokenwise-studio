@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { findAgy, agyModels } from "./antigravity.js";
 import { freeProviders } from "./freechat.js";
+import { loadSettings } from "./settings.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -48,11 +49,12 @@ function localCheck() {
 function freeCheck() {
   const list = freeProviders().map((p) => p.name);
   const via = list.join(" → ") || null;
-  const optIn = process.env.TOKENWISE_ALLOW_FREE === "1";
-  return { installed: list.length > 0, signedIn: list.length > 0 && optIn, via, providers: list, optIn, fix: !list.length ? "export NVIDIA_API_KEY=…" : optIn ? null : "TOKENWISE_ALLOW_FREE=1" };
+  const optIn = loadSettings().allowFree;
+  return { installed: list.length > 0, signedIn: list.length > 0 && optIn, via, providers: list, optIn, fix: !list.length ? "export NVIDIA_API_KEY=…" : optIn ? null : "enable in Settings or TOKENWISE_ALLOW_FREE=1" };
 }
 
 let cache = null;
+export function clearDoctorCache() { cache = null; }
 export function doctor() {
   if (!cache || Date.now() - cache.at > 60000) cache = { at: Date.now(), value: check() };
   return cache.value;

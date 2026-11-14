@@ -9,11 +9,12 @@
 import { doctor } from "./doctor.js";
 import { limits } from "./limits.js";
 import { loadTeam } from "./team.js";
+import { loadSettings } from "./settings.js";
 
 export const RATE_LIMIT = /rate.?limit|usage limit|quota|\b429\b|too many requests|limit (?:reached|exceeded)|exceeded your|out of credits|hit your (?:[\w-]+ )?limit/i;
 
-const chain = () => (process.env.TOKENWISE_FALLBACK || "codex,gemini,claude,free,local").split(",").map((s) => s.trim()).filter(Boolean);
-const threshold = () => Number(process.env.TOKENWISE_LIMIT_THRESHOLD || 90);
+const chain = () => loadSettings().fallbackOrder;
+const threshold = () => loadSettings().limitThreshold;
 
 /** Is this agent's plan at or above the threshold? Returns a short reason or null. */
 export function nearLimit(agent, home) {
@@ -31,7 +32,7 @@ export function nearLimit(agent, home) {
 export function available(agent, { write }, home) {
   const d = doctor()[agent];
   if (!d || !d.installed || !d.signedIn) return false;
-  if (agent === "free") return process.env.TOKENWISE_ALLOW_FREE === "1" && (!home || loadTeam(home).allow.free !== false);
+  if (agent === "free") return loadSettings().allowFree && (!home || loadTeam(home).allow.free !== false);
   return true;
 }
 

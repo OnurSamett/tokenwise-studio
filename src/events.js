@@ -17,7 +17,7 @@ function codex(e, base) {
   const it = e.item || {};
   if (e.type === "item.completed") {
     if (it.type === "agent_message") return [{ kind: "say", text: it.text }];
-    if (it.type === "reasoning") return [{ kind: "think", text: short(it.text, 600) }];
+    if (it.type === "reasoning") return [{ kind: "think", text: it.text }];
     if (it.type === "command_execution") {
       const cmd = String(it.command || "").replace(/^\/bin\/(z|ba)?sh -lc /, "").replace(/^"(.*)"$/s, "$1").replace(/^'(.*)'$/s, "$1");
       return [{ kind: "cmd", text: short(cmd, 200), detail: short(it.aggregated_output, 1500), ok: it.exit_code === 0 }];
@@ -59,7 +59,7 @@ function claude(e, base) {
     const out = [];
     for (const c of e.message.content) {
       if (c.type === "text" && c.text.trim()) out.push({ kind: "say", text: c.text });
-      if (c.type === "thinking" && c.thinking) out.push({ kind: "think", text: short(c.thinking, 600) });
+      if (c.type === "thinking" && c.thinking) out.push({ kind: "think", text: c.thinking });
       if (c.type === "tool_use" && !["ToolSearch", "TodoWrite"].includes(c.name)) out.push(toolUse(c, base));
     }
     return out;

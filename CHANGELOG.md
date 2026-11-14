@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- Images in chat: attach, paste or drop images in the composer; they go to the orchestrator and to Codex and Claude workers.
+- Thinking steps: the model's reasoning shows as a collapsible "Thinking" section.
+- Settings panel: permission mode (ask, auto-apply, plan-only), default orchestrator model and effort, and what happens when Claude hits its limit (switch automatically, ask me, or off), plus threshold, fallback order, free models, fast mode, notifications and update checks.
+
 ## 0.4.0
 
 - Native Mac window: tokenwise studio opens in its own app window instead of a browser tab.

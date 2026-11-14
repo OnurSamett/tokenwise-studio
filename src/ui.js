@@ -8,15 +8,16 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { saveUpload, resolveUpload, UPLOAD_BODY_LIMIT } from "./uploads.js";
 import { Jobs } from "./jobs.js";
 import { Chats, pickOrchestrator } from "./orchestrator.js";
 import { normalize } from "./events.js";
 import { limits } from "./limits.js";
-import { doctor } from "./doctor.js";
+import { doctor, clearDoctorCache } from "./doctor.js";
 import { loadTeam, saveTeam, teamOptions, geminiFamilies } from "./team.js";
 import { CATALOG } from "./models.js";
 import { listFreeModels } from "./freechat.js";
-import { loadSettings, saveSettings } from "./notify.js";
+import { loadSettings, saveSettings, settingsInfo } from "./settings.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
 
 
@@ -58,7 +59,7 @@ function chatTimeline(id, from = 0) {
   const { entries, next } = chats.log(id, from);
   const items = [];
   for (const e of entries) {
-    if (e.stream === "user") { items.push({ t: e.t, kind: "user", text: e.line, turn: e.turn }); continue; }
+    if (e.stream === "user") { items.push({ t: e.t, kind: "user", text: e.line, images: e.images || [], turn: e.turn }); continue; }
     for (const it of normalize(e.agent || "claude", e, repo)) items.push({ t: e.t, turn: e.turn, ...it });
   }
   return { items, next };
@@ -77,7 +78,20 @@ const send = (res, code, body, type = "application/json") => {
   res.writeHead(code, { "content-type": type, "cache-control": "no-store" });
   res.end(type === "application/json" ? JSON.stringify(body) : body);
 };
-const readBody = (req) => new Promise((r) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { try { r(JSON.parse(b || "{}")); } catch { r({}); } }); });
+const readBody = (req, limit = 1024 * 1024) => new Promise((resolve, reject) => {
+  const chunks = []; let size = 0, exceeded = false;
+  req.on("data", (c) => {
+    size += c.length;
+    if (size > limit) { if (!exceeded) reject(new Error("request body too large")); exceeded = true; chunks.length = 0; }
+    else if (!exceeded) chunks.push(c);
+  });
+  req.on("error", reject);
+  req.on("end", () => {
+    if (exceeded) return;
+    try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")); }
+    catch { reject(new Error("invalid JSON")); }
+  });
+});
 
 // Only answer requests addressed to this machine (blocks DNS rebinding), and require a custom
 // header plus a local Origin on every state-changing request (blocks CSRF from other websites:
@@ -116,6 +130,7 @@ function orchestratorNow(model, effort) {
 let versionCheck = null;
 function versionInfo() {
   const current = currentVersion(), source = installSource();
+  if (!loadSettings().updateCheck) return { current, latest: null, updateAvailable: false, source, disabled: true };
   const c = cachedLatest();
   if (!c && !versionCheck) versionCheck = latestVersion().catch(() => null).finally(() => { versionCheck = null; });
   return { current, latest: c ? c.version : null, updateAvailable: !!c && compareVersions(c.version, current) > 0, source };
@@ -149,6 +164,10 @@ const handler = async (req, res) => {
     if (!m) return send(res, 404, { error: "not found" });
     const [, what, id] = m;
     if (req.method === "GET") {
+      if (what === "upload") {
+        const image = resolveUpload(repo, url.searchParams.get("path"));
+        return send(res, 200, fs.readFileSync(image.abs), image.type);
+      }
       if (what === "state") return send(res, 200, state());
       if (what === "staged") return send(res, 200, { files: staged() });
       if (what === "doctor") return send(res, 200, doctor());
@@ -162,7 +181,7 @@ const handler = async (req, res) => {
           benchmarks: loadBenchmarks(),
         });
       }
-      if (what === "settings") return send(res, 200, loadSettings());
+      if (what === "settings") return send(res, 200, settingsInfo());
       if (what === "version") return send(res, 200, versionInfo());
       if (what === "limits") return send(res, 200, limits(jobs.home));
       if (what === "orchestrator") return send(res, 200, orchestratorNow(url.searchParams.get("model"), url.searchParams.get("effort")));
@@ -171,10 +190,13 @@ const handler = async (req, res) => {
       if (what === "diff") return send(res, 200, { files: splitDiff(jobs.diff(id)) });
     }
     if (req.method === "POST") {
-      const b = await readBody(req);
+      const b = await readBody(req, what === "upload" ? UPLOAD_BODY_LIMIT : undefined);
+      if (what === "upload") return send(res, 200, saveUpload(repo, b));
       if (what === "settings") {
-        if (typeof b.notifications !== "boolean") throw new Error("notifications must be true or false");
-        return send(res, 200, saveSettings({ notifications: b.notifications }));
+        saveSettings(b);
+        orchCache.clear();
+        clearDoctorCache();
+        return send(res, 200, settingsInfo());
       }
       if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
       if (what === "chat") return send(res, 200, chats.send(b));

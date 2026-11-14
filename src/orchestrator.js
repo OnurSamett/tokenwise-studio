@@ -1,5 +1,6 @@
 // Orchestrator chats: each message runs the main agent (Claude Code headless) with the
 // tokenwise-studio MCP tools, so it can delegate to workers. Follow-ups resume the session.
+import { validateImages, imageNote } from "./uploads.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,6 +9,7 @@ import { loadTeam, teamGuide } from "./team.js";
 import { RATE_LIMIT, available, nearLimit } from "./fallback.js";
 import { resolve } from "./workers.js";
 import { notify, turnNotice, handoffNotice } from "./notify.js";
+import { loadSettings } from "./settings.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -17,25 +19,46 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(python3:*)", "Bash(pytest:*)", "Bash(npm test:*)", "Bash(npm run:*)", "Bash(node:*)",
   "Bash(go test:*)", "Bash(cargo test:*)"];
 
-const GUIDE = `You are the ORCHESTRATOR in tokenwise studio. You plan, delegate, review and integrate.
+export function buildGuide(permissionMode = "ask") {
+  if (permissionMode === "plan-only") {
+    return `You are the ORCHESTRATOR in tokenwise studio running in PLAN-ONLY mode. You plan, investigate and answer, without making or delegating any file edits.
+Use the tokenwise-studio tools to hand read-only research pieces to cheaper workers instead of doing everything yourself:
+- delegate(agent, model, effort, task, write=false): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for analysis), gemini (hydrogen for quick and routine work, argon (frontier) for hard problems). Spread work across providers to spare each plan's limits. When plans run low, jobs move automatically to the next worker (ending with 'local', a free Ollama model); mention such moves in your summary.
+- Pick effort from: many interacting parts, ambiguity, prior failure, costly mistake. 0 signals -> low, 1 -> medium, 2+ -> high.
+- PLAN-ONLY MODE IS ACTIVE: do NOT edit files yourself, do NOT pass write=true to delegate (it will be rejected), and do NOT call job_merge. Only read-only (write=false) delegation is permitted.
+- Dispatch independent read-only pieces in parallel, then job_wait each.
+- Forward attached images with delegate images: [repo-relative upload paths] to Codex or Claude workers that need them. Other workers continue without images.
+- Workers cannot see this chat: every task must name files, expected behaviour and the done-condition.
+- Never use astra or max effort unless the user asks.
+You already run in the project root: never use cd, &&, pipes or redirects. Your shell is limited to read-only git (status, diff, log), ls, and test runners (python3, pytest, npm test, node, go test, cargo test).
+Finish each turn with a SHORT plain-language summary for a busy user: at most 5 lines, no job ids, no file paths beyond names, no process details. Say what you found or planned, who helped (e.g. "Claude Haiku"), and any recommended next steps.`;
+  }
+  const mergeRule = permissionMode === "auto-apply"
+    ? "- After reviewing job_diff, call job_merge yourself when the changes look good (applied changes are staged, not committed). job_discard work that is clearly wrong, and tell the user what you merged."
+    : "- The USER applies changes from the studio UI. Do NOT call job_merge unless the user explicitly asks you to apply/merge. job_discard work that is clearly wrong, and tell the user which jobs are ready to apply and why.";
+  const reviewTarget = permissionMode === "auto-apply" ? "so you can review and apply it" : "so the user can review it";
+  const nextStep = permissionMode === "auto-apply" ? "(usually: review the staged changes or commit)" : "(usually: review and apply in the studio)";
+  return `You are the ORCHESTRATOR in tokenwise studio. You plan, delegate, review and integrate.
 Use the tokenwise-studio tools to hand self-contained pieces to cheaper workers instead of doing them yourself:
 - delegate(agent, model, effort, task, write): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for routine code), gemini (hydrogen for quick and routine work, argon (frontier) for hard problems). Spread work across providers to spare each plan's limits. When plans run low, jobs move automatically to the next worker (ending with 'local', a free Ollama model); mention such moves in your summary.
 - Pick effort from: many interacting parts, ambiguity, prior failure, costly mistake. 0 signals -> low, 1 -> medium, 2+ -> high.
 - write=true for edits: the worker gets its own git worktree from HEAD. Then job_wait and review every job_diff.
-- The USER applies changes from the studio UI. Do NOT call job_merge unless the user explicitly asks you to apply/merge. job_discard work that is clearly wrong, and tell the user which jobs are ready to apply and why.
+${mergeRule}
 - Dispatch independent pieces in parallel, then wait for each.
+- Forward attached images with delegate images: [repo-relative upload paths] to Codex or Claude workers that need them. Other workers continue without images.
 - Workers cannot see this chat: every task must name files, expected behaviour and the done-condition.
 - Review every diff: flag unrelated changes, generated files, caches or build output.
-- You cannot edit files yourself: every code change, however small, goes to a worker (write=true) so the user can review it. For a tiny change pick the cheapest fitting worker (codex terra low, or claude haiku low). Reading and small investigations you can do yourself.
+- You cannot edit files yourself: every code change, however small, goes to a worker (write=true) ${reviewTarget}. For a tiny change pick the cheapest fitting worker (codex terra low, or claude haiku low). Reading and small investigations you can do yourself.
 - Never use astra or max effort unless the user asks.
 You already run in the project root: never use cd, &&, pipes or redirects. Your shell is limited to read-only git (status, diff, log), ls, and test runners (python3, pytest, npm test, node, go test, cargo test). To verify combined changes, ask a worker to run the tests.
-Finish each turn with a SHORT plain-language summary for a busy user: at most 5 lines, no job ids, no file paths beyond names, no process details. Say what changed, who did it (e.g. "Codex Terra"), and what the user should do next (usually: review and apply in the studio).`;
+Finish each turn with a SHORT plain-language summary for a busy user: at most 5 lines, no job ids, no file paths beyond names, no process details. Say what changed, who did it (e.g. "Codex Terra"), and what the user should do next ${nextStep}.`;
+}
 
 // ---- Claude -> Codex orchestrator fallback ----
 // Codex has no --append-system-prompt, so the guide goes at the top of the prompt.
 const CODEX_NOTE = "Your delegation tools are on the tokenwise_studio MCP server. You run read-only: do not try to edit files yourself, delegate every change.";
 const CODEX_MODEL = { opus: "sol", sonnet: "sol", haiku: "terra" };
-const fallbackEnabled = () => process.env.TOKENWISE_ORCH_FALLBACK !== "0";
+export const fallbackEnabled = () => loadSettings().orchFallback !== "off";
 
 /** Codex family + effort that stands in for a Claude orchestrator model. */
 export function codexPick(model, effort) {
@@ -65,10 +88,11 @@ export function shouldHandOff({ agent, code, isError, lines = [], stopped, fallb
   return RATE_LIMIT.test(lines.slice(-50).join("\n"));
 }
 
-function codexCommand({ repo, chatId, model, effort, thread, prompt }) {
+function codexCommand({ repo, chatId, model, effort, thread, prompt, images = [], fastMode = false }) {
   const slug = resolve({ agent: "codex", model, effort }).model;
   const cfg = [
     `model_reasoning_effort=${JSON.stringify(effort)}`,
+    ...(fastMode ? ['service_tier="fast"'] : []),
     `mcp_servers.tokenwise_studio.command=${JSON.stringify(process.execPath)}`,
     `mcp_servers.tokenwise_studio.args=[${JSON.stringify(MCP)}]`,
     `mcp_servers.tokenwise_studio.env={TOKENWISE_REPO=${JSON.stringify(repo)},TOKENWISE_PARENT=${JSON.stringify(chatId)}}`,
@@ -76,8 +100,8 @@ function codexCommand({ repo, chatId, model, effort, thread, prompt }) {
   ].flatMap((v) => ["-c", v]);
   // `exec resume` does not accept -C/--sandbox: cwd comes from spawn, the sandbox from config.
   const args = thread
-    ? ["exec", "resume", thread, "--json", "--skip-git-repo-check", "-m", slug, "-c", 'sandbox_mode="read-only"', ...cfg, prompt]
-    : ["exec", "--json", "--skip-git-repo-check", "-C", repo, "--sandbox", "read-only", "-m", slug, ...cfg, prompt];
+    ? ["exec", "resume", thread, "--json", "--skip-git-repo-check", "-m", slug, "-c", 'sandbox_mode="read-only"', ...cfg, ...images.flatMap((p) => ["-i", p]), "--", prompt]
+    : ["exec", "--json", "--skip-git-repo-check", "-C", repo, "--sandbox", "read-only", "-m", slug, ...cfg, ...images.flatMap((p) => ["-i", p]), "--", prompt];
   return { cmd: "codex", args };
 }
 
@@ -120,22 +144,41 @@ export class Chats {
       .sort((a, b) => b.created.localeCompare(a.created));
   }
 
-  send({ id, message, model = "opus", effort = "medium" }) {
-    if (!message || !message.trim()) throw new Error("empty message");
+  send({ id, message, model, effort, images = [], force, explicit } = {}) {
+    const settings = loadSettings();
+    model = model || settings.defaultModel;
+    effort = effort || settings.defaultEffort;
+    const attachments = validateImages(this.jobs.repo, images);
+    if (typeof message !== "string") throw new Error("message must be a string");
+    if (!message.trim() && !attachments.length) throw new Error("empty message");
     if (!["opus", "sonnet", "haiku"].includes(model)) throw new Error("orchestrator model must be opus, sonnet or haiku");
     if (!["low", "medium", "high", "xhigh"].includes(effort)) throw new Error("effort must be low|medium|high|xhigh");
+    if (force !== undefined && force !== null && !["codex", "claude"].includes(force)) throw new Error("force must be codex or claude");
+    if (explicit !== undefined && typeof explicit !== "boolean") throw new Error("explicit must be true or false");
     let c;
     if (id) {
       c = this.get(id);
       if (this.running.has(id)) throw new Error("the orchestrator is still working on the previous message");
     } else {
       id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
-      c = { id, title: message.slice(0, 70), created: new Date().toISOString(), sessionId: null, turns: [], cost: 0 };
+      c = { id, title: message.slice(0, 70) || "Attached images", created: new Date().toISOString(), sessionId: null, turns: [], cost: 0 };
     }
     c.model = model; c.effort = effort; c.status = "running";
     const ti = c.turns.length;
-    const pick = pickOrchestrator(this.jobs.home, model, effort);
-    const turn = { user: message, agent: pick.agent, model: pick.model, effort: pick.effort, started: new Date().toISOString(), finished: null, cost: null };
+    let pick;
+    if (force === "codex") {
+      if (available("codex", { write: false }, this.jobs.home)) {
+        const pre = pickOrchestrator(this.jobs.home, model, effort);
+        pick = { agent: "codex", ...codexPick(model, effort), reason: pre.reason || "chosen by user" };
+      } else {
+        pick = { agent: "claude", model, effort, reason: null };
+      }
+    } else if (force === "claude") {
+      pick = { agent: "claude", model, effort, reason: null };
+    } else {
+      pick = pickOrchestrator(this.jobs.home, model, effort);
+    }
+    const turn = { user: message, images: attachments.map((i) => i.rel), agent: pick.agent, model: pick.model, effort: pick.effort, started: new Date().toISOString(), finished: null, cost: null };
     if (pick.reason) turn.handoff = { from: "claude", reason: pick.reason };
     c.turns.push(turn);
     this.save(c);
@@ -144,11 +187,13 @@ export class Chats {
     fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: { "tokenwise-studio": {
       command: process.execPath, args: [MCP], env: { TOKENWISE_REPO: this.jobs.repo, TOKENWISE_PARENT: id },
     } } }));
+    const baseGuide = buildGuide(settings.permissionMode);
     const tg = teamGuide(loadTeam(this.jobs.home));
-    const guide = tg ? GUIDE + "\n\n" + tg : GUIDE;
+    const guide = tg ? baseGuide + "\n\n" + tg : baseGuide;
+    const allowedTools = settings.permissionMode === "plan-only" ? ALLOWED.filter((t) => t !== "mcp__tokenwise-studio__job_merge") : ALLOWED;
 
     const log = fs.createWriteStream(this.f(id, "jsonl"), { flags: "a" });
-    const w = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line, turn: ti, agent: turn.agent }) + "\n");
+    const w = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line, turn: ti, agent: turn.agent, ...(stream === "user" ? { images: turn.images } : {}) }) + "\n");
     w("user", message);
     if (turn.handoff) w("handoff", JSON.stringify({ from: "claude", to: "codex", reason: turn.handoff.reason }));
 
@@ -174,17 +219,19 @@ export class Chats {
     const run = (agent) => {
       const t = c.turns[ti];
       const prompt = buildPrompt(c, ti, agent, message);
+      const imagePaths = attachments.map((i) => i.abs);
       let cmd, args;
       if (agent === "codex") {
-        ({ cmd, args } = codexCommand({ repo: this.jobs.repo, chatId: id, model: t.model, effort: t.effort, thread: c.codexThread, prompt: `<instructions>\n${guide}\n${CODEX_NOTE}\n</instructions>\n\n${prompt}` }));
+        ({ cmd, args } = codexCommand({ repo: this.jobs.repo, chatId: id, model: t.model, effort: t.effort, thread: c.codexThread, images: imagePaths, fastMode: settings.fastMode, prompt: `<instructions>\n${guide}\n${CODEX_NOTE}\n</instructions>\n\n${prompt}` }));
       } else {
         cmd = "claude";
-        args = ["-p", prompt, "--model", t.model, "--effort", t.effort,
+        args = ["-p", [prompt, imageNote(imagePaths)].filter(Boolean).join("\n\n"), "--model", t.model, "--effort", t.effort,
           "--output-format", "stream-json", "--verbose",
           "--mcp-config", mcpFile, "--strict-mcp-config",
           "--permission-mode", "default", "--disallowedTools", "Edit", "Write", "MultiEdit", "NotebookEdit",
           "--append-system-prompt", guide,
-          "--allowedTools", ...ALLOWED];
+          ...(settings.fastMode ? ["--settings", JSON.stringify({ fastMode: true })] : []),
+          "--allowedTools", ...allowedTools];
         if (c.sessionId) args.push("--resume", c.sessionId);
       }
       const child = spawn(cmd, args, { cwd: this.jobs.repo, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
@@ -225,7 +272,7 @@ export class Chats {
         const stopped = this.get(id).status === "stopped";
         if (agent === "claude" && !spawnFailed && shouldHandOff({
           agent, code, isError, lines: tail, stopped,
-          fallbackEnabled: fallbackEnabled(), codexReady: codexReady(this.jobs.home),
+          fallbackEnabled: fallbackEnabled() && !(force === "claude" && explicit === true), codexReady: codexReady(this.jobs.home),
         })) {
           const reason = "hit its usage limit";
           const cx = codexPick(c.turns[ti].model, c.turns[ti].effort);

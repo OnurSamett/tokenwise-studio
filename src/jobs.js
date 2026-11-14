@@ -1,4 +1,5 @@
 // Job store: each delegated task runs as a child process, optionally in its own git worktree.
+import { validateImages } from "./uploads.js";
 import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -55,7 +56,8 @@ export class Jobs {
   isGit() { try { git(this.repo, "rev-parse", "--is-inside-work-tree"); return true; } catch { return false; } }
 
   start({ agent, model, effort, task, write = false, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
-    tried = [], movedFrom = null, noFallback = false }) {
+    tried = [], movedFrom = null, noFallback = false, images = [] }) {
+    const attachments = validateImages(this.repo, images);
     const team = loadTeam(this.home);
     if (agent === "free" && team.allow.free === false) throw new Error("free workers are disabled in the team settings");
     // Before starting: if this plan is near its limit or the worker isn't usable, pick the next one in the chain.
@@ -76,17 +78,19 @@ export class Jobs {
       git(this.repo, "worktree", "add", "-q", "-b", branch, cwd, "HEAD");
     }
     const job = this.save({
-      id, title: title || task.slice(0, 80), task, ...spec, write, cwd, branch, parent,
+      id, title: title || task.slice(0, 80), task, images: attachments.map((i) => i.rel), ...spec, write, cwd, branch, parent,
       tried: [...tried, agent], movedFrom, movedTo: null,
       status: "running", created: new Date().toISOString(), finished: null, exitCode: null,
       final: null, diffStat: null, files: [], pid: null,
     });
 
     const lastFile = this.file(id, "last");
-    const { cmd, args, env: extraEnv } = command(spec, { task, cwd, write, lastFile });
+    const { cmd, args, env: extraEnv } = command(spec, { task, cwd, write, lastFile, images: attachments.map((i) => i.abs) });
     const log = fs.createWriteStream(this.file(id, "log"), { flags: "a" });
     const write1 = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line }) + "\n");
     write1("meta", `$ ${cmd} ${args.map((a) => (a.length > 60 ? a.slice(0, 57) + "..." : a)).join(" ")}`);
+
+    if (attachments.length && !["codex", "claude"].includes(spec.agent)) write1("meta", `${spec.agent}: images are not supported; continuing without images`);
 
     const child = spawn(cmd, args, { cwd, env: { ...process.env, ...(extraEnv || {}) }, stdio: ["ignore", "pipe", "pipe"] });
     this.save({ ...job, pid: child.pid });
@@ -117,7 +121,7 @@ export class Jobs {
           const alt = nextAgent({ tried: j.tried, write, home: this.home });
           if (alt) {
             try {
-              const nj = this.start({ agent: alt, effort, task, write, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" } });
+              const nj = this.start({ agent: alt, effort, task, images: job.images, write, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" } });
               j.status = "moved"; j.movedTo = nj.id;
               write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
             } catch (e) { write1("meta", `fallback failed: ${e.message}`); }

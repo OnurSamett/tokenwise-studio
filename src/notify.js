@@ -3,27 +3,9 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { loadSettings, saveSettings } from "./settings.js";
 
-const settingsFile = () => path.join(os.homedir(), ".tokenwise-studio", "settings.json");
-const DEFAULTS = { notifications: true };
-
-export function loadSettings() {
-  try {
-    const s = JSON.parse(fs.readFileSync(settingsFile(), "utf8"));
-    return { ...DEFAULTS, notifications: typeof s.notifications === "boolean" ? s.notifications : DEFAULTS.notifications };
-  } catch { return { ...DEFAULTS }; }
-}
-
-export function saveSettings(patch = {}) {
-  const cur = loadSettings();
-  if ("notifications" in patch) {
-    if (typeof patch.notifications !== "boolean") throw new Error("notifications must be true or false");
-    cur.notifications = patch.notifications;
-  }
-  fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
-  fs.writeFileSync(settingsFile(), JSON.stringify(cur, null, 2));
-  return cur;
-}
+export { loadSettings, saveSettings };
 
 const trunc = (s, n) => { s = String(s ?? "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
 /** Quote a string as an AppleScript literal (escape backslash, then double quote). */

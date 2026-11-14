@@ -84,6 +84,10 @@ Just ask your orchestrator, e.g. in Claude Code on Opus:
 
 > Fix the failing tests. Delegate each independent fix to codex sol at medium effort as a write job, review the diffs, merge the good ones, then run the tests.
 
+Paste an image, drop it onto the composer, or use the attach button. PNG, JPEG, WebP and GIF are supported (up to 6 per message, 10 MB each). Remove a thumbnail with × before sending. Images are stored locally under `.tokenwise-studio/uploads/` and forwarded to Codex and Claude workers when delegated; other workers continue without images.
+
+Each turn's **Thinking** section starts collapsed above its replies. Expand it to read the orchestrator's thinking steps; worker thinking is also collapsible in the job drawer. Usage and meta events stay hidden.
+
 ### Notifications
 
 On macOS, tokenwise studio shows a desktop notification when a direct worker finishes or fails (not those started by a studio chat), and when an orchestrator turn finishes, needs you, or moves from Claude to Codex. Jobs ready for review are called out. Toggle them with the bell button in the studio sidebar, or set `TOKENWISE_NOTIFY=0` to turn them off entirely. The setting is stored in `~/.tokenwise-studio/settings.json`.
@@ -93,6 +97,14 @@ After `tokenwise-studio setup`, notifications come from the tokenwise studio app
 ### Team settings
 
 Per project you choose how the orchestrator picks workers. **Auto** (default) lets it decide by its own guide. **Manual** fixes an agent, model and effort for each role (code, quick work, reviews, images); start from a preset (quality, balanced or cheap) and adjust. The choice is stored in `.tokenwise-studio/team.json`. The orchestrator follows it and only deviates when a plan is out of quota. You can also forbid the free workers or allow Codex astra there.
+
+### Settings
+
+Click the gear button in the sidebar footer to open **Settings** (stored in `~/.tokenwise-studio/settings.json`; environment variables still override and lock individual fields):
+
+- **Permission mode**: `ask` (default; you review and apply worker diffs), `auto-apply` (the orchestrator reviews diffs and merges them itself), or `plan-only` (plans and read-only research only; write delegation is blocked).
+- **Orchestrator defaults & limits**: preselected model/effort, what happens when Claude reaches its limit (`switch automatically`, `ask me`, or `off`), fast mode (`--settings fastMode` for Claude, `service_tier="fast"` for Codex), limit threshold % (50–100), worker fallback order, and opting in to free hosted models.
+- **Notifications & updates**: desktop notification and update check toggles.
 
 ### Models
 
