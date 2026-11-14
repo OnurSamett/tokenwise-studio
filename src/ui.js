@@ -57,7 +57,7 @@ function chatTimeline(id, from = 0) {
   const items = [];
   for (const e of entries) {
     if (e.stream === "user") { items.push({ t: e.t, kind: "user", text: e.line, turn: e.turn }); continue; }
-    for (const it of normalize("claude", e, repo)) items.push({ t: e.t, turn: e.turn, ...it });
+    for (const it of normalize(e.agent || "claude", e, repo)) items.push({ t: e.t, turn: e.turn, ...it });
   }
   return { items, next };
 }

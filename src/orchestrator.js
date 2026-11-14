@@ -5,6 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeam, teamGuide } from "./team.js";
+import { RATE_LIMIT, available, nearLimit } from "./fallback.js";
+import { resolve } from "./workers.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -27,6 +29,79 @@ Use the tokenwise-studio tools to hand self-contained pieces to cheaper workers 
 - Never use astra or max effort unless the user asks.
 You already run in the project root: never use cd, &&, pipes or redirects. Your shell is limited to read-only git (status, diff, log), ls, and test runners (python3, pytest, npm test, node, go test, cargo test). To verify combined changes, ask a worker to run the tests.
 Finish each turn with a SHORT plain-language summary for a busy user: at most 5 lines, no job ids, no file paths beyond names, no process details. Say what changed, who did it (e.g. "Codex Terra"), and what the user should do next (usually: review and apply in the studio).`;
+
+// ---- Claude -> Codex orchestrator fallback ----
+// Codex has no --append-system-prompt, so the guide goes at the top of the prompt.
+const CODEX_NOTE = "Your delegation tools are on the tokenwise_studio MCP server. You run read-only: do not try to edit files yourself, delegate every change.";
+const CODEX_MODEL = { opus: "sol", sonnet: "sol", haiku: "terra" };
+const fallbackEnabled = () => process.env.TOKENWISE_ORCH_FALLBACK !== "0";
+
+/** Codex family + effort that stands in for a Claude orchestrator model. */
+export function codexPick(model, effort) {
+  const fam = CODEX_MODEL[model] || "sol";
+  return { model: fam, effort: effort === "xhigh" ? "high" : effort };
+}
+
+const codexReady = (home) => available("codex", { write: false }, home) && !nearLimit("codex", home);
+
+/** Which agent runs this turn? Claude unless it is unavailable or near its plan limit and Codex is free. */
+export function pickOrchestrator(home, model, effort) {
+  const claude = { agent: "claude", model, effort, reason: null };
+  if (!fallbackEnabled()) return claude;
+  let why = null;
+  // Test hook: TOKENWISE_ORCH_FORCE=codex forces the Codex path regardless of Claude's limits.
+  if (process.env.TOKENWISE_ORCH_FORCE === "codex") why = "forced by TOKENWISE_ORCH_FORCE";
+  else if (!available("claude", { write: false }, home)) why = "Claude is not available";
+  else { const nl = nearLimit("claude", home); if (nl) why = `Claude ${nl}`; }
+  if (!why || !codexReady(home)) return claude;
+  return { agent: "codex", ...codexPick(model, effort), reason: why };
+}
+
+/** Pure decision: should a failed Claude run be re-run on Codex? */
+export function shouldHandOff({ agent, code, isError, lines = [], stopped, fallbackEnabled: on = true, codexReady: ready = true }) {
+  if (agent !== "claude" || stopped || !on || !ready) return false;
+  if (code === 0 && !isError) return false;
+  return RATE_LIMIT.test(lines.slice(-50).join("\n"));
+}
+
+function codexCommand({ repo, chatId, model, effort, thread, prompt }) {
+  const slug = resolve({ agent: "codex", model, effort }).model;
+  const cfg = [
+    `model_reasoning_effort=${JSON.stringify(effort)}`,
+    `mcp_servers.tokenwise_studio.command=${JSON.stringify(process.execPath)}`,
+    `mcp_servers.tokenwise_studio.args=[${JSON.stringify(MCP)}]`,
+    `mcp_servers.tokenwise_studio.env={TOKENWISE_REPO=${JSON.stringify(repo)},TOKENWISE_PARENT=${JSON.stringify(chatId)}}`,
+    `mcp_servers.tokenwise_studio.default_tools_approval_mode="approve"`,
+  ].flatMap((v) => ["-c", v]);
+  // `exec resume` does not accept -C/--sandbox: cwd comes from spawn, the sandbox from config.
+  const args = thread
+    ? ["exec", "resume", thread, "--json", "--skip-git-repo-check", "-m", slug, "-c", 'sandbox_mode="read-only"', ...cfg, prompt]
+    : ["exec", "--json", "--skip-git-repo-check", "-C", repo, "--sandbox", "read-only", "-m", slug, ...cfg, prompt];
+  return { cmd: "codex", args };
+}
+
+const clip = (s, n) => { s = String(s || "").trim(); return s.length > n ? s.slice(0, n) + "…" : s; };
+const NAME = { claude: "Claude", codex: "Codex" };
+
+/** Message plus, when this agent lacks context, the earlier turns handled elsewhere. */
+export function buildPrompt(c, ti, agent, message) {
+  const prior = c.turns.slice(0, ti).map((t, i) => ({ ...t, i, agent: t.agent || "claude" }));
+  const hasSession = agent === "claude" ? !!c.sessionId : !!c.codexThread;
+  let missed;
+  if (hasSession) {
+    let last = -1; prior.forEach((t) => { if (t.agent === agent) last = t.i; });
+    missed = prior.filter((t) => t.i > last && t.agent !== agent);
+  } else missed = prior;
+  if (!missed.length) return message;
+  const parts = missed.map((t) => `User: ${t.user}\nAssistant${hasSession ? "" : ` (${NAME[t.agent]})`}: ${t.reply ? clip(t.reply, 1500) : "(no reply)"}`);
+  let body = "";
+  for (let i = parts.length - 1; i >= 0; i--) { // keep the most recent turns within the cap
+    if (body.length + parts[i].length > 12000 && body) break;
+    body = parts[i] + (body ? "\n\n" : "") + body;
+  }
+  const who = hasSession ? NAME[missed[0].agent] : [...new Set(missed.map((t) => NAME[t.agent]))].join(" and ");
+  return `Earlier in this chat (handled by ${who}):\n${body}\n\nNew message:\n${message}`;
+}
 
 export class Chats {
   constructor(jobs) {
@@ -57,7 +132,11 @@ export class Chats {
       c = { id, title: message.slice(0, 70), created: new Date().toISOString(), sessionId: null, turns: [], cost: 0 };
     }
     c.model = model; c.effort = effort; c.status = "running";
-    c.turns.push({ user: message, model, effort, started: new Date().toISOString(), finished: null, cost: null });
+    const ti = c.turns.length;
+    const pick = pickOrchestrator(this.jobs.home, model, effort);
+    const turn = { user: message, agent: pick.agent, model: pick.model, effort: pick.effort, started: new Date().toISOString(), finished: null, cost: null };
+    if (pick.reason) turn.handoff = { from: "claude", reason: pick.reason };
+    c.turns.push(turn);
     this.save(c);
 
     const mcpFile = this.f(id, "mcp.json");
@@ -65,49 +144,95 @@ export class Chats {
       command: process.execPath, args: [MCP], env: { TOKENWISE_REPO: this.jobs.repo, TOKENWISE_PARENT: id },
     } } }));
     const tg = teamGuide(loadTeam(this.jobs.home));
-    const args = ["-p", message, "--model", model, "--effort", effort,
-      "--output-format", "stream-json", "--verbose",
-      "--mcp-config", mcpFile, "--strict-mcp-config",
-      "--permission-mode", "default", "--disallowedTools", "Edit", "Write", "MultiEdit", "NotebookEdit",
-      "--append-system-prompt", tg ? GUIDE + "\n\n" + tg : GUIDE,
-      "--allowedTools", ...ALLOWED];
-    if (c.sessionId) args.push("--resume", c.sessionId);
+    const guide = tg ? GUIDE + "\n\n" + tg : GUIDE;
 
     const log = fs.createWriteStream(this.f(id, "jsonl"), { flags: "a" });
-    const w = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line, turn: c.turns.length - 1 }) + "\n");
+    const w = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line, turn: ti, agent: turn.agent }) + "\n");
     w("user", message);
-    const child = spawn("claude", args, { cwd: this.jobs.repo, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
-    this.running.set(id, child);
-    const buf = { out: "", err: "" };
-    const on = (s) => (chunk) => {
-      buf[s] += chunk.toString(); let i;
-      while ((i = buf[s].indexOf("\n")) >= 0) {
-        const line = buf[s].slice(0, i); buf[s] = buf[s].slice(i + 1);
-        if (!line.trim()) continue;
-        w(s, line);
-        if (s === "out") {
-          try {
-            const e = JSON.parse(line);
-            if (e.session_id && !c.sessionId) { c.sessionId = e.session_id; this.save(c); }
-            if (e.type === "result") { const t = c.turns[c.turns.length - 1]; t.cost = e.total_cost_usd || 0; c.cost = (c.cost || 0) + t.cost; }
-          } catch {}
-        }
-      }
-    };
-    child.stdout.on("data", on("out"));
-    child.stderr.on("data", on("err"));
-    child.on("error", (e) => w("meta", `spawn error: ${e.message}`));
-    child.on("close", (code) => {
+    if (turn.handoff) w("handoff", JSON.stringify({ from: "claude", to: "codex", reason: turn.handoff.reason }));
+
+    const finish = (code, stopped) => {
       this.running.delete(id);
       const cur = this.get(id);
       cur.sessionId = c.sessionId || cur.sessionId;
+      cur.codexThread = c.codexThread || cur.codexThread;
       cur.cost = c.cost; cur.turns = c.turns;
-      cur.turns[cur.turns.length - 1].finished = new Date().toISOString();
+      cur.turns[ti].finished = new Date().toISOString();
       cur.status = cur.status === "stopped" ? "stopped" : code === 0 ? "idle" : "failed";
       w("meta", `orchestrator exited (${code})`);
       log.end();
       this.save(cur);
-    });
+    };
+
+    const run = (agent) => {
+      const t = c.turns[ti];
+      const prompt = buildPrompt(c, ti, agent, message);
+      let cmd, args;
+      if (agent === "codex") {
+        ({ cmd, args } = codexCommand({ repo: this.jobs.repo, chatId: id, model: t.model, effort: t.effort, thread: c.codexThread, prompt: `<instructions>\n${guide}\n${CODEX_NOTE}\n</instructions>\n\n${prompt}` }));
+      } else {
+        cmd = "claude";
+        args = ["-p", prompt, "--model", t.model, "--effort", t.effort,
+          "--output-format", "stream-json", "--verbose",
+          "--mcp-config", mcpFile, "--strict-mcp-config",
+          "--permission-mode", "default", "--disallowedTools", "Edit", "Write", "MultiEdit", "NotebookEdit",
+          "--append-system-prompt", guide,
+          "--allowedTools", ...ALLOWED];
+        if (c.sessionId) args.push("--resume", c.sessionId);
+      }
+      const child = spawn(cmd, args, { cwd: this.jobs.repo, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+      this.running.set(id, child);
+      const buf = { out: "", err: "" };
+      const tail = []; // last ~50 lines of output, for rate-limit detection
+      let isError = false, spawnFailed = false;
+      const on = (s) => (chunk) => {
+        buf[s] += chunk.toString(); let i;
+        while ((i = buf[s].indexOf("\n")) >= 0) {
+          const line = buf[s].slice(0, i); buf[s] = buf[s].slice(i + 1);
+          if (!line.trim()) continue;
+          w(s, line);
+          tail.push(line); if (tail.length > 50) tail.shift();
+          if (s !== "out") continue;
+          try {
+            const e = JSON.parse(line);
+            if (agent === "claude") {
+              if (e.session_id && !c.sessionId) { c.sessionId = e.session_id; this.save(c); }
+              if (e.type === "result") {
+                t.cost = e.total_cost_usd || 0; c.cost = (c.cost || 0) + t.cost;
+                if (typeof e.result === "string") t.reply = e.result;
+                if (e.is_error) isError = true;
+              }
+            } else {
+              if (e.type === "thread.started" && e.thread_id) { c.codexThread = e.thread_id; this.save(c); }
+              if (e.type === "item.completed" && e.item?.type === "agent_message" && e.item.text) t.reply = e.item.text;
+              if (e.type === "turn.completed" && e.usage) t.tokens = { input: e.usage.input_tokens || 0, cached: e.usage.cached_input_tokens || 0, output: e.usage.output_tokens || 0 };
+              if (e.type === "turn.failed" || e.type === "error") isError = true;
+            }
+          } catch {}
+        }
+      };
+      child.stdout.on("data", on("out"));
+      child.stderr.on("data", on("err"));
+      child.on("error", (e) => { spawnFailed = true; w("meta", `spawn error: ${e.message}`); });
+      child.on("close", (code) => {
+        const stopped = this.get(id).status === "stopped";
+        if (agent === "claude" && !spawnFailed && shouldHandOff({
+          agent, code, isError, lines: tail, stopped,
+          fallbackEnabled: fallbackEnabled(), codexReady: codexReady(this.jobs.home),
+        })) {
+          const reason = "hit its usage limit";
+          const cx = codexPick(c.turns[ti].model, c.turns[ti].effort);
+          Object.assign(t, { agent: "codex", model: cx.model, effort: cx.effort, cost: null, reply: undefined, handoff: { from: "claude", reason } });
+          w("meta", `Claude ${reason}; continuing this turn on Codex`);
+          w("handoff", JSON.stringify({ from: "claude", to: "codex", reason }));
+          this.save(c);
+          run("codex");
+          return;
+        }
+        finish(code, stopped);
+      });
+    };
+    run(turn.agent);
     return c;
   }
 

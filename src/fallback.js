@@ -10,7 +10,7 @@ import { doctor } from "./doctor.js";
 import { limits } from "./limits.js";
 import { loadTeam } from "./team.js";
 
-export const RATE_LIMIT = /rate.?limit|usage limit|quota|\b429\b|too many requests|limit (?:reached|exceeded)|exceeded your|out of credits/i;
+export const RATE_LIMIT = /rate.?limit|usage limit|quota|\b429\b|too many requests|limit (?:reached|exceeded)|exceeded your|out of credits|hit your (?:usage )?limit/i;
 
 const chain = () => (process.env.TOKENWISE_FALLBACK || "codex,gemini,claude,free,local").split(",").map((s) => s.trim()).filter(Boolean);
 const threshold = () => Number(process.env.TOKENWISE_LIMIT_THRESHOLD || 90);

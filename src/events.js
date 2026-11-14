@@ -25,6 +25,13 @@ function codex(e, base) {
     if (it.type === "file_change") return (it.changes || []).map((c) => ({ kind: "edit", text: `${c.kind || "edit"} ${rel(c.path, base)}` }));
     if (it.type === "web_search") return [{ kind: "search", text: it.query || "web search" }];
     if (it.type === "error") return [{ kind: "error", text: it.message }];
+    if (it.type === "mcp_tool_call") {
+      if (it.status === "failed" || it.error) return [{ kind: "error", text: short(`${it.tool}: ${it.error?.message || it.error || it.result?.content?.[0]?.text || "failed"}`, 300) }];
+      let a = it.arguments; if (typeof a === "string") { try { a = JSON.parse(a); } catch { a = {}; } }
+      a = a || {};
+      if (it.tool === "delegate" || String(it.tool).startsWith("job_")) return [toolUse({ name: `mcp__tokenwise-studio__${it.tool}`, input: a }, base)];
+      return [{ kind: "tool", text: `${it.tool} ${short(JSON.stringify(a), 120)}` }];
+    }
   }
   if (e.type === "turn.completed" && e.usage) {
     const u = e.usage;
@@ -106,6 +113,7 @@ function gemini(e) {
 
 /** Normalise one stored log entry {stream, line}. */
 export function normalize(agent, entry, base) {
+  if (entry.stream === "handoff") { try { return [{ kind: "handoff", ...JSON.parse(entry.line) }]; } catch { return []; } }
   if (entry.stream === "meta") return [{ kind: "meta", text: entry.line }];
   if (entry.stream === "err") {
     const l = entry.line.trim();

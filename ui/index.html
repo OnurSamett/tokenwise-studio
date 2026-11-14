@@ -202,6 +202,8 @@
   .stepi.err { color: var(--bad); }
   .orch-meta { font-size: 12.5px; color: var(--dim); margin: 3px 0 -4px; }
   .orch-meta b { color: var(--muted); font-weight: 600; }
+  .orch-meta .plogo { width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; }
+  .moved.handoff { font-size: 12px; margin: 0 0 2px; }
   .say h4 { font-size: 14.5px; margin: 10px 0 6px; font-weight: 650; }
   .chatitem .when { font-size: 11.5px; color: var(--dim); flex: none; }
   .chatitem .rv { font-size: 11px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 0 7px; flex: none; }
@@ -568,6 +570,11 @@ function addItem(it) {
   const t = turnBlock(it.turn ?? 0);
   if (it.kind === "user") { set(t.user, h("div", {}, it.text)); return; }
   if (it.kind === "say") { t.replies.append(md(it.text)); return; }
+  if (it.kind === "handoff") {
+    const mdl = modelName(curChat()?.turns?.[it.turn]?.model || "");
+    t.replies.prepend(h("div", { class: "moved handoff" }, `↪ ${AGENT[it.to] || it.to}${mdl ? " " + mdl : ""} took over · ${AGENT[it.from] || it.from} ${it.reason}`));
+    return;
+  }
   if (["meta", "usage", "done", "think"].includes(it.kind)) return; // technical noise stays out of the conversation
   if (it.kind === "delegate" && !t.team.isConnected) { t.replies.append(t.team); return; }
   if (it.kind === "delegate" || (it.kind === "tool" && /^job /.test(it.text))) return; // shown as the team card instead
@@ -581,7 +588,11 @@ function renderTurnChrome() {
   (c.turns || []).forEach((tr, i) => {
     const t = turnBlock(i);
     if (!t.user.firstChild) set(t.user, h("div", {}, tr.user));
-    if (!t.meta.firstChild) set(t.meta, h("b", {}, modelName(tr.model || c.model)), " · ", new Date(tr.started).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    const ag = tr.agent || "claude";
+    if (!t.meta.firstChild || t.meta.dataset.agent !== ag) {
+      t.meta.dataset.agent = ag;
+      set(t.meta, agentLogo(ag), h("b", {}, ag === "claude" ? modelName(tr.model || c.model) : `${AGENT[ag]} ${modelName(tr.model)}`), " · ", new Date(tr.started).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    }
     const running = c.status === "running" && i === c.turns.length - 1;
     set(t.label, running ? [h("span", { class: "spin" }), ` Working · ${t.n} step${t.n === 1 ? "" : "s"}`] : `${t.n} step${t.n === 1 ? "" : "s"}`);
     if (running) t.activity.hidden = false;
@@ -590,12 +601,14 @@ function renderTurnChrome() {
     if (changed("team" + chatId + i, mine.map((j) => [j.id, j.status, j.finished, j.status === "running" ? Math.floor(Date.now() / 1000) : 0]))) set(t.team, mine.length ? teamCard(mine) : null);
     if (mine.length && !t.team.isConnected) t.replies.append(t.team);
     const done = !running && tr.finished;
-    if (done && changed("cost" + chatId + i, [tr.cost, mine.map((j) => [j.id, j.status, j.tokens])])) {
+    if (done && changed("cost" + chatId + i, [tr.cost, tr.tokens, tr.agent, mine.map((j) => [j.id, j.status, j.tokens])])) {
       const tok = mine.reduce((n, j) => n + (j.tokens ? (j.tokens.input || 0) + (j.tokens.output || 0) : 0), 0);
       const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
       const byAgent = {}; for (const j of mine) { const k = `${AGENT[j.agent]} ${modelName(j.model)}`; byAgent[k] = (byAgent[k] || 0) + 1; }
       t.cost.hidden = false;
-      set(t.cost, h("span", { title: "Orchestrator cost at API prices (on a subscription this is part of your plan usage)" }, h("b", {}, modelName(tr.model || c.model)), ` $${(tr.cost || 0).toFixed(2)}`),
+      set(t.cost, tr.agent === "codex"
+        ? h("span", { title: "Orchestrator tokens (on your Codex plan)" }, h("b", {}, `Codex ${modelName(tr.model)}`), tr.tokens ? ` ${fmt((tr.tokens.input || 0) + (tr.tokens.output || 0))} tokens` : "")
+        : h("span", { title: "Orchestrator cost at API prices (on a subscription this is part of your plan usage)" }, h("b", {}, modelName(tr.model || c.model)), ` $${(tr.cost || 0).toFixed(2)}`),
         mine.length ? [h("span", {}, "·"), h("span", {}, Object.entries(byAgent).map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(", ")), tok ? h("span", { title: "Tokens used by workers (on their own plans)" }, `· ${fmt(tok)} worker tokens`) : null] : null);
     }
   });
@@ -633,6 +646,8 @@ function renderTop() {
   $("#project").title = S.repo;
   const c = curChat();
   $("#chattitle").textContent = c ? "· " + c.title : "";
+  const last = c?.turns?.[c.turns.length - 1];
+  $("#omodel").closest(".pillwrap").title = last?.agent === "codex" ? "Claude is at its limit — Codex is orchestrating" : "Orchestrator: Claude";
   const running = c?.status === "running";
   $("#stop").hidden = !running; $("#send").hidden = running;
   const tm = S.team || { mode: "auto" };
@@ -642,20 +657,24 @@ function renderTop() {
   document.title = (busy ? "● " : nrev ? `(${nrev}) ` : "") + "tokenwise studio";
 }
 
+let chatGen = 0, chatBusy = false; // one request at a time; results for a chat that was reopened or switched are dropped
 async function pollChat() {
-  if (!chatId) return;
+  if (!chatId || chatBusy) return;
+  const gen = chatGen, id = chatId, from = chatFrom; chatBusy = true;
   const sc = $("#scroll"); const atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 60;
-  const r = await api(`chatlog/${chatId}?from=${chatFrom}`);
+  let r;
+  try { r = await api(`chatlog/${id}?from=${from}`); } finally { if (gen === chatGen) chatBusy = false; }
+  if (gen !== chatGen) return;
   r.items.forEach(addItem); chatFrom = r.next;
   renderTurnChrome();
   if (r.items.length) { if (atBottom || r.items.some((i) => i.kind === "user")) sc.scrollTop = sc.scrollHeight; else $("#jump").hidden = false; }
 }
 
 function openChat(id) {
-  chatId = id; chatFrom = 0; turns = []; set($("#col")); for (const k in drawn) delete drawn[k];
+  chatId = id; chatFrom = 0; turns = []; chatGen++; chatBusy = false; set($("#col")); for (const k in drawn) delete drawn[k];
   renderSide(); renderTop(); renderBanner(); pollChat();
 }
-function newTask() { chatId = null; turns = []; for (const k in drawn) delete drawn[k]; set($("#col"), welcome()); renderSide(); renderTop(); renderBanner(); $("#input").focus(); }
+function newTask() { chatId = null; turns = []; chatGen++; chatBusy = false; for (const k in drawn) delete drawn[k]; set($("#col"), welcome()); renderSide(); renderTop(); renderBanner(); $("#input").focus(); }
 
 async function send() {
   const message = $("#input").value.trim(); if (!message) return;
@@ -663,7 +682,7 @@ async function send() {
   try {
     const c = await api("chat", { id: chatId, message, model: $("#omodel").value, effort: $("#oeffort").value });
     $("#input").value = ""; autosize(); $("#send").disabled = true;
-    if (!chatId) { chatId = c.id; chatFrom = 0; turns = []; set($("#col")); }
+    if (!chatId) { chatId = c.id; chatFrom = 0; turns = []; chatGen++; chatBusy = false; set($("#col")); }
     await refresh();
   } catch (e) { $("#cerr").textContent = e.message; }
 }
