@@ -1,6 +1,6 @@
 // Turn raw CLI output lines (Codex --json, Claude stream-json, Gemini stream-json) into a
 // readable timeline: [{ kind, text, detail? }]
-// kinds: say | think | cmd | edit | read | search | delegate | tool | usage | done | error | meta
+// kinds: say | think | cmd | edit | read | search | delegate | tool | usage | done | error | meta | notice | handoff
 
 const short = (s, n = 300) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
 
@@ -115,6 +115,7 @@ function gemini(e) {
 export function normalize(agent, entry, base) {
   if (entry.stream === "handoff") { try { return [{ kind: "handoff", ...JSON.parse(entry.line) }]; } catch { return []; } }
   if (entry.stream === "meta") return [{ kind: "meta", text: entry.line }];
+  if (entry.stream === "notice") return [{ kind: "notice", text: entry.line }];
   if (entry.stream === "err") {
     const l = entry.line.trim();
     if (!l || /^Reading (additional )?(input|prompt) from stdin/i.test(l)) return [];

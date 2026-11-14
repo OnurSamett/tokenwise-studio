@@ -10,6 +10,8 @@ import { RATE_LIMIT, available, nearLimit } from "./fallback.js";
 import { resolve } from "./workers.js";
 import { notify, turnNotice, handoffNotice } from "./notify.js";
 import { loadSettings } from "./settings.js";
+import { loadInstructions, instructionsGuide } from "./instructions.js";
+import { budgetDecision, turnTotal, writeBudgetState, fmtTokens } from "./budget.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -19,7 +21,16 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(python3:*)", "Bash(pytest:*)", "Bash(npm test:*)", "Bash(npm run:*)", "Bash(node:*)",
   "Bash(go test:*)", "Bash(cargo test:*)"];
 
-export function buildGuide(permissionMode = "ask") {
+/** Orchestrator guide for a permission mode, plus (optional) the project's instructions file and the turn budget rule. */
+export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0 } = {}) {
+  const parts = [baseGuide(permissionMode)];
+  if (turnBudget > 0) parts.push(`TURN TOKEN BUDGET: each turn has about ${fmtTokens(turnBudget)} tokens for you plus all workers. Keep tasks tight. When delegate answers that the budget is spent, start no more jobs: wrap up with what is done and what remains.`);
+  const ig = instructionsGuide(instructions);
+  if (ig) parts.push(ig);
+  return parts.join("\n\n");
+}
+
+function baseGuide(permissionMode) {
   if (permissionMode === "plan-only") {
     return `You are the ORCHESTRATOR in tokenwise studio running in PLAN-ONLY mode. You plan, investigate and answer, without making or delegating any file edits.
 Use the tokenwise-studio tools to hand read-only research pieces to cheaper workers instead of doing everything yourself:
@@ -187,9 +198,9 @@ export class Chats {
     fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: { "tokenwise-studio": {
       command: process.execPath, args: [MCP], env: { TOKENWISE_REPO: this.jobs.repo, TOKENWISE_PARENT: id },
     } } }));
-    const baseGuide = buildGuide(settings.permissionMode);
+    const baseG = buildGuide(settings.permissionMode, { instructions: loadInstructions(this.jobs.repo), turnBudget: settings.turnBudget });
     const tg = teamGuide(loadTeam(this.jobs.home));
-    const guide = tg ? baseGuide + "\n\n" + tg : baseGuide;
+    const guide = tg ? baseG + "\n\n" + tg : baseG;
     const allowedTools = settings.permissionMode === "plan-only" ? ALLOWED.filter((t) => t !== "mcp__tokenwise-studio__job_merge") : ALLOWED;
 
     const log = fs.createWriteStream(this.f(id, "jsonl"), { flags: "a" });
@@ -197,7 +208,31 @@ export class Chats {
     w("user", message);
     if (turn.handoff) w("handoff", JSON.stringify({ from: "claude", to: "codex", reason: turn.handoff.reason }));
 
+    // Turn budget: orchestrator tokens so far (live.base + live.run) plus this turn's worker jobs.
+    const live = { base: 0, run: 0, warned: false, stopped: false, written: -1 };
+    const claudeMsgs = new Map();
+    try { writeBudgetState(this.jobs.home, id, { turn: ti, started: turn.started, orch: 0 }); } catch {}
+    const budgetTick = () => {
+      try {
+        const orch = live.base + live.run;
+        if (orch !== live.written) { writeBudgetState(this.jobs.home, id, { turn: ti, started: turn.started, orch }); live.written = orch; }
+        const budget = loadSettings().turnBudget;
+        if (!(budget > 0) || live.stopped) return;
+        const d = budgetDecision({ budget, used: turnTotal(this.jobs, id, turn.started, orch).used });
+        const label = `${fmtTokens(d.used)} of ${fmtTokens(budget)} tokens`;
+        if (d.state === "exceeded") {
+          live.stopped = live.warned = true;
+          w("notice", `Turn budget reached (${label}). No new jobs will start this turn; running jobs keep going.`);
+        } else if (d.state === "warn" && !live.warned) {
+          live.warned = true;
+          w("notice", `Turn budget at ${d.pct}% (${label}). New jobs stop at 100%.`);
+        }
+      } catch {}
+    };
+    const ticker = setInterval(budgetTick, 2000); ticker.unref();
+
     const finish = (code, stopped) => {
+      clearInterval(ticker); budgetTick();
       this.running.delete(id);
       const cur = this.get(id);
       cur.sessionId = c.sessionId || cur.sessionId;
@@ -251,7 +286,16 @@ export class Chats {
             const e = JSON.parse(line);
             if (agent === "claude") {
               if (e.session_id && !c.sessionId) { c.sessionId = e.session_id; this.save(c); }
+              if (e.type === "assistant" && e.message?.id && e.message.usage) { // one entry per API call, repeated per content block
+                const u = e.message.usage;
+                claudeMsgs.set(e.message.id, (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.output_tokens || 0));
+                live.run = [...claudeMsgs.values()].reduce((a, b) => a + b, 0);
+              }
               if (e.type === "result") {
+                if (e.usage) {
+                  t.tokens = { input: (e.usage.input_tokens || 0) + (e.usage.cache_creation_input_tokens || 0), cached: e.usage.cache_read_input_tokens || 0, output: e.usage.output_tokens || 0 };
+                  live.run = t.tokens.input + t.tokens.output;
+                }
                 t.cost = e.total_cost_usd || 0; c.cost = (c.cost || 0) + t.cost;
                 if (typeof e.result === "string") t.reply = e.result;
                 if (e.is_error) isError = true;
@@ -259,7 +303,10 @@ export class Chats {
             } else {
               if (e.type === "thread.started" && e.thread_id) { c.codexThread = e.thread_id; this.save(c); }
               if (e.type === "item.completed" && e.item?.type === "agent_message" && e.item.text) t.reply = e.item.text;
-              if (e.type === "turn.completed" && e.usage) t.tokens = { input: e.usage.input_tokens || 0, cached: e.usage.cached_input_tokens || 0, output: e.usage.output_tokens || 0 };
+              if (e.type === "turn.completed" && e.usage) {
+                t.tokens = { input: e.usage.input_tokens || 0, cached: e.usage.cached_input_tokens || 0, output: e.usage.output_tokens || 0 };
+                live.run += t.tokens.input + t.tokens.output;
+              }
               if (e.type === "turn.failed" || e.type === "error") isError = true;
             }
           } catch {}
@@ -277,6 +324,7 @@ export class Chats {
           const reason = "hit its usage limit";
           const cx = codexPick(c.turns[ti].model, c.turns[ti].effort);
           Object.assign(t, { agent: "codex", model: cx.model, effort: cx.effort, cost: null, reply: undefined, handoff: { from: "claude", reason } });
+          live.base += live.run; live.run = 0; claudeMsgs.clear();
           w("meta", `Claude ${reason}; continuing this turn on Codex`);
           w("handoff", JSON.stringify({ from: "claude", to: "codex", reason }));
           this.save(c);
@@ -315,7 +363,7 @@ export class Chats {
         try { this.jobs.discard(j.id); } catch {}
       }
     }
-    for (const ext of ["json", "jsonl", "mcp.json"]) fs.rmSync(this.f(id, ext), { force: true });
+    for (const ext of ["json", "jsonl", "mcp.json", "budget"]) fs.rmSync(this.f(id, ext), { force: true });
     return { ok: true };
   }
 

@@ -7,6 +7,7 @@ import { command, resolve, textOf } from "./workers.js";
 import { loadTeam } from "./team.js";
 import { RATE_LIMIT, available, nearLimit, nextAgent } from "./fallback.js";
 import { notify, jobNotice } from "./notify.js";
+import { withProjectNotes } from "./instructions.js";
 
 // Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
 const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/node_modules/**", "**/.DS_Store",
@@ -85,7 +86,7 @@ export class Jobs {
     });
 
     const lastFile = this.file(id, "last");
-    const { cmd, args, env: extraEnv } = command(spec, { task, cwd, write, lastFile, images: attachments.map((i) => i.abs) });
+    const { cmd, args, env: extraEnv } = command(spec, { task: withProjectNotes(task, this.repo), cwd, write, lastFile, images: attachments.map((i) => i.abs) });
     const log = fs.createWriteStream(this.file(id, "log"), { flags: "a" });
     const write1 = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line }) + "\n");
     write1("meta", `$ ${cmd} ${args.map((a) => (a.length > 60 ? a.slice(0, 57) + "..." : a)).join(" ")}`);

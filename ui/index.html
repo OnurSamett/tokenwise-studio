@@ -222,6 +222,10 @@
   .orch-meta b { color: var(--muted); font-weight: 600; }
   .orch-meta .plogo { width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; }
   .moved.handoff { font-size: 12px; margin: 0 0 2px; }
+  .moved.notice { font-size: 12px; margin: 4px 0; color: var(--warn, #d9a441); }
+  .field textarea.instr { font: 12.5px/1.55 var(--mono); min-height: 340px; resize: vertical; }
+  .sline { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+  .sline code, .field code, .meta code { font: 12px var(--mono); background: var(--s3); border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
   .say h4 { font-size: 14.5px; margin: 10px 0 6px; font-weight: 650; }
   .chatitem .when { font-size: 11.5px; color: var(--dim); flex: none; }
   .chatitem .rv { font-size: 11px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 0 7px; flex: none; }
@@ -434,6 +438,7 @@ const api = async (p, body) => {
   const r = await fetch("/api/" + p, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json", "x-tokenwise": "1" }, body: JSON.stringify(body) });
   const j = await r.json(); if (j.error) throw new Error(j.error); return j;
 };
+const kb = (n) => (n < 1024 ? `${n} bytes` : `${(n / 1024).toFixed(1)} KB`);
 const clock = (a, b) => { const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 const AGENT = { codex: "Codex", claude: "Claude", gemini: "Gemini", local: "Local", free: "Free API" };
 const BADGE = { codex: "C", claude: "A", gemini: "G", local: "L", free: "F" };
@@ -618,9 +623,24 @@ function renderSide() {
     h("span", { class: "more", role: "button", title: "More", onclick: (e) => { e.stopPropagation(); chatMenu(e.currentTarget, c); } }, "⋯"))) : h("div", { class: "label" }, "No tasks yet"));
 }
 
+// Fetch the export and save it as a file (a blob link works in the browser and in the app window).
+async function exportChat(c, format) {
+  try {
+    const r = await fetch(`/api/export/${c.id}?format=${format}`);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "export failed");
+    const name = (r.headers.get("content-disposition") || "").match(/filename="([^"]+)"/)?.[1] || `chat.${format}`;
+    const url = URL.createObjectURL(await r.blob());
+    const a = h("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast(`Exported ${name}`);
+  } catch (e) { toast(e.message, true); }
+}
+
 function chatMenu(anchor, c) {
   popover(anchor,
     h("button", { onclick: () => { closePop(); openDrawer("rename", c.id); } }, "Rename"),
+    h("button", { onclick: () => { closePop(); exportChat(c, "md"); } }, "Export as Markdown"),
+    h("button", { onclick: () => { closePop(); exportChat(c, "json"); } }, "Export as JSON"),
     h("div", { class: "sep" }),
     h("button", { class: "danger", style: "color:var(--bad)", onclick: () => { closePop(); openDrawer("delete", c.id); } }, "Delete…"));
 }
@@ -703,6 +723,7 @@ function addItem(it) {
     t.replies.prepend(h("div", { class: "moved handoff" }, `↪ ${AGENT[it.to] || it.to}${mdl ? " " + mdl : ""} took over · ${AGENT[it.from] || it.from} ${it.reason}`));
     return;
   }
+  if (it.kind === "notice") { t.replies.append(h("div", { class: "moved notice" }, "\u26a0 " + it.text)); return; }
   if (["meta", "usage", "done"].includes(it.kind)) return; // technical noise stays out of the conversation
   if (it.kind === "delegate" && !t.team.isConnected) { t.replies.append(t.team); return; }
   if (it.kind === "delegate" || (it.kind === "tool" && /^job /.test(it.text))) return; // shown as the team card instead
@@ -732,12 +753,14 @@ function renderTurnChrome() {
     if (done && changed("cost" + chatId + i, [tr.cost, tr.tokens, tr.agent, mine.map((j) => [j.id, j.status, j.tokens])])) {
       const tok = mine.reduce((n, j) => n + (j.tokens ? (j.tokens.input || 0) + (j.tokens.output || 0) : 0), 0);
       const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
+      const orchTok = tr.tokens ? (tr.tokens.input || 0) + (tr.tokens.output || 0) : 0, total = orchTok + tok, budget = appSettings?.settings?.turnBudget || 0;
       const byAgent = {}; for (const j of mine) { const k = `${AGENT[j.agent]} ${modelName(j.model)}`; byAgent[k] = (byAgent[k] || 0) + 1; }
       t.cost.hidden = false;
       set(t.cost, tr.agent === "codex"
         ? h("span", { title: "Orchestrator tokens (on your Codex plan)" }, h("b", {}, `Codex ${modelName(tr.model)}`), tr.tokens ? ` ${fmt((tr.tokens.input || 0) + (tr.tokens.output || 0))} tokens` : "")
         : h("span", { title: "Orchestrator cost at API prices (on a subscription this is part of your plan usage)" }, h("b", {}, modelName(tr.model || c.model)), ` $${(tr.cost || 0).toFixed(2)}`),
-        mine.length ? [h("span", {}, "·"), h("span", {}, Object.entries(byAgent).map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(", ")), tok ? h("span", { title: "Tokens used by workers (on their own plans)" }, `· ${fmt(tok)} worker tokens`) : null] : null);
+        mine.length ? [h("span", {}, "·"), h("span", {}, Object.entries(byAgent).map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(", ")), tok ? h("span", { title: "Tokens used by workers (on their own plans)" }, `· ${fmt(tok)} worker tokens`) : null] : null,
+        total ? h("span", { title: budget ? `Turn budget: ${fmt(budget)} tokens (orchestrator plus workers)` : "Orchestrator plus worker tokens this turn" }, `· ${fmt(total)} tokens this turn${budget ? ` (${Math.round(total / budget * 100)}% of ${fmt(budget)})` : ""}`) : null);
     }
   });
 }
@@ -1087,6 +1110,8 @@ async function renderDrawer(full) {
   if (drawer.kind === "settings") {
     if (!full) return;
     let data; try { data = await api("settings"); syncFromSettings(data); } catch (e) { toast(e.message, true); return closeDrawer(); }
+    let inst = null; try { inst = await api("instructions"); } catch {}
+    let backupInfo = null, backing = false;
     const body = h("div", { class: "d-body" });
     const envBadge = (key) => data.envLocked?.[key] ? h("span", { class: "envlock" }, "set by environment") : null;
     const secHead = (title, key) => h("div", { class: "shead" }, h("h4", {}, title), envBadge(key));
@@ -1177,6 +1202,29 @@ async function renderDrawer(full) {
             h("input", { type: "checkbox", checked: s.allowFree ? true : null, disabled: !!lock.allowFree, onchange: (e) => applyPatch({ allowFree: e.target.checked }) }),
             h("span", {}, ["Allow free models ", envBadge("allowFree")], h("small", {}, "Allow free hosted APIs (NVIDIA, OpenRouter, Groq, Mistral) without TOKENWISE_ALLOW_FREE=1. Free tiers may use prompts for training.")))),
         h("div", { class: "section" },
+          secHead("Turn budget", "turnBudget"),
+          h("p", { class: "shelp" }, "Tokens one orchestrator turn may use, counting the orchestrator and the workers it starts. At 80% a notice appears in the chat; at 100% no new jobs start (running ones finish) and the orchestrator wraps up. Off by default."),
+          h("select", { disabled: !!lock.turnBudget, onchange: (e) => applyPatch({ turnBudget: Number(e.target.value) }) },
+            [[0, "Off"], [50000, "50k tokens"], [100000, "100k tokens"], [250000, "250k tokens"], [500000, "500k tokens"], ...([0, 50000, 100000, 250000, 500000].includes(s.turnBudget) ? [] : [[s.turnBudget, `${s.turnBudget.toLocaleString()} tokens`]])]
+              .map(([v, l]) => h("option", { value: v, selected: s.turnBudget === v ? true : null }, l)))),
+        h("div", { class: "section" },
+          h("div", { class: "shead" }, h("h4", {}, "Project instructions")),
+          inst ? [
+            h("p", { class: "sline" }, inst.loaded
+              ? ["Loaded from ", h("code", {}, inst.source), ` (${kb(inst.bytes)}${inst.truncated ? `, only the first ${inst.cap / 1024} KB is used` : ""})${inst.workerNotes ? ". Its \"For workers\" section is sent to workers." : "."}`]
+              : ["Not set. Add a ", h("code", {}, inst.file), " file with rules the orchestrator should always follow."]),
+            h("button", { class: "btn", onclick: () => openDrawer("instructions") }, inst.loaded || inst.exists ? "Edit instructions" : "Create instructions")]
+            : h("p", { class: "shelp" }, "Could not read the instructions file.")),
+        h("div", { class: "section" },
+          h("div", { class: "shead" }, h("h4", {}, "Backup")),
+          h("p", { class: "shelp" }, "Copies every chat of this project, its jobs, and the images they use (under 10 MB) as plain files to ~/.tokenwise-studio/backups/. Chats can contain pasted secrets; .env files are never copied."),
+          h("button", { class: "btn", disabled: backing ? true : null, onclick: async () => {
+            backing = true; draw();
+            try { backupInfo = await api("backup", {}); toast("Backup done"); } catch (e) { backupInfo = null; toast(e.message, true); }
+            backing = false; draw();
+          } }, backing ? "Backing up\u2026" : "Back up all chats"),
+          backupInfo ? h("p", { class: "sline", style: "margin-top:10px" }, `${backupInfo.chats} chat${backupInfo.chats === 1 ? "" : "s"}, ${backupInfo.uploads} image${backupInfo.uploads === 1 ? "" : "s"} saved to `, h("code", {}, backupInfo.path)) : null),
+        h("div", { class: "section" },
           h("div", { class: "shead" }, h("h4", {}, "Notifications & updates")),
           h("label", { class: "toggle" + (lock.notifications ? " disabled" : "") },
             h("input", { type: "checkbox", checked: s.notifications ? true : null, disabled: !!lock.notifications, onchange: (e) => applyPatch({ notifications: e.target.checked }) }),
@@ -1190,6 +1238,23 @@ async function renderDrawer(full) {
       h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Settings"), h("div", { class: "meta" }, "Stored in ~/.tokenwise-studio/settings.json")), h("button", { class: "x", onclick: closeDrawer, "aria-label": "Close" }, "×")),
       body,
       h("div", { class: "d-foot" }, h("span", { class: "note" }, "Changes save automatically. Env vars take priority."), h("button", { class: "btn primary", onclick: closeDrawer }, "Done")));
+    return;
+  }
+  if (drawer.kind === "instructions") {
+    if (!full) return;
+    let inst; try { inst = await api("instructions"); } catch (e) { toast(e.message, true); return closeDrawer(); }
+    const ta = h("textarea", { class: "instr", spellcheck: "false", placeholder: "Rules the orchestrator should always follow in this project.\n\n## For workers\nShort notes that every worker also gets." });
+    ta.value = inst.text;
+    const count = h("span", { class: "note" });
+    const upd = () => { const n = new Blob([ta.value]).size; count.textContent = n > inst.cap ? `${(n / 1024).toFixed(1)} KB: only the first ${inst.cap / 1024} KB is used` : `${kb(n)} of ${inst.cap / 1024} KB`; count.style.color = n > inst.cap ? "var(--warn)" : ""; };
+    ta.addEventListener("input", upd); upd();
+    const go = async () => { try { await api("instructions", { text: ta.value }); closeDrawer(); toast(`Saved ${inst.file}`); } catch (e) { toast(e.message, true); } };
+    set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, "Project instructions"), h("div", { class: "meta" }, "Saved to ", h("code", {}, inst.path))), h("button", { class: "x", onclick: closeDrawer, "aria-label": "Close" }, "\u00d7")),
+      h("div", { class: "d-body" },
+        h("p", { class: "shelp" }, `This is a normal file in your project (${inst.file}), so you can commit it and share it with your team. The orchestrator reads it every turn. It cannot override the safety rules: the orchestrator never edits files itself, and changes are reviewed before they are applied. A "## For workers" section is also sent to workers.`),
+        h("div", { class: "field" }, ta)),
+      h("div", { class: "d-foot" }, count, h("button", { class: "btn", onclick: closeDrawer }, "Cancel"), h("button", { class: "btn primary", onclick: go }, "Save")));
+    setTimeout(() => ta.focus(), 50);
     return;
   }
   if (drawer.kind === "keys") {

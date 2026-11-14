@@ -18,6 +18,8 @@ import { loadTeam, saveTeam, teamOptions, geminiFamilies } from "./team.js";
 import { CATALOG } from "./models.js";
 import { listFreeModels } from "./freechat.js";
 import { loadSettings, saveSettings, settingsInfo } from "./settings.js";
+import { exportChat, backupAll } from "./export.js";
+import { loadInstructions, instructionsPath, workerNotes, INSTRUCTIONS_CAP, INSTRUCTIONS_FILE } from "./instructions.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
 
 
@@ -72,6 +74,24 @@ function splitDiff(raw) {
     const add = (patch.match(/^\+(?!\+\+)/gm) || []).length, del = (patch.match(/^-(?!--)/gm) || []).length;
     return { path: m ? m[2] : "?", add, del, patch };
   });
+}
+
+// Instructions file state for Settings and the editor drawer. `text` is what the editor shows (the whole file).
+const MAX_INSTRUCTIONS_WRITE = 256 * 1024;
+function instructionsInfo() {
+  const loaded = loadInstructions(repo);
+  let text = "", exists = false;
+  for (const rel of [INSTRUCTIONS_FILE, ".tokenwise-studio/instructions.md"]) {
+    try {
+      const f = path.join(repo, rel), st = fs.lstatSync(f);
+      if (!st.isFile() || st.isSymbolicLink() || st.size > MAX_INSTRUCTIONS_WRITE) continue;
+      if (rel === INSTRUCTIONS_FILE) exists = true;
+      const t = fs.readFileSync(f, "utf8");
+      if (rel === INSTRUCTIONS_FILE || t.trim()) { text = t; break; }
+    } catch {}
+  }
+  return { path: instructionsPath(repo), file: INSTRUCTIONS_FILE, exists, text, cap: INSTRUCTIONS_CAP,
+    loaded: !!loaded, source: loaded ? loaded.rel : null, bytes: loaded ? loaded.bytes : 0, truncated: !!loaded?.truncated, workerNotes: !!workerNotes(loaded) };
 }
 
 const send = (res, code, body, type = "application/json") => {
@@ -169,6 +189,14 @@ const handler = async (req, res) => {
         return send(res, 200, fs.readFileSync(image.abs), image.type);
       }
       if (what === "state") return send(res, 200, state());
+      if (what === "export") {
+        const fmt = url.searchParams.get("format") === "json" ? "json" : "md";
+        const x = exportChat(jobs, chats, id);
+        res.writeHead(200, { "content-type": fmt === "json" ? "application/json; charset=utf-8" : "text/markdown; charset=utf-8",
+          "content-disposition": `attachment; filename="${x.name}.${fmt}"`, "cache-control": "no-store" });
+        return res.end(fmt === "json" ? x.json : x.md);
+      }
+      if (what === "instructions") return send(res, 200, instructionsInfo());
       if (what === "staged") return send(res, 200, { files: staged() });
       if (what === "doctor") return send(res, 200, doctor());
       if (what === "team") return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions(await listFreeModels()) });
@@ -197,6 +225,15 @@ const handler = async (req, res) => {
         orchCache.clear();
         clearDoctorCache();
         return send(res, 200, settingsInfo());
+      }
+      if (what === "backup") return send(res, 200, backupAll(jobs, chats));
+      if (what === "instructions") {
+        if (typeof b.text !== "string") throw new Error("text must be a string");
+        if (Buffer.byteLength(b.text) > MAX_INSTRUCTIONS_WRITE) throw new Error("instructions are too large (256 KB max)");
+        const f = instructionsPath(repo);
+        try { if (fs.lstatSync(f).isSymbolicLink()) throw new Error(`${INSTRUCTIONS_FILE} is a symlink; edit it directly`); } catch (e) { if (e.code !== "ENOENT") throw e; }
+        fs.writeFileSync(f, b.text);
+        return send(res, 200, instructionsInfo());
       }
       if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
       if (what === "chat") return send(res, 200, chats.send(b));

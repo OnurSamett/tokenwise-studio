@@ -7,6 +7,7 @@ import { z } from "zod";
 import { Jobs } from "./jobs.js";
 import { loadTeam, teamGuide } from "./team.js";
 import { loadSettings } from "./settings.js";
+import { budgetGate } from "./budget.js";
 
 const repo = process.env.TOKENWISE_REPO || process.cwd();
 const jobs = new Jobs(repo);
@@ -47,6 +48,8 @@ server.registerTool("delegate", {
     if (a.write && loadSettings().permissionMode === "plan-only") {
       return fail(new Error("write jobs are disabled in plan-only mode"));
     }
+    const over = budgetGate(jobs, process.env.TOKENWISE_PARENT, loadSettings().turnBudget);
+    if (over) return fail(new Error(over));
     return ok(brief(jobs.start({ ...a, timeoutMin: a.timeout_min })));
   } catch (e) { return fail(e); }
 });

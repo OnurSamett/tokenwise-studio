@@ -21,6 +21,7 @@ export const DEFAULTS = Object.freeze({
   fastMode: false,
   notifications: true,
   updateCheck: true,
+  turnBudget: 0, // tokens per orchestrator turn (orchestrator + its workers); 0 = off
 });
 
 const cloneDefaults = () => ({ ...DEFAULTS, fallbackOrder: [...DEFAULTS.fallbackOrder] });
@@ -40,6 +41,7 @@ const VALIDATORS = {
   fastMode: (v) => typeof v === "boolean" || "fastMode must be true or false",
   notifications: (v) => typeof v === "boolean" || "notifications must be true or false",
   updateCheck: (v) => typeof v === "boolean" || "updateCheck must be true or false",
+  turnBudget: (v) => v === 0 || (Number.isInteger(v) && v >= 10_000 && v <= 50_000_000) || "turnBudget must be 0 (off) or a token count between 10000 and 50000000",
 };
 
 /** Load raw file settings merged with defaults (no env overrides). Never throws. */

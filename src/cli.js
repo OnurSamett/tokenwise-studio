@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // tokenwise-studio [path] [--port N] [--no-open] [--browser] [--pick]
+// tokenwise-studio export [--chat <id>] [--out <dir>]
 // tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-app] | uninstall [--dry-run] | update [--check]
 import path from "node:path";
 import fs from "node:fs";
@@ -29,6 +30,9 @@ Usage:
   tokenwise-studio uninstall [--dry-run]           undo what setup did
   tokenwise-studio update [--check]                install the latest version and rebuild the Mac app
                                                    (--check only reports whether one is available)
+  tokenwise-studio export [--chat <id>] [--out <dir>] [--repo <path>]
+                                                   write chats as Markdown and JSON (all chats without --chat);
+                                                   default folder: <project>/.tokenwise-studio/exports
   tokenwise-studio --version | --help
 `;
 
@@ -303,6 +307,23 @@ function openBrowser(url) {
   try { spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref(); } catch {}
 }
 
+async function doExport() {
+  const opt = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+  for (const n of ["--chat", "--out", "--repo"]) if (has(n) && !opt(n)) { console.error(`tokenwise-studio export: ${n} needs a value`); process.exit(1); }
+  const repo = path.resolve(opt("--repo") || process.cwd());
+  const { Jobs } = await import("./jobs.js");
+  const { Chats } = await import("./orchestrator.js");
+  const { writeExports } = await import("./export.js");
+  const chats = new Chats(new Jobs(repo));
+  const out = path.resolve(opt("--out") || path.join(repo, ".tokenwise-studio", "exports"));
+  try {
+    const files = writeExports(chats.jobs, chats, { id: opt("--chat"), out });
+    if (!files.length) { console.log("No chats to export in " + repo); return; }
+    console.log(`Exported ${files.length / 2} chat${files.length === 2 ? "" : "s"} (Markdown and JSON) to ${out}`);
+    console.log("Chats can contain pasted secrets: keep the folder private.");
+  } catch (e) { console.error("tokenwise-studio export: " + (e.code === "ENOENT" ? `unknown chat ${opt("--chat")}` : e.message)); process.exit(1); }
+}
+
 const cmd = argv[0];
 if (has("--help") || has("-h") || cmd === "help") console.log(HELP);
 else if (has("--version") || has("-v")) console.log(pkg.version);
@@ -310,4 +331,5 @@ else if (cmd === "doctor") await doDoctor();
 else if (cmd === "setup") await doSetup();
 else if (cmd === "uninstall") doUninstall();
 else if (cmd === "update") await doUpdate();
+else if (cmd === "export") await doExport();
 else await startUi();

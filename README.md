@@ -105,6 +105,22 @@ Click the gear button in the sidebar footer to open **Settings** (stored in `~/.
 - **Permission mode**: `ask` (default; you review and apply worker diffs), `auto-apply` (the orchestrator reviews diffs and merges them itself), or `plan-only` (plans and read-only research only; write delegation is blocked).
 - **Orchestrator defaults & limits**: preselected model/effort, what happens when Claude reaches its limit (`switch automatically`, `ask me`, or `off`), fast mode (`--settings fastMode` for Claude, `service_tier="fast"` for Codex), limit threshold % (50–100), worker fallback order, and opting in to free hosted models.
 - **Notifications & updates**: desktop notification and update check toggles.
+- **Turn budget**: off by default, or 50k / 100k / 250k / 500k tokens per turn, counting the orchestrator and the workers it starts (see Turn budget below).
+- **Project instructions** and **Backup**: see below.
+
+### Chat export and backup
+
+- **Export one chat**: open the `...` menu next to a task and choose *Export as Markdown* or *Export as JSON*. The file has your messages, the orchestrator's replies, each worker job (agent, model, effort, status) and the files it changed or applied. Thinking steps and image data are left out; attached images are listed by path.
+- **Command line**: `tokenwise-studio export [--chat <id>] [--out <dir>] [--repo <path>]` writes Markdown and JSON for one chat, or for all chats when no id is given. The default folder is `.tokenwise-studio/exports/` in the project.
+- **Back up all chats**: the button in Settings copies the project's chats, jobs, the images they use (nothing over 10 MB) and Markdown/JSON exports as plain files to `~/.tokenwise-studio/backups/<project>/<timestamp>/` and shows the path. `.env` files are never copied, and nothing is uploaded. Chats can still contain secrets you pasted, so keep backups private. To sync between machines, point iCloud or Syncthing at that folder.
+
+### Project instructions
+
+Put rules for a project in `TOKENWISE.md` at its root (fallback: `.tokenwise-studio/instructions.md`). It is a normal file you can commit. Every orchestrator turn (Claude or Codex) gets its first 8 KB, labelled as project instructions from the repo. They are treated as your configuration but cannot override studio's rules: the orchestrator never edits files itself, every change is reviewed before it is applied, and plan-only mode stays in force. If the file has a `## For workers` section, up to 1,500 characters of it are added to every worker's task as "Project notes". Settings shows whether the file is loaded and has an *Edit instructions* button that saves `TOKENWISE.md` (creating it if missing).
+
+### Turn budget
+
+Set **Turn budget** in Settings to cap the tokens one turn may use, orchestrator plus the jobs it starts in that turn (worker tokens are what their logs have reported so far). At 80% a notice appears in the chat. At 100% the `delegate` tool refuses new jobs with a clear message so the orchestrator wraps up, and a notice is shown; jobs already running keep going. The turn footer shows the turn's total tokens, and the share of the budget when one is set.
 
 ### Models
 
