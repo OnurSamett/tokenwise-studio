@@ -38,7 +38,11 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-const cacheFile = () => path.join(os.homedir(), ".tokenwise-studio", "update.json");
+// npm arguments that install the latest version: from the registry if it is published there, else from GitHub.
+export const installArgs = (latestSource) =>
+  latestSource === "npm" ? ["install", "-g", `${PKG_NAME}@latest`] : ["install", "-g", `github:OnurSamett/${PKG_NAME}`];
+
+export const cacheFile = () => path.join(os.homedir(), ".tokenwise-studio", "update.json");
 
 async function fetchVersion(url) {
   const r = await fetch(url, { signal: AbortSignal.timeout(2000), headers: { accept: "application/json" } });
@@ -63,7 +67,9 @@ export async function latestVersion({ force = false } = {}) {
       const version = await fetchVersion(url);
       try {
         fs.mkdirSync(path.dirname(cacheFile()), { recursive: true });
-        fs.writeFileSync(cacheFile(), JSON.stringify({ version, source, checkedAt: Date.now() }));
+        // Keep other keys in this file (auto-update state lives here too).
+        const old = readJson(cacheFile()) || {};
+        fs.writeFileSync(cacheFile(), JSON.stringify({ ...old, version, source, checkedAt: Date.now() }, null, 2));
       } catch {}
       return { version, source };
     } catch {}

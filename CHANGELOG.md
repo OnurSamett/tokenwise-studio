@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+
+- Undo Apply: every Apply records a git snapshot of the index and working tree under `refs/tokenwise/pre-apply/` (last 30 kept, no change to your branch or `HEAD`). Undo restores only the files the Apply touched and refuses, naming the files, if they changed since.
+- Combined check: after Apply, run the project's tests plus an optional lint command in the working tree (no shell, 10 minute timeout). Optional "Check after Apply" setting and a "Check combined changes" button.
+- Roblox Studio Output import: paste Studio Output, get deduplicated errors and stack traces (warnings ignored, 20 KB cap) mapped to source files through Rojo project files, and send the selected ones to the orchestrator.
+- Fixes: discarding or timing out a job now stops its whole worker process group (SIGTERM, then SIGKILL) and a discarded job is no longer marked failed or re-run; image jobs run only on Codex; the studio polls faster with less work (cached job list and incremental usage totals).
+- Stale-server fix: servers report the version they started with (`version` in `/api/state` and `loaded` in `/api/version`). The Mac app reuses a registered server only if its version matches the app, otherwise it asks it to quit and starts a fresh one. New local, CSRF-protected `POST /api/quit`. If the page scripts fail to load, a banner explains what to do (English and Turkish). When its server disappears the app shows "Restarting…" and starts a new one once. `tokenwise-studio update` now stops running studio servers after installing.
+- Automatic updates: Settings > Updates with Automatic (default), Notify only and Off. Automatic installs new versions in the background at most once per 24 hours, never while work is running and never over a git checkout, logs to `~/.tokenwise-studio/update.log`, and offers "Restart now". The Mac app is rebuilt on restart when its Swift launcher changed.
+- Fixes found in review: a worker's diff no longer detects renames, so Undo restores the old path as well as removing the new one; Studio Output parsing no longer takes quadratic time on very long runs of whitespace.
+
 ## 0.7.0
 
 - Turkish UI: a Language setting (Auto, English, Türkçe) for the interface and desktop notifications. Auto picks Turkish when the browser or system language is Turkish.

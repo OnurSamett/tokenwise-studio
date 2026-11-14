@@ -10,6 +10,7 @@ export const ORCH_MODELS = ["opus", "sonnet", "haiku"];
 export const EFFORTS = ["low", "medium", "high", "xhigh"];
 export const ORCH_FALLBACK_MODES = ["auto", "ask", "off"];
 export const LANGUAGES = ["auto", "en", "tr"];
+export const AUTO_UPDATE_MODES = ["auto", "notify", "off"];
 
 export const DEFAULTS = Object.freeze({
   language: "auto",
@@ -23,6 +24,7 @@ export const DEFAULTS = Object.freeze({
   fastMode: false,
   notifications: true,
   updateCheck: true,
+  autoUpdate: "auto", // auto: install new versions in the background; notify: only tell; off: neither
   runTestsBeforeApply: false, // run the project tests in a write job's worktree when it finishes
   checkAfterApply: false, // run combined tests and lint in the main working tree after every Apply
   turnBudget: 0, // tokens per orchestrator turn (orchestrator + its workers); 0 = off
@@ -47,6 +49,7 @@ const VALIDATORS = {
   allowFree: (v) => typeof v === "boolean" || "allowFree must be true or false",
   fastMode: (v) => typeof v === "boolean" || "fastMode must be true or false",
   notifications: (v) => typeof v === "boolean" || "notifications must be true or false",
+  autoUpdate: (v) => AUTO_UPDATE_MODES.includes(v) || `autoUpdate must be one of ${AUTO_UPDATE_MODES.join(", ")}`,
   updateCheck: (v) => typeof v === "boolean" || "updateCheck must be true or false",
   runTestsBeforeApply: (v) => typeof v === "boolean" || "runTestsBeforeApply must be true or false",
   checkAfterApply: (v) => typeof v === "boolean" || "checkAfterApply must be true or false",

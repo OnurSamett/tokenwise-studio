@@ -71,12 +71,23 @@ node src/cli.js /path/to/project
 
 ## Updating
 
+By default the studio keeps itself current. Settings > **Updates** has three modes: **Automatic (default)**, **Notify only** and **Off**.
+
+- **Automatic**: at most once every 24 hours the studio checks for a newer version and, if there is one, installs it in the background (`npm install -g`, from the npm registry if the package is published there, otherwise from GitHub, the same rule as `update`). It never installs while a job, test run or chat turn is running (it retries later), and never over a git checkout. When it is done the sidebar shows "Updated to vX — restart to use it" with a **Restart now** button. Progress is logged in `~/.tokenwise-studio/update.log`.
+- **Restart now** stops the studio servers gracefully and the Mac app reloads its windows with the new version. If the app's Swift launcher changed in the new version, the app is rebuilt first (`tokenwise-studio setup --no-mcp`, no prompts).
+- **Notify only**: a small "New version" note with the command to copy; nothing is installed for you.
+- **Off**: no installs and no notice (turning off "Check for updates" does the same).
+
+By hand:
+
 ```bash
 tokenwise-studio update --check   # just report whether a newer version exists
-tokenwise-studio update           # install it and rebuild the Mac app
+tokenwise-studio update           # install it, rebuild the Mac app, stop running studio servers
 ```
 
-`update` reinstalls the way you installed (npm or GitHub), then runs `tokenwise-studio setup` again so the Mac app matches the new version. Restart the app afterwards. Running from a git checkout? Use `git pull` instead. When a newer version exists, the sidebar shows a small "New version" note with the command to copy; nothing is ever installed from the browser. Release notes are in [CHANGELOG.md](CHANGELOG.md).
+`update` reinstalls the way you installed (npm or GitHub), runs `tokenwise-studio setup` so the Mac app matches, and stops running studio servers (busy ones are left alone) so open windows reload on the new version. Running from a git checkout? Use `git pull` instead. Release notes are in [CHANGELOG.md](CHANGELOG.md).
+
+**Stale-server protection.** A studio server started before an upgrade keeps running old code but serves the new page files, which used to leave a blank window. Now every server reports the version it started with; the Mac app only reuses a server whose version matches the app, otherwise it asks the old one to quit (`POST /api/quit`, local and CSRF-protected) and starts a fresh one. If a page still fails to load, a banner says "This studio server is outdated or failed to load. Quit the app and reopen it."
 
 ## Use
 
@@ -104,7 +115,7 @@ Click the gear button in the sidebar footer to open **Settings** (stored in `~/.
 
 - **Permission mode**: `ask` (default; you review and apply worker diffs), `auto-apply` (the orchestrator reviews diffs and merges them itself), or `plan-only` (plans and read-only research only; write delegation is blocked).
 - **Orchestrator defaults & limits**: preselected model/effort, what happens when Claude reaches its limit (`switch automatically`, `ask me`, or `off`), fast mode (`--settings fastMode` for Claude, `service_tier="fast"` for Codex), limit threshold % (50–100), worker fallback order, and opting in to free hosted models.
-- **Notifications & updates**: desktop notification and update check toggles.
+- **Notifications & updates**: desktop notification and update check toggles, and the **Updates** mode (see Updating).
 - **Turn budget**: off by default, presets of 50k / 100k / 250k / 500k tokens per turn (accepts 10k–50M in `settings.json`), counting the orchestrator and the workers it starts (see Turn budget below).
 - **Tests**: run tests before Apply, and the test command (see Tests below).
 - **Project instructions** and **Backup**: see below.
@@ -134,6 +145,18 @@ When a write worker produces png, jpg, webp or gif files (for example Codex imag
 ### Tests
 
 Studio detects a test command per project: an `npm test` script in `package.json` (the npm placeholder is ignored), else `pytest -q` (`pytest.ini` or pytest in `pyproject.toml`), `go test ./...` (`go.mod`), `cargo test` (`Cargo.toml`). Override it under **Settings, Tests**. For a finished write job, the review and the job drawer have a **Run tests** button: it runs the command in that job's worktree (argument array, no shell, 10 minute timeout, one run per job), streams the output, and shows pass or fail with the end of the output. Network is not restricted, and a worktree has only committed files (dependencies are not installed), so a project whose tests need `node_modules` may need a setup command in its test script. Turn on **Run tests before Apply** to run them automatically when a write job finishes; the result shows as a chip on the job card. The orchestrator can call `job_test` to check its workers' work (allowed in every permission mode, since it changes no project files).
+
+### Undo Apply
+
+Every Apply first records a snapshot of your index and working tree under `refs/tokenwise/pre-apply/` (the last 30 are kept; your branch, `HEAD` and index are never touched by it). **Undo apply** (in the toast, the job card and the applied banner) restores only the files that Apply touched, to how they were before. It refuses, and lists the files, if any of them changed since the Apply, so your later edits are never lost. Committing also records a snapshot.
+
+### Combined check
+
+Turn on **Check after Apply** (Settings > Tests) or press **Check combined changes** to run the project's test command plus an optional lint command in your working tree after workers' changes are applied together. Argument arrays, no shell, 10 minute timeout.
+
+### Studio errors (Roblox)
+
+The **Studio errors** button in the composer opens an importer: paste the Roblox Studio Output (up to 20 KB), see the errors with stack traces (warnings and prints are ignored, repeats are merged) mapped to source files through your Rojo `*.project.json`, pick some, and **Ask to fix** sends them to the orchestrator. Everything is parsed locally.
 
 ### Language
 
@@ -190,7 +213,7 @@ Jobs fall back automatically along `codex → gemini → claude → free → loc
 
 ## Status
 
-Early (v0.3). Codex and Claude workers are tested end to end; Gemini is wired up but less tested. Issues and PRs welcome.
+v0.8. Codex and Claude workers are tested end to end; Gemini is wired up but less tested. Issues and PRs welcome.
 
 ## License
 

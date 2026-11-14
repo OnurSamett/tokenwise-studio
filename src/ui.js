@@ -25,12 +25,17 @@ import { resolveJobImage, imageType } from "./jobimages.js";
 import { runTests, testRunning, testTail, detectTestCommand, loadTestOverride, loadLintOverride, saveTestConfig, runCombinedCheck, loadCombinedCheck, combinedCheckRunning, combinedTail } from "./testrun.js";
 import { createSnapshot } from "./snapshots.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
+import { runAutoUpdate, readyFor, readUpdateState, needsAppSetup, runSetup, quitStudioServers, logUpdate } from "./autoupdate.js";
 import { parseStudioErrors, formatStudioPrompt } from "./studiolog.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
 const i18nPath = path.join(path.dirname(htmlPath), "i18n.js");
 const citationsPath = path.join(path.dirname(htmlPath), "citations.js");
+// The version this process was started with. package.json on disk changes under a long-running server
+// when it is upgraded, so the page and the app compare against this, not against the file.
+const LOADED_VERSION = currentVersion();
+export const hooks = { exit: (code) => process.exit(code) }; // replaced in tests
 let repo, jobs, chats; // current project; replaced by POST /api/project
 let serverChatOpts = {};
 
@@ -55,7 +60,7 @@ function combinedCheckInfo() {
   const status = c.status === "running" && !running ? "error" : c.status;
   return { ...c, status, tail };
 }
-const state = () => ({ repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(),
+const state = () => ({ version: LOADED_VERSION, repo, project: { path: repo, name: path.basename(repo) }, recents: recents(), chats: chats.list(),
   jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
   combinedCheck: combinedCheckInfo(),
   team: (({ mode, preset }) => ({ mode, preset }))(loadTeam(jobs.home)) });
@@ -173,12 +178,37 @@ function orchestratorNow(model, effort) {
 // Update check for the sidebar: cached answer if fresh, else kick off a background check and answer latest:null.
 let versionCheck = null;
 function versionInfo() {
-  const current = currentVersion(), source = installSource();
-  if (!loadSettings().updateCheck) return { current, latest: null, updateAvailable: false, source, disabled: true };
+  const current = currentVersion(), source = installSource(), settings = loadSettings();
+  const base = { current, loaded: LOADED_VERSION, source, autoUpdate: settings.autoUpdate, ready: readyFor(LOADED_VERSION), autoFailed: !!readUpdateState().autoFailed };
+  if (!settings.updateCheck) return { ...base, latest: null, updateAvailable: false, disabled: true };
   const c = cachedLatest();
   if (!c && !versionCheck) versionCheck = latestVersion().catch(() => null).finally(() => { versionCheck = null; });
-  return { current, latest: c ? c.version : null, updateAvailable: !!c && compareVersions(c.version, current) > 0, source };
+  return { ...base, latest: c ? c.version : null, updateAvailable: !!c && compareVersions(c.version, current) > 0 };
 }
+
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+/** Is anything running in this project: a job, a test run, a check, an orchestrator turn? */
+export function studioBusy() {
+  if (!jobs || !chats) return false;
+  if (jobs.running.size || jobs.testing.size || jobs.combinedChecking?.active || chats.running.size) return true;
+  try { return jobs.list().some((j) => j.status === "running" && (!j.pid || alive(j.pid))); } catch { return false; }
+}
+
+// Background auto-update (Settings > Updates). Checks soon after start, then hourly; the 24h limit lives in update.json.
+let autoTimer = null;
+export function startAutoUpdater({ firstDelayMs = 60_000, everyMs = 3600_000 } = {}) {
+  if (autoTimer || process.env.TOKENWISE_NO_AUTOUPDATE === "1") return;
+  const tick = async () => {
+    const r = await runAutoUpdate({ busy: studioBusy });
+    if (r.action === "failed") logUpdate(`auto-update of ${r.version} failed; will try again in 24h`);
+  };
+  const first = setTimeout(() => { tick(); autoTimer = setInterval(tick, everyMs); autoTimer.unref?.(); }, firstDelayMs);
+  first.unref?.();
+  autoTimer = first;
+}
+
+// Exit after the response has been flushed (graceful: servers.json is cleaned by the exit hook).
+const exitSoon = (res) => { res.on?.("finish", () => setTimeout(() => hooks.exit(0), 100)); setTimeout(() => hooks.exit(0), 1500).unref?.(); };
 
 export function initServer({ repo: start, summarize, spawn } = {}) {
   serverChatOpts = { ...(summarize ? { summarize } : {}), ...(spawn ? { spawn } : {}) };
@@ -297,6 +327,20 @@ export const handler = async (req, res) => {
       if (what === "chat") return send(res, 200, chats.send(b));
       if (what === "stop") return send(res, 200, chats.stop(id));
       if (what === "merge") return send(res, 200, jobs.merge(id, b.files, { autoCheck: b.autoCheck !== false }));
+      if (what === "quit") {
+        if (studioBusy() && b.force !== true) return send(res, 409, { error: "busy", busy: true });
+        send(res, 200, { ok: true });
+        return exitSoon(res);
+      }
+      if (what === "restart") {
+        if (studioBusy()) return send(res, 409, { error: "busy", busy: true });
+        let setup = null;
+        if (needsAppSetup()) { logUpdate("launcher changed: running setup --no-mcp"); setup = (await runSetup()).ok; logUpdate(`setup ${setup ? "ok" : "failed"}`); }
+        const others = await quitStudioServers({ except: serverUrl });
+        logUpdate(`restart: ${JSON.stringify(others)}`);
+        send(res, 200, { ok: true, setup, others });
+        return exitSoon(res);
+      }
       if (what === "undo") return send(res, 200, jobs.undo(id));
       if (what === "discard") return send(res, 200, jobs.discard(id));
       if (what === "rename") return send(res, 200, chats.rename(id, b.title));
@@ -387,5 +431,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const pi = argv.indexOf("--port");
   const port = pi >= 0 ? Number(argv[pi + 1]) : Number(process.env.PORT || 4777);
   const start = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--port") || process.env.TOKENWISE_REPO || process.cwd();
-  startServer({ repo: start, port }).then((url) => console.log(`tokenwise studio: ${url}  (repo: ${repo})`));
+  startServer({ repo: start, port }).then((url) => { startAutoUpdater(); return url; }).then((url) => console.log(`tokenwise studio: ${url}  (repo: ${repo})`));
 }

@@ -36,17 +36,50 @@ func readRecents() -> [String] {
     return list.filter { var d: ObjCBool = false; return FileManager.default.fileExists(atPath: $0, isDirectory: &d) && d.boolValue }
 }
 
-/// Blocking health check (call off the main thread).
-func healthy(_ base: URL) -> Bool {
+/// The version this app was built for (written into Info.plist by `tokenwise-studio setup`).
+let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+
+func logLine(_ msg: String) {
+    try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+    let line = "\(Date()) app: \(msg)\n"
+    if let h = try? FileHandle(forWritingTo: logURL) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() }
+    else { try? line.write(to: logURL, atomically: true, encoding: .utf8) }
+}
+
+/// Blocking health check that also reads the version the server was started with (call off the main thread).
+func serverState(_ base: URL) -> (ok: Bool, version: String?) {
     var req = URLRequest(url: base.appendingPathComponent("api/state"), timeoutInterval: 1)
     req.httpMethod = "GET"
+    let sem = DispatchSemaphore(value: 0)
+    var ok = false
+    var version: String? = nil
+    URLSession.shared.dataTask(with: req) { data, resp, _ in
+        if let h = resp as? HTTPURLResponse, h.statusCode == 200 {
+            ok = true
+            if let d = data, let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] { version = o["version"] as? String }
+        }
+        sem.signal()
+    }.resume()
+    _ = sem.wait(timeout: .now() + 1.5)
+    return (ok, version)
+}
+
+func healthy(_ base: URL) -> Bool { serverState(base).ok }
+
+/// Ask a studio server to exit (CSRF header required by the server). True when it agreed.
+func quitServer(_ base: URL) -> Bool {
+    var req = URLRequest(url: base.appendingPathComponent("api/quit"), timeoutInterval: 2)
+    req.httpMethod = "POST"
+    req.setValue("1", forHTTPHeaderField: "x-tokenwise")
+    req.setValue("application/json", forHTTPHeaderField: "content-type")
+    req.httpBody = Data("{}".utf8)
     let sem = DispatchSemaphore(value: 0)
     var ok = false
     URLSession.shared.dataTask(with: req) { _, resp, _ in
         if let h = resp as? HTTPURLResponse, h.statusCode == 200 { ok = true }
         sem.signal()
     }.resume()
-    _ = sem.wait(timeout: .now() + 1.5)
+    _ = sem.wait(timeout: .now() + 2.5)
     return ok
 }
 
@@ -73,13 +106,27 @@ func spawnServer(repo: String) -> Bool {
 }
 
 /// Existing server for the repo, or start one and wait up to ~15s. Blocking.
+/// A registered server started by an older version (different from this app's) is stale: it serves the
+/// current page files but lacks newer routes, which leaves a dead UI. Ask it to quit and start a fresh one.
 func ensureServer(repo: String) -> URL? {
-    if let u = registeredServer(for: repo) { return u }
+    var stale: URL? = nil
+    if let s = readServers()[repo], let base = URL(string: s), isLocalHost(base.host) {
+        let st = serverState(base)
+        if st.ok {
+            if st.version == appVersion || appVersion.isEmpty { return base }
+            logLine("server at \(base.absoluteString) runs \(st.version ?? "an unknown version"), app is \(appVersion): replacing it")
+            stale = base
+            if quitServer(base) {
+                let gone = Date().addingTimeInterval(3)
+                while Date() < gone && serverState(base).ok { Thread.sleep(forTimeInterval: 0.2) }
+            }
+        }
+    }
     guard spawnServer(repo: repo) else { return nil }
     let deadline = Date().addingTimeInterval(15)
     while Date() < deadline {
         Thread.sleep(forTimeInterval: 0.4)
-        if let u = registeredServer(for: repo) { return u }
+        if let u = registeredServer(for: repo), u != stale { return u }
     }
     return nil
 }
@@ -107,6 +154,7 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
     let spinner = NSProgressIndicator()
     let label = NSTextField(labelWithString: "Starting…")
     var onClose: ((String) -> Void)?
+    var restarted = false // one automatic restart per page load when the server disappears
     var downloadTargets: [ObjectIdentifier: URL] = [:]
 
     init(repo: String) {
@@ -161,6 +209,23 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
     func load(_ url: URL) {
         if web.url?.absoluteString == url.absoluteString { return }
         web.load(URLRequest(url: url))
+    }
+
+    /// The server went away (update, quit): start a fresh one once and load it.
+    func restartServer() {
+        spinner.isHidden = false
+        spinner.startAnimation(nil)
+        label.isHidden = false
+        label.stringValue = "Restarting…"
+        web.isHidden = true
+        let repo = self.repo
+        DispatchQueue.global().async { [weak self] in
+            let u = ensureServer(repo: repo)
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if let u = u { self.web.load(URLRequest(url: u)) } else { self.failed("The studio server did not restart within 15 seconds.") }
+            }
+        }
     }
 
     func failed(_ why: String) {
@@ -247,6 +312,7 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
     }
 
     func webView(_ w: WKWebView, didFinish navigation: WKNavigation!) {
+        restarted = false
         spinner.stopAnimation(nil)
         spinner.isHidden = true
         label.isHidden = true
@@ -254,6 +320,7 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
     }
     func webView(_ w: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if (error as NSError).code == NSURLErrorCancelled { return }
+        if !restarted { restarted = true; restartServer(); return }
         failed("The page did not load: \(error.localizedDescription)")
     }
 

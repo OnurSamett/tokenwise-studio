@@ -7,6 +7,8 @@ import fs from "node:fs";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
+import { launcherHash, quitStudioServers } from "./autoupdate.js";
+import { installArgs } from "./version.js";
 
 const SRC = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(SRC);
@@ -149,7 +151,7 @@ exec ${q(stableNode())} ${q(path.join(SRC, "cli.js"))} --pick >> "$LOG" 2>&1
   }
   if (native) {
     fs.writeFileSync(path.join(res, "pick.sh"), pickSh, { mode: 0o755 });
-    fs.writeFileSync(path.join(res, "config.json"), JSON.stringify({ node: stableNode(), cli: path.join(SRC, "cli.js") }, null, 2));
+    fs.writeFileSync(path.join(res, "config.json"), JSON.stringify({ node: stableNode(), cli: path.join(SRC, "cli.js"), version: pkg.version, launcherHash: launcherHash(ROOT) }, null, 2));
   } else {
     console.warn("  note: no Swift compiler (install the Xcode command line tools: xcode-select --install, then re-run setup); notifications will come from Script Editor");
     const lp = path.join(macos, "launcher");
@@ -261,14 +263,19 @@ async function doUpdate() {
   if (has("--check")) return console.log(newer ? "an update is available: run `tokenwise-studio update`" : "");
   if (source === "dev") return console.log("this is a git checkout: update it with `git pull` (then `tokenwise-studio setup` to rebuild the Mac app)");
   // npm records no install source, so a registry install looks like "github". If the registry has the package, use it.
-  const args = latest?.source === "npm" ? ["install", "-g", "tokenwise-studio@latest"] : ["install", "-g", "github:OnurSamett/tokenwise-studio"];
+  const args = installArgs(latest?.source);
   console.log(`\nnpm ${args.join(" ")}\n`);
   try { execFileSync("npm", args, { stdio: "inherit" }); }
   catch { console.error("\nupdate failed; nothing else was changed. Try the command above yourself (you may need different permissions)."); process.exit(1); }
   console.log("\nrebuilding the Mac app with the new version ...\n");
   const r = spawnSync(EXE, ["setup"], { stdio: "inherit" });
   if (r.error || r.status) { console.error(`\nupdated, but \`${EXE} setup\` did not finish; run it yourself.`); process.exit(1); }
-  console.log("\nUpdated. Restart tokenwise studio (quit and reopen the app) to use the new version.");
+  // Running studio servers still serve the old code; stop them so the next open starts the new version.
+  const q = await quitStudioServers();
+  if (q.quit) console.log(`stopped ${q.quit} running studio server${q.quit === 1 ? "" : "s"}; open windows will reload on their own`);
+  if (q.busy) console.log(`${q.busy} studio server${q.busy === 1 ? " is" : "s are"} busy with a running job and kept running: restart ${q.busy === 1 ? "it" : "them"} from the app when done`);
+  if (q.unsupported) console.log(`${q.unsupported} older studio server${q.unsupported === 1 ? "" : "s"} cannot be stopped remotely: quit and reopen the app`);
+  console.log("\nUpdated to the new version.");
 }
 
 function pickFolder() {
@@ -280,7 +287,7 @@ function pickFolder() {
 }
 
 async function startUi() {
-  const { startServer } = await import("./ui.js");
+  const { startServer, startAutoUpdater } = await import("./ui.js");
   const pi = argv.indexOf("--port");
   const first = pi >= 0 ? Number(argv[pi + 1]) : 4777;
   let dir = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--port");
@@ -291,6 +298,7 @@ async function startUi() {
     try { url = await startServer({ repo, port: p }); } catch (e) { if (e.code !== "EADDRINUSE") throw e; }
   }
   if (!url) { console.error(`tokenwise studio: ports ${first}-${first + 10} are all busy`); process.exit(1); }
+  startAutoUpdater();
   console.log(`tokenwise studio is running at ${url}  (project: ${path.basename(repo)})`);
   const mode = decideOpen({ noOpen: has("--no-open"), browser: has("--browser"), platform: process.platform, installed: process.platform === "darwin" && nativeAppInstalled() });
   const appUrl = `tokenwise-studio://open?repo=${encodeURIComponent(repo)}&url=${encodeURIComponent(url)}`;

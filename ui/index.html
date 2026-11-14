@@ -298,6 +298,9 @@
   .usage .pname .plogo { width: 16px; height: 16px; }
   .footrow { display: flex; gap: 2px; }
   .newver { background: none; border: 0; width: 100%; text-align: left; padding: 4px 10px 8px; font-size: 12px; color: var(--dim); }
+  .updready { margin: 2px 8px 8px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; font-size: 12px; color: var(--text); display: flex; flex-direction: column; gap: 6px; }
+  .updready button { align-self: flex-start; }
+  #twfail { position: fixed; top: 0; left: 0; right: 0; z-index: 99999; padding: 10px 16px; background: #b3261e; color: #fff; font: 13px/1.4 -apple-system, system-ui, sans-serif; text-align: center; }
   .newver b { color: var(--accent); font-weight: 550; } .newver:hover b { text-decoration: underline; }
   .pop.upd { padding: 12px; gap: 8px; width: 290px; font-size: 13px; color: var(--muted); }
   .pop.upd .cmd { display: flex; align-items: center; gap: 8px; background: var(--s2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 6px 6px 10px; }
@@ -478,7 +481,7 @@
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> <span id="newtasklbl">New task</span></button>
   <div class="label" id="recentlbl">Recent</div>
   <div class="chats" id="chats"></div>
-  <div class="sidefoot"><button class="newver" id="newver" hidden></button><div class="label" id="limitslbl">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><button class="ghost" id="usagebtn">Usage</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="settingsbtn" title="Settings" aria-label="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
+  <div class="sidefoot"><div class="updready" id="updready" hidden></div><button class="newver" id="newver" hidden></button><div class="label" id="limitslbl">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><button class="ghost" id="usagebtn">Usage</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="settingsbtn" title="Settings" aria-label="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
 </aside>
 
 <div class="main">
@@ -513,6 +516,21 @@
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
 
+<script>
+// Plain (non-module) fallback: if the app script did not start, say so instead of leaving a dead page.
+// Inline EN/TR because the translation module may be what failed to load.
+setTimeout(function () {
+  if (window.__twLoaded) return;
+  var tr = /^tr/i.test(navigator.language || "");
+  var d = document.createElement("div");
+  d.id = "twfail";
+  d.setAttribute("role", "alert");
+  d.textContent = tr
+    ? "Bu studio sunucusu eski ya da yüklenemedi. Uygulamadan çıkıp yeniden aç."
+    : "This studio server is outdated or failed to load. Quit the app and reopen it.";
+  document.body.appendChild(d);
+}, 3000);
+</script>
 <script type="module">
 import { t as tr, tp as trp, hasKey, resolveLanguage, translateReason, translateNotice } from "/i18n.js";
 import { parseCitations, renderMarkdownHtml } from "/citations.js";
@@ -685,6 +703,7 @@ async function saveSetting(patch) {
   const data = await api("settings", patch);
   syncFromSettings(data, { applyComposer: "defaultModel" in patch || "defaultEffort" in patch });
   if ("limitThreshold" in patch || "orchFallback" in patch || "allowFree" in patch) renderLimits();
+  if ("autoUpdate" in patch) checkVersion();
   if ("updateCheck" in patch) {
     if (data.settings.updateCheck) checkVersion();
     else { $("#newver").hidden = true; }
@@ -1691,7 +1710,12 @@ async function renderDrawer(full) {
             h("span", {}, [t("settings.desktopNotif"), envBadge("notifications")], h("small", {}, t("settings.desktopNotifDesc")))),
           h("label", { class: "toggle" + (lock.updateCheck ? " disabled" : "") },
             h("input", { type: "checkbox", checked: s.updateCheck ? true : null, disabled: !!lock.updateCheck, onchange: (e) => applyPatch({ updateCheck: e.target.checked }) }),
-            h("span", {}, [t("settings.checkUpdates"), envBadge("updateCheck")], h("small", {}, t("settings.checkUpdatesDesc"))))));
+            h("span", {}, [t("settings.checkUpdates"), envBadge("updateCheck")], h("small", {}, t("settings.checkUpdatesDesc")))),
+          h("div", { class: "shead", style: "margin-top:14px" }, h("h4", {}, t("settings.updates"))),
+          h("p", { class: "shelp" }, t("settings.updatesHelp")),
+          h("div", { class: "seg three" }, [["auto", "settings.upd.auto", "settings.upd.autoDesc"], ["notify", "settings.upd.notify", "settings.upd.notifyDesc"], ["off", "settings.upd.off", "settings.upd.offDesc"]].map(([val, tk, dk]) =>
+            h("button", { class: (s.autoUpdate || "auto") === val ? "on" : "", onclick: () => applyPatch({ autoUpdate: val }) },
+              h("b", {}, t(tk)), h("span", {}, t(dk)))))));
     };
     draw();
     set(d,
@@ -2043,10 +2067,24 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawe
 
 // ---------- update notice ----------
 let ver = null;
+let restarting = false;
+async function restartNow() {
+  if (restarting) return;
+  restarting = true; renderVersion();
+  try { await api("restart", {}); }
+  catch (e) { restarting = false; renderVersion(); return toast(e.message === "busy" ? t("side.restartBusy") : e.message, true); }
+  // The server exits after answering. The app respawns it when the page reloads; a browser tab just shows the error.
+  setTimeout(() => location.reload(), 1500);
+}
 function renderVersion() {
-  const b = $("#newver");
-  if (!ver || ver.disabled) { b.hidden = true; return; }
-  b.hidden = !ver.updateAvailable;
+  const r = $("#updready"), b = $("#newver");
+  const ready = ver && ver.ready;
+  r.hidden = !ready;
+  if (ready) set(r, h("div", {}, t("side.updateReady", { version: ready.version })),
+    h("button", { class: "btn primary", disabled: restarting ? true : null, onclick: restartNow }, restarting ? t("side.restarting") : t("side.restartNow")));
+  if (!ver || ver.disabled || ready) { b.hidden = true; return; }
+  b.hidden = !ver.updateAvailable || (ver.autoUpdate === "auto" && ver.source !== "dev" && !ver.autoFailed);
+
   if (ver.updateAvailable) set(b, [t("side.newVersion", { version: ver.latest }), h("b", {}, t("side.update"))]);
 }
 async function checkVersion() {
@@ -2069,6 +2107,7 @@ refresh().then(() => { if (S.chats[0]) openChat(S.chats[0].id); });
 setInterval(() => refresh().then(pollChat).catch(() => {}), 1200);
 renderLimits(); setInterval(renderLimits, 15000);
 $("#omodel").addEventListener("change", renderLimits); $("#oeffort").addEventListener("change", renderLimits);
+window.__twLoaded = true;
 </script>
 </body>
 </html>
