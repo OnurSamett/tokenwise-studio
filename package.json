@@ -22,6 +22,7 @@
   "files": [
     "src/",
     "ui/",
+    "launcher/",
     "assets/logo.png",
     "assets/favicon-64.png",
     "assets/providers/",

@@ -167,9 +167,9 @@ export class Chats {
       let readyJobs = 0;
       try { readyJobs = this.jobs.list().filter((j) => j.parent === id && j.write && j.status === "done" && j.created >= turn.started).length; } catch {}
       const n = turnNotice({ turn: cur.turns[ti], chatTitle: cur.title, failed, stopped: stopped || cur.status === "stopped", readyJobs });
-      if (n) notify({ ...n, key: `turn:${id}:${ti}` });
+      if (n) notify({ ...n, repo: this.jobs.repo, key: `turn:${id}:${ti}` });
     };
-    if (turn.handoff) { const n = handoffNotice(turn.handoff.reason); notify({ ...n, subtitle: c.title, key: `handoff:${id}:${ti}` }); }
+    if (turn.handoff) { const n = handoffNotice(turn.handoff.reason); notify({ ...n, subtitle: c.title, repo: this.jobs.repo, key: `handoff:${id}:${ti}` }); }
 
     const run = (agent) => {
       const t = c.turns[ti];
@@ -233,7 +233,7 @@ export class Chats {
           w("meta", `Claude ${reason}; continuing this turn on Codex`);
           w("handoff", JSON.stringify({ from: "claude", to: "codex", reason }));
           this.save(c);
-          { const n = handoffNotice(reason); notify({ ...n, subtitle: c.title, key: `handoff:${id}:${ti}` }); }
+          { const n = handoffNotice(reason); notify({ ...n, subtitle: c.title, repo: this.jobs.repo, key: `handoff:${id}:${ti}` }); }
           run("codex");
           return;
         }

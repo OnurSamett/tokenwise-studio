@@ -144,7 +144,7 @@ export class Jobs {
       this.running.delete(id);
       if (!j.parent && (j.status === "done" || j.status === "failed")) {
         const n = jobNotice(j, write ? j.files.length : undefined);
-        if (n) notify({ ...n, subtitle: path.basename(this.repo), key: `job:${id}:${j.status}` });
+        if (n) notify({ ...n, subtitle: path.basename(this.repo), repo: this.repo, key: `job:${id}:${j.status}` });
       }
       res(j);
     }));

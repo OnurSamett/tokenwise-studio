@@ -77,6 +77,8 @@ Just ask your orchestrator, e.g. in Claude Code on Opus:
 
 On macOS, tokenwise studio shows a desktop notification when a direct worker finishes or fails (not those started by a studio chat), and when an orchestrator turn finishes, needs you, or moves from Claude to Codex. Jobs ready for review are called out. Toggle them with the bell button in the studio sidebar, or set `TOKENWISE_NOTIFY=0` to turn them off entirely. The setting is stored in `~/.tokenwise-studio/settings.json`.
 
+After `tokenwise-studio setup`, notifications come from the tokenwise studio app in `~/Applications` (the first one asks for permission), and clicking one opens that project's studio. Without the Xcode command line tools (no Swift compiler) setup falls back to a plain launcher and notifications come via Script Editor.
+
 ### Team settings
 
 Per project you choose how the orchestrator picks workers. **Auto** (default) lets it decide by its own guide. **Manual** fixes an agent, model and effort for each role (code, quick work, reviews, images); start from a preset (quality, balanced or cheap) and adjust. The choice is stored in `.tokenwise-studio/team.json`. The orchestrator follows it and only deviates when a plan is out of quota. You can also forbid the free workers or allow Codex astra there.

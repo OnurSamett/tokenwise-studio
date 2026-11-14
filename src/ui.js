@@ -184,6 +184,7 @@ const handler = async (req, res) => {
         const p = path.resolve(String(b.path || "").replace(/^~(?=$|[\\/])/, os.homedir()));
         if (!fs.existsSync(p) || !fs.statSync(p).isDirectory()) throw new Error(`not a folder: ${p}`);
         openProject(p);
+        if (serverUrl) registerServer(p, serverUrl);
         return send(res, 200, state());
       }
       if (what === "delegate") return send(res, 200, jobs.start({ ...b, parent: null }));
@@ -194,12 +195,47 @@ const handler = async (req, res) => {
   }
 };
 
+// ~/.tokenwise-studio/servers.json maps project path -> running server URL (read by the notification app).
+const serversFile = () => path.join(os.homedir(), ".tokenwise-studio", "servers.json");
+function updateServers(fn) {
+  try {
+    let map = {};
+    try { map = JSON.parse(fs.readFileSync(serversFile(), "utf8")) || {}; } catch {}
+    fn(map);
+    fs.mkdirSync(path.dirname(serversFile()), { recursive: true });
+    const tmp = `${serversFile()}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(map, null, 2));
+    fs.renameSync(tmp, serversFile());
+  } catch {}
+}
+let cleanupHooked = false;
+const ownUrls = new Set();
+let serverUrl = null;
+function registerServer(repoPath, url) {
+  serverUrl = url;
+  // One server shows one project at a time: drop older entries for this URL (e.g. after switching project).
+  updateServers((m) => { for (const k of Object.keys(m)) if (m[k] === url) delete m[k]; m[repoPath] = url; });
+  ownUrls.add(url);
+  if (cleanupHooked) return;
+  cleanupHooked = true;
+  const clean = () => updateServers((m) => { for (const k of Object.keys(m)) if (ownUrls.has(m[k])) delete m[k]; });
+  process.on("exit", clean);
+  // Only take over signals when nothing else handles them, so default termination behaviour is kept.
+  for (const sig of ["SIGINT", "SIGTERM"]) {
+    if (process.listenerCount(sig) === 0) process.on(sig, () => { clean(); process.exit(0); });
+  }
+}
+
 export function startServer({ repo: start, port = 4777 } = {}) {
   openProject(path.resolve(start || process.cwd()));
   return new Promise((resolve, reject) => {
     const server = http.createServer(handler);
     server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => resolve(`http://127.0.0.1:${server.address().port}`));
+    server.listen(port, "127.0.0.1", () => {
+      const url = `http://127.0.0.1:${server.address().port}`;
+      registerServer(path.resolve(start || process.cwd()), url);
+      resolve(url);
+    });
   });
 }
 

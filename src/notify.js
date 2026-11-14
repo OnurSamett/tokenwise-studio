@@ -37,15 +37,36 @@ export function buildScript({ title = "tokenwise studio", message = "", subtitle
 
 const seen = new Set();
 
+const BUNDLE_ID = "com.nolienlabs.tokenwise-studio";
+const nativeBinary = () => path.join(os.homedir(), "Applications", "tokenwise studio.app", "Contents", "MacOS", "tokenwise-studio");
+
+/** Path of our own notifier app executable when it is installed (executable + our bundle id), else null. */
+export function nativeNotifier(deps = {}) {
+  try {
+    const bin = deps.binary || nativeBinary();
+    fs.accessSync(bin, fs.constants.X_OK);
+    const plist = path.join(path.dirname(bin), "..", "Info.plist");
+    const text = deps.plist !== undefined ? deps.plist : fs.readFileSync(plist, "utf8");
+    return text.includes(`<string>${BUNDLE_ID}</string>`) ? bin : null;
+  } catch { return null; }
+}
+
 /** deps (for tests): { exec, platform, settings }. Returns true when a notification was handed to osascript. */
-export function notify({ title, message, subtitle, key } = {}, deps = {}) {
+export function notify({ title, message, subtitle, key, repo } = {}, deps = {}) {
   try {
     if ((deps.platform || process.platform) !== "darwin") return false;
     if (process.env.TOKENWISE_NOTIFY === "0") return false;
     if (!(deps.settings || loadSettings()).notifications) return false;
     if (key) { if (seen.has(key)) return false; seen.add(key); }
     const run = deps.exec || execFile;
-    run("osascript", ["-e", buildScript({ title, message, subtitle })], { timeout: 5000 }, () => {});
+    const viaScriptEditor = () => run("osascript", ["-e", buildScript({ title, message, subtitle })], { timeout: 5000 }, () => {});
+    const bin = deps.native !== undefined ? deps.native : nativeNotifier(deps);
+    if (bin) {
+      const args = ["--notify", "--title", trunc(title || "tokenwise studio", 60), "--message", trunc(message, 180)];
+      if (subtitle) args.push("--subtitle", trunc(subtitle, 60));
+      if (repo) args.push("--repo", String(repo));
+      run(bin, args, { timeout: 10000 }, (err) => { if (err) viaScriptEditor(); });
+    } else viaScriptEditor();
     return true;
   } catch { return false; }
 }
