@@ -231,6 +231,9 @@
   .doc i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
   .doc.off i { background: var(--dim); } .doc.warn i { background: var(--warn); }
   .doc code { font-size: 11.5px; }
+  .doc .plogo { width: 14px; height: 14px; }
+  .worker .badge.has-logo .plogo { width: 20px; height: 20px; }
+  .usage .pname .plogo { width: 16px; height: 16px; }
   .footrow { display: flex; gap: 2px; }
   .footrow .ghost { width: auto; flex: 1; }
   .icon-btn { background: none; border: 0; color: var(--dim); border-radius: 8px; padding: 6px 9px; font-size: 14px; }
@@ -516,7 +519,7 @@ function doctorRow() {
       const label = v.installed && v.signedIn ? (v.via === "antigravity" ? "ready · Antigravity" : k === "local" ? `ready · ${v.model}` : k === "free" ? `ready · ${v.via}` : "ready")
         : v.fix ? h("code", {}, v.fix)
         : v.installed ? (v.via === "antigravity" ? ["sign in: ", h("code", {}, "agy")] : [k === "gemini" ? "API key: " : "sign in: ", h("code", {}, fix[k])]) : "not installed";
-      return h("span", { class: "doc" + cls, title: v.installed ? "" : `npm i -g ${k === "claude" ? "@anthropic-ai/claude-code" : k === "codex" ? "@openai/codex" : "@google/gemini-cli"}` }, h("i"), AGENT[k], " · ", label);
+      return h("span", { class: "doc" + cls, title: v.installed ? "" : `npm i -g ${k === "claude" ? "@anthropic-ai/claude-code" : k === "codex" ? "@openai/codex" : "@google/gemini-cli"}` }, (k === "free" ? logoImg("nvidia") : agentLogo(k)) || h("i"), AGENT[k], " · ", label);
     }));
   }).catch(() => {});
   return row;
@@ -600,7 +603,7 @@ function teamCard(jobs) {
   return h("div", { class: "team" },
     h("div", { class: "team-h" }, live ? h("span", { class: "spin" }) : h("span", { style: "color:var(--ok)" }, "✓"), live ? `${live} of ${jobs.length} working` : `Delegated ${jobs.length} task${jobs.length > 1 ? "s" : ""}`),
     jobs.map((j) => h("button", { class: "worker", onclick: () => openJob(j.id) },
-      h("span", { class: "badge " + j.agent }, BADGE[j.agent] || "?"),
+      (() => { const lg = j.agent === "free" ? makerLogo(j.model) || logoImg("nvidia") : agentLogo(j.agent); return h("span", { class: "badge " + j.agent + (lg ? " has-logo" : "") }, lg || BADGE[j.agent] || "?"); })(),
       h("span", {}, h("div", { class: "w-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort), h("span", { class: "w-state " + j.status }, STATE[j.status] || j.status)), h("div", { class: "w-task" }, j.title),
         j.movedFrom ? h("div", { class: "moved", title: j.movedFrom.reason }, `↪ took over from ${AGENT[j.movedFrom.agent] || j.movedFrom.agent} · ${j.movedFrom.reason}`) : null),
       h("span", { class: "bar " + j.status }, h("i")),
@@ -929,7 +932,7 @@ function meter(label, w) {
 }
 async function renderLimits() {
   let L; try { L = await api("limits"); } catch { return; }
-  const plan = (name, agent, d) => d ? h("div", { class: "plan" }, h("div", { class: "pname" }, h("span", { class: "badge " + agent }, BADGE[agent]), name), meter("5-hour", d.fiveHour), meter("Weekly", d.week)) : null;
+  const plan = (name, agent, d) => d ? h("div", { class: "plan" }, h("div", { class: "pname" }, agentLogo(agent) || h("span", { class: "badge " + agent }, BADGE[agent]), name), meter("5-hour", d.fiveHour), meter("Weekly", d.week)) : null;
   const blocks = [plan("Claude", "claude", L.claude), plan("ChatGPT Codex", "codex", L.codex)].filter(Boolean);
   set($("#usage"), blocks.length ? blocks : h("div", { class: "none" }, "Shows up after the first run."));
 }
