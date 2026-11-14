@@ -707,7 +707,7 @@ const tierLabel = (tier) => t(`models.tier.${tier}`) || tier;
 const PRESET_ROLES = {
   quality: { code: { agent: "codex", model: "sol", effort: "high" }, quick: { agent: "gemini", model: "hydrogen", effort: "medium" }, review: { agent: "claude", model: "opus", effort: "high" }, research: { agent: "claude", model: "sonnet", effort: "high" }, images: { agent: "codex" } },
   balanced: { code: { agent: "codex", model: "sol", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "medium" }, review: { agent: "claude", model: "sonnet", effort: "medium" }, research: { agent: "gemini", model: "hydrogen", effort: "medium" }, images: { agent: "codex" } },
-  cheap: { code: { agent: "free", model: "auto", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "low" }, review: { agent: "gemini", model: "hydrogen", effort: "low" }, research: { agent: "free", model: "auto", effort: "medium" }, images: { agent: "codex" } },
+  cheap: { code: { agent: "free", model: "auto", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "low" }, review: { agent: "gemini", model: "hydrogen", effort: "low" }, research: { agent: "gemini", model: "hydrogen", effort: "low" }, images: { agent: "codex" } },
 };
 
 // ---------- state ----------
@@ -1221,9 +1221,11 @@ async function renderDrawer(full) {
         h("button", { class: tm.mode === "auto" ? "on" : "", onclick: () => { tm.mode = "auto"; draw(); } }, h("b", {}, t("team.autoTitle")), h("span", {}, t("team.autoDesc"))),
         h("button", { class: tm.mode === "manual" ? "on" : "", onclick: () => { tm.mode = "manual"; draw(); } }, h("b", {}, t("team.manualTitle")), h("span", {}, t("team.manualDesc"))));
       const presets = h("div", { class: "presets" }, ["quality", "balanced", "cheap"].map((p) => h("button", { class: tm.preset === p ? "on" : "", onclick: async () => {
-        tm.preset = p; tm.roles = PRESET_ROLES[p] ? JSON.parse(JSON.stringify(PRESET_ROLES[p])) : tm.roles; draw();
+        tm.preset = p; tm.roles = PRESET_ROLES[p] ? JSON.parse(JSON.stringify(PRESET_ROLES[p])) : tm.roles;
+        if (p === "cheap" && !opt.agents.gemini?.ready && opt.agents.claude?.ready) tm.roles.research = { agent: "claude", model: "haiku", effort: "low" };
+        draw();
       } }, t(`team.preset.${p}`))), h("button", { class: tm.preset ? "" : "on", onclick: () => { tm.preset = null; draw(); } }, t("team.preset.custom")));
-      const agentOpts = (role) => (role === "images" ? ["codex", "gemini"] : ["codex", "claude", "gemini", "free"]);
+      const agentOpts = (role) => (role === "images" ? ["codex"] : ["codex", "claude", "gemini", "free"]);
       const isUnsupported = (agent, role) => !!(opt.agents[agent]?.unsupportedRoles?.includes(role) || opt.roles?.find((x) => x.id === role)?.unsupportedAgents?.includes(agent));
       const rows = (opt.roles || Object.keys(RL).map((id) => ({ id }))).map(({ id }) => {
         const r = tm.roles[id] || (tm.roles[id] = { agent: "codex", model: "auto", effort: "medium" });

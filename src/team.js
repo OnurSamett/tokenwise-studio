@@ -43,7 +43,7 @@ export const PRESETS = {
     code: { agent: "free", model: "auto", effort: "medium" },
     quick: { agent: "free", model: "auto", effort: "low" },
     review: { agent: "gemini", model: "hydrogen", effort: "low" },
-    research: { agent: "free", model: "auto", effort: "medium" },
+    research: { agent: "gemini", model: "hydrogen", effort: "low" },
     images: { agent: "codex" },
   },
 };
@@ -80,7 +80,7 @@ function normalize(input) {
     const src = rolesIn[r];
     if (src === undefined) { roles[r] = clone(DEFAULT_TEAM.roles[r]); continue; }
     if (!isObj(src)) throw new Error(`role '${r}' must be an object`);
-    const allowed = r === "images" ? ["codex", "gemini"] : AGENTS;
+    const allowed = r === "images" ? ["codex"] : AGENTS;
     if (!allowed.includes(src.agent)) throw new Error(`role '${r}': agent must be one of ${allowed.join(", ")}`);
     const out = { agent: src.agent };
     if (src.model !== undefined) {
@@ -139,12 +139,11 @@ export function teamOptions(freeModels = []) {
       claude: { ready: ready("claude"), models: ["haiku", "sonnet", "opus"], labels: fam("claude"), unsupportedRoles: [] },
       gemini: { ready: ready("gemini"), models: geminiFamilies(), labels: fam("gemini"), unsupportedRoles: [] },
       free: { ready: providers.length > 0, models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: loadSettings().allowFree, unsupportedRoles: ["research"] },
-      local: { ready: ready("local"), models: [], labels: {}, unsupportedRoles: ["research"] },
     },
     roles: ROLES.map((id) => ({
       id,
       label: LABELS[id],
-      ...(id === "research" ? { unsupportedAgents: ["free", "local"] } : id === "images" ? { supportedAgents: ["codex", "gemini"] } : {}),
+      ...(id === "research" ? { unsupportedAgents: ["free"] } : id === "images" ? { supportedAgents: ["codex"] } : {}),
     })),
     presets: Object.keys(PRESETS),
   };

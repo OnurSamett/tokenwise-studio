@@ -12,7 +12,8 @@ import { notify, turnNotice, handoffNotice } from "./notify.js";
 import { loadSettings } from "./settings.js";
 import { loadInstructions, instructionsGuide } from "./instructions.js";
 import { budgetDecision, turnTotal, writeBudgetState, fmtTokens } from "./budget.js";
-import { COMPACT_NOTICE, compactChat, lastContextTokens, shouldCompact } from "./compact.js";
+import { COMPACT_NOTICE, clip, compactChat, lastContextTokens, shouldCompact } from "./compact.js";
+import { listJsonCached } from "./jobs.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard", "job_test"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -122,7 +123,6 @@ function codexCommand({ repo, chatId, model, effort, thread, prompt, images = []
   return { cmd: "codex", args };
 }
 
-const clip = (s, n) => { s = String(s || "").trim(); return s.length > n ? s.slice(0, n) + "…" : s; };
 const NAME = { claude: "Claude", codex: "Codex" };
 
 /** Message plus, when this agent lacks context, a compacted summary and/or earlier turns handled elsewhere. */
@@ -164,15 +164,15 @@ export class Chats {
     fs.mkdirSync(this.dir, { recursive: true });
     this.running = new Map();
     this.compacting = new Set();
+    this._listCache = new Map();
     this.summarizeRunner = summarize;
     this.spawn = spawnFn || spawn;
   }
   f(id, ext) { return path.join(this.dir, `${id}.${ext}`); }
-  save(c) { fs.writeFileSync(this.f(c.id, "json"), JSON.stringify(c, null, 2)); return c; }
+  save(c) { fs.writeFileSync(this.f(c.id, "json"), JSON.stringify(c, null, 2)); this._listCache.delete(`${c.id}.json`); return c; }
   get(id) { return JSON.parse(fs.readFileSync(this.f(id, "json"), "utf8")); }
   list() {
-    return fs.readdirSync(this.dir).filter((x) => x.endsWith(".json") && !x.endsWith(".mcp.json"))
-      .map((x) => JSON.parse(fs.readFileSync(path.join(this.dir, x), "utf8")))
+    return listJsonCached(this.dir, /^(?!.*\.mcp\.json$).+\.json$/, this._listCache)
       .sort((a, b) => b.created.localeCompare(a.created));
   }
 
@@ -469,6 +469,7 @@ export class Chats {
       }
     }
     for (const ext of ["json", "jsonl", "mcp.json", "budget"]) fs.rmSync(this.f(id, ext), { force: true });
+    this._listCache.delete(`${id}.json`);
     return { ok: true };
   }
 

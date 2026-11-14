@@ -11,7 +11,7 @@ export const COMPACT_NOTICE = "Earlier conversation compacted to save tokens";
 export const SUMMARY_MAX_CHARS = 3500;
 export const INPUT_MAX_CHARS = 24_000;
 
-const clip = (s, n) => {
+export const clip = (s, n) => {
   const str = String(s || "").trim();
   return str.length > n ? str.slice(0, n - 1).trimEnd() + "…" : str;
 };

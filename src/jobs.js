@@ -17,13 +17,44 @@ const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/n
   "**/.mypy_cache/**", "**/.ruff_cache/**", "**/target/debug/**", "**/.next/**", "**/coverage/**"];
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
+function killGroup(target, sig) {
+  const pid = typeof target === "number" ? target : target?.pid;
+  if (!(pid > 0)) return;
+  try { process.kill(-pid, sig); } catch { try { process.kill(pid, sig); } catch {} }
+}
+
+/** Read and parse matching JSON files from `dir`, reusing cached objects when mtimeMs and size are unchanged. */
+export function listJsonCached(dir, pattern, cache) {
+  const files = fs.readdirSync(dir).filter((f) => pattern.test(f));
+  const seen = new Set(files);
+  for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k);
+  const out = [];
+  for (const f of files) {
+    const p = path.join(dir, f);
+    try {
+      const st = fs.statSync(p);
+      const hit = cache.get(f);
+      if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) { out.push(hit.data); continue; }
+      const data = JSON.parse(fs.readFileSync(p, "utf8"));
+      cache.set(f, { mtimeMs: st.mtimeMs, size: st.size, data });
+      out.push(data);
+    } catch (e) {
+      if (e?.code === "ENOENT") { cache.delete(f); continue; }
+      throw e;
+    }
+  }
+  return out;
+}
+
 export class Jobs {
   constructor(repo) {
     this.repo = path.resolve(repo);
     this.home = path.join(this.repo, ".tokenwise-studio");
     for (const d of ["jobs", "logs", "worktrees"]) fs.mkdirSync(path.join(this.home, d), { recursive: true });
-    this.running = new Map(); // id -> { child, done: Promise }
+    this.running = new Map(); // id -> { child, done: Promise, discardTimer? }
     this.testing = new Map(); // id -> test-run child process (see testrun.js)
+    this._listCache = new Map(); // filename -> { mtimeMs, size, data }
+    this._usageCache = new Map(); // id -> { offset, sum, found, claude, cost, model }
     // Keep our state folder out of the user's git status.
     if (this.isGit()) {
       try {
@@ -46,15 +77,14 @@ export class Jobs {
     return path.join(this.home, dir, name);
   }
 
-  save(job) { fs.writeFileSync(this.file(job.id, "job"), JSON.stringify(job, null, 2)); return job; }
+  save(job) { fs.writeFileSync(this.file(job.id, "job"), JSON.stringify(job, null, 2)); this._listCache.delete(`${job.id}.json`); return job; }
   get(id) {
     const f = this.file(id, "job");
     if (!fs.existsSync(f)) throw new Error(`unknown job ${id}`);
     return JSON.parse(fs.readFileSync(f, "utf8"));
   }
   list() {
-    return fs.readdirSync(path.join(this.home, "jobs")).filter((f) => /^[\w-]+\.json$/.test(f))
-      .map((f) => JSON.parse(fs.readFileSync(path.join(this.home, "jobs", f), "utf8")))
+    return listJsonCached(path.join(this.home, "jobs"), /^[\w-]+\.json$/, this._listCache)
       .sort((a, b) => a.created.localeCompare(b.created));
   }
 
@@ -64,6 +94,7 @@ export class Jobs {
     tried = [], movedFrom = null, noFallback = false, images = [] }) {
     if (role !== null && role !== undefined && !ROLES.includes(role)) throw new Error(`unknown role '${role}' (roles: ${ROLES.join(", ")})`);
     if (role === "research" && write) throw new Error("research jobs must be read-only (write=false)");
+    if (role === "images" && agent !== "codex") throw new Error("image generation needs Codex");
     const attachments = validateImages(this.repo, images);
     const team = loadTeam(this.home);
     if (agent === "free" && team.allow.free === false) throw new Error("free workers are disabled in the team settings");
@@ -107,7 +138,7 @@ export class Jobs {
 
     if (attachments.length && !["codex", "claude"].includes(spec.agent)) write1("meta", `${spec.agent}: images are not supported; continuing without images`);
 
-    const child = spawn(cmd, args, { cwd, env: { ...process.env, ...(extraEnv || {}) }, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(cmd, args, { cwd, env: { ...process.env, ...(extraEnv || {}) }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     this.save({ ...job, pid: child.pid });
     let lastText = null, buf = { out: "", err: "" };
     const onData = (stream) => (chunk) => {
@@ -122,13 +153,30 @@ export class Jobs {
     };
     child.stdout.on("data", onData("out"));
     child.stderr.on("data", onData("err"));
-    const timer = setTimeout(() => { write1("meta", `timeout after ${timeoutMin} min, killing`); child.kill("SIGTERM"); }, timeoutMin * 60000);
+    let killTimer = null;
+    const timer = setTimeout(() => {
+      write1("meta", `timeout after ${timeoutMin} min, killing`);
+      killGroup(child, "SIGTERM");
+      killTimer = setTimeout(() => killGroup(child, "SIGKILL"), 5000);
+      killTimer.unref?.();
+    }, timeoutMin * 60000);
 
     const done = new Promise((res) => child.on("close", (code) => {
       clearTimeout(timer);
+      clearTimeout(killTimer);
+      const runEntry = this.running.get(id);
+      if (runEntry?.discardTimer) clearTimeout(runEntry.discardTimer);
       const j = this.get(id);
       j.exitCode = code; j.finished = new Date().toISOString(); j.pid = null;
-      if (j.status !== "discarded") j.status = code === 0 ? "done" : "failed";
+      if (j.status === "discarded") {
+        Object.assign(j, this.usage(id));
+        write1("meta", `exit ${code} (discarded)`);
+        log.end();
+        this.save(j);
+        this.running.delete(id);
+        return res(j);
+      }
+      j.status = code === 0 ? "done" : "failed";
       // Hit a usage/rate limit? Re-run the same task on the next worker in the chain.
       if (j.status === "failed" && !noFallback) {
         let tail = ""; try { tail = fs.readFileSync(this.file(id, "log"), "utf8").slice(-30000); } catch {}
@@ -178,35 +226,71 @@ export class Jobs {
     return job;
   }
 
-  /** Token/cost totals from this job's own log: Codex turn.completed lines are summed, Claude's final result line is used. */
+  /** Token/cost totals from this job's own log (incremental by byte offset): Codex turn.completed lines are summed, Claude's final result line is used. */
   usage(id) {
     const f = this.file(id, "log");
-    const sum = { input: 0, cached: 0, output: 0 };
-    let found = false, claude = null, cost = null, model = null;
-    for (const l of fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n") : []) {
+    let st;
+    try { st = fs.statSync(f); } catch {
+      this._usageCache.delete(id);
+      return { tokens: null, cost: null };
+    }
+    let c = this._usageCache.get(id);
+    if (!c || st.size < c.offset) {
+      c = { offset: 0, sum: { input: 0, cached: 0, output: 0 }, found: false, claude: null, cost: null, model: null };
+      this._usageCache.set(id, c);
+    }
+    const applyLine = (l, target) => {
+      if (!l) return;
       let e;
-      try { const o = JSON.parse(l); if (o.stream !== "out") continue; e = JSON.parse(o.line); } catch { continue; }
-      if (e && e.type === "free.init" && e.model) { model = `${e.model} (${e.provider})`; continue; } // the model that actually answered
+      try { const o = JSON.parse(l); if (o.stream !== "out") return; e = JSON.parse(o.line); } catch { return; }
+      if (e && e.type === "free.init" && e.model) { target.model = `${e.model} (${e.provider})`; return; } // the model that actually answered
       if (e && e.type === "free.usage" && e.usage) {
-        claude = { input: e.usage.prompt_tokens || 0, cached: 0, output: e.usage.completion_tokens || 0 };
-        continue;
+        target.claude = { input: e.usage.prompt_tokens || 0, cached: 0, output: e.usage.completion_tokens || 0 };
+        return;
       }
       if (e && e.event === "result" && e.result?.usage) { // antigravity
         const r = e.result.usage;
         // Antigravity's input_tokens already includes the cached part (total = input + output).
-        claude = { input: r.input_tokens || 0, cached: r.cache_read_tokens || 0, output: (r.output_tokens || 0) + (r.thinking_tokens || 0) };
-        continue;
+        target.claude = { input: r.input_tokens || 0, cached: r.cache_read_tokens || 0, output: (r.output_tokens || 0) + (r.thinking_tokens || 0) };
+        return;
       }
       const u = e && e.usage;
-      if (!u) continue;
+      if (!u) return;
       if (e.type === "turn.completed") {
-        sum.input += u.input_tokens || 0; sum.cached += u.cached_input_tokens || 0; sum.output += u.output_tokens || 0; found = true;
+        target.sum.input += u.input_tokens || 0; target.sum.cached += u.cached_input_tokens || 0; target.sum.output += u.output_tokens || 0; target.found = true;
       } else if (e.type === "result") {
-        claude = { input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0), cached: u.cache_read_input_tokens || 0, output: u.output_tokens || 0 };
-        cost = typeof e.total_cost_usd === "number" ? e.total_cost_usd : null;
+        target.claude = { input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0), cached: u.cache_read_input_tokens || 0, output: u.output_tokens || 0 };
+        target.cost = typeof e.total_cost_usd === "number" ? e.total_cost_usd : null;
+      }
+    };
+    let view = c;
+    if (st.size > c.offset) {
+      const len = st.size - c.offset;
+      const buf = Buffer.allocUnsafe(len);
+      const fd = fs.openSync(f, "r");
+      let bytesRead = 0;
+      try {
+        while (bytesRead < len) {
+          const n = fs.readSync(fd, buf, bytesRead, len - bytesRead, c.offset + bytesRead);
+          if (n === 0) break;
+          bytesRead += n;
+        }
+      } finally { fs.closeSync(fd); }
+      const slice = buf.subarray(0, bytesRead);
+      const lastNl = slice.lastIndexOf(0x0a);
+      const completeLen = lastNl >= 0 ? lastNl + 1 : 0;
+      if (completeLen > 0) {
+        for (const l of slice.subarray(0, lastNl).toString("utf8").split("\n")) applyLine(l, c);
+        c.offset += completeLen;
+      }
+      if (completeLen < bytesRead) {
+        const tail = slice.subarray(completeLen).toString("utf8");
+        view = { sum: { ...c.sum }, found: c.found, claude: c.claude ? { ...c.claude } : null, cost: c.cost, model: c.model };
+        applyLine(tail, view);
       }
     }
-    return { tokens: claude || (found ? sum : null), cost, ...(model ? { model } : {}) };
+    const tokens = view.claude ? { ...view.claude } : (view.found ? { ...view.sum } : null);
+    return { tokens, cost: view.cost, ...(view.model ? { model: view.model } : {}) };
   }
 
   async wait(id, timeoutS = 600) {
@@ -248,8 +332,14 @@ export class Jobs {
   discard(id) {
     const j = this.get(id);
     const r = this.running.get(id);
-    if (r) r.child.kill("SIGTERM");
-    else if (j.status === "running" && j.pid) { try { process.kill(j.pid, "SIGTERM"); } catch {} }
+    if (r) {
+      killGroup(r.child, "SIGTERM");
+      if (r.discardTimer) clearTimeout(r.discardTimer);
+      r.discardTimer = setTimeout(() => killGroup(r.child, "SIGKILL"), 5000);
+      r.discardTimer.unref?.();
+    } else if (j.status === "running" && j.pid) {
+      killGroup(j.pid, "SIGTERM");
+    }
     if (j.write) this.cleanup(j);
     j.status = "discarded"; return this.save(j);
   }

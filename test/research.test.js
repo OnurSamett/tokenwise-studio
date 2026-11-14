@@ -56,11 +56,11 @@ async function callHandler(method, urlPath, bodyObj) {
   return { status, headers, text, body: isJson && text ? JSON.parse(text) : null };
 }
 
-test("team.js includes research role, presets, and marks free/local unsupported in teamOptions", () => {
+test("team.js includes research role, presets, and marks free unsupported in teamOptions", () => {
   assert.ok(ROLES.includes("research"));
   assert.deepEqual(PRESETS.quality.research, { agent: "claude", model: "sonnet", effort: "high" });
   assert.deepEqual(PRESETS.balanced.research, { agent: "gemini", model: "hydrogen", effort: "medium" });
-  assert.deepEqual(PRESETS.cheap.research, { agent: "free", model: "auto", effort: "medium" });
+  assert.deepEqual(PRESETS.cheap.research, { agent: "gemini", model: "hydrogen", effort: "low" });
   assert.deepEqual(DEFAULT_TEAM.roles.research, PRESETS.balanced.research);
 
   withTempHome(() => {
@@ -75,17 +75,19 @@ test("team.js includes research role, presets, and marks free/local unsupported 
       const opts = teamOptions();
       assert.ok(opts.roles.some((r) => r.id === "research"));
       assert.ok(opts.agents.free.unsupportedRoles.includes("research"));
-      assert.ok(opts.agents.local.unsupportedRoles.includes("research"));
+      assert.equal(opts.agents.local, undefined);
       assert.deepEqual(opts.agents.claude.unsupportedRoles, []);
       assert.deepEqual(opts.agents.gemini.unsupportedRoles, []);
       assert.deepEqual(opts.agents.codex.unsupportedRoles, []);
       const resRole = opts.roles.find((r) => r.id === "research");
-      assert.deepEqual(resRole.unsupportedAgents, ["free", "local"]);
+      assert.deepEqual(resRole.unsupportedAgents, ["free"]);
+      const imgRole = opts.roles.find((r) => r.id === "images");
+      assert.deepEqual(imgRole.supportedAgents, ["codex"]);
 
       const gQuality = teamGuide({ mode: "manual", roles: PRESETS.quality, allow: { free: true, astra: false } });
       assert.match(gQuality, /Web research: claude sonnet \(high effort\)/);
       const gCheap = teamGuide({ mode: "manual", roles: PRESETS.cheap, allow: { free: true, astra: false } });
-      assert.match(gCheap, /Web research: free \(does not support live web search/);
+      assert.match(gCheap, /Web research: gemini hydrogen \(low effort\)/);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -339,7 +341,7 @@ test("UI handler serves /citations.js and /api/team with research role", async (
       assert.equal(teamRes.status, 200);
       assert.ok(teamRes.body.options.roles.some((r) => r.id === "research"));
       assert.ok(teamRes.body.options.agents.free.unsupportedRoles.includes("research"));
-      assert.ok(teamRes.body.options.agents.local.unsupportedRoles.includes("research"));
+      assert.equal(teamRes.body.options.agents.local, undefined);
       assert.deepEqual(teamRes.body.team.roles.research, PRESETS.balanced.research);
 
       const saveRes = await callHandler("POST", "/api/team", {

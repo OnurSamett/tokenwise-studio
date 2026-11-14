@@ -1,6 +1,7 @@
 // Turn raw CLI output lines (Codex --json, Claude stream-json, Gemini stream-json) into a
 // readable timeline: [{ kind, text, detail? }]
 // kinds: say | think | cmd | edit | read | search | delegate | tool | usage | done | error | meta | notice | handoff | compact
+import { COMPACT_NOTICE } from "./compact.js";
 
 const short = (s, n = 300) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
 
@@ -120,9 +121,9 @@ export function normalize(agent, entry, base) {
   if (entry.stream === "compact") {
     try {
       const d = JSON.parse(entry.line);
-      return [{ kind: "compact", text: d.text || "Earlier conversation compacted to save tokens", summary: d.summary || "", method: d.method || "haiku", tokens: d.tokens || 0, threshold: d.threshold || 0, throughTurn: d.throughTurn ?? null }];
+      return [{ kind: "compact", text: d.text || COMPACT_NOTICE, summary: d.summary || "", method: d.method || "haiku", tokens: d.tokens || 0, threshold: d.threshold || 0, throughTurn: d.throughTurn ?? null }];
     } catch {
-      return [{ kind: "compact", text: entry.line || "Earlier conversation compacted to save tokens", summary: "" }];
+      return [{ kind: "compact", text: entry.line || COMPACT_NOTICE, summary: "" }];
     }
   }
   if (entry.stream === "meta") return [{ kind: "meta", text: entry.line }];

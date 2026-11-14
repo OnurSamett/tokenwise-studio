@@ -105,7 +105,7 @@ Click the gear button in the sidebar footer to open **Settings** (stored in `~/.
 - **Permission mode**: `ask` (default; you review and apply worker diffs), `auto-apply` (the orchestrator reviews diffs and merges them itself), or `plan-only` (plans and read-only research only; write delegation is blocked).
 - **Orchestrator defaults & limits**: preselected model/effort, what happens when Claude reaches its limit (`switch automatically`, `ask me`, or `off`), fast mode (`--settings fastMode` for Claude, `service_tier="fast"` for Codex), limit threshold % (50–100), worker fallback order, and opting in to free hosted models.
 - **Notifications & updates**: desktop notification and update check toggles.
-- **Turn budget**: off by default, or 50k / 100k / 250k / 500k tokens per turn, counting the orchestrator and the workers it starts (see Turn budget below).
+- **Turn budget**: off by default, presets of 50k / 100k / 250k / 500k tokens per turn (accepts 10k–50M in `settings.json`), counting the orchestrator and the workers it starts (see Turn budget below).
 - **Tests**: run tests before Apply, and the test command (see Tests below).
 - **Project instructions** and **Backup**: see below.
 
