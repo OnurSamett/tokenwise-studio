@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.10.2
 
+- Connect models: guided setup and sign-in instructions for Claude, Codex and Gemini, plus optional NVIDIA and Ollama guidance.
 - Add Spanish, German and French interface and macOS welcome translations, including locale-aware dates, plural forms and dictation language selection. Translations were machine-generated and should receive native-speaker review.
 
 ## 0.10.1
