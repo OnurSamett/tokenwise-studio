@@ -25,6 +25,9 @@ if command -v dotnet >/dev/null; then
 else
   echo '[release] Skipping Windows beta: install SDK with brew install --cask dotnet-sdk'
 fi
+# Checksums for every asset; the CLI updater requires SHA256SUMS.txt on the release.
+( cd dist && shasum -a 256 "${RELEASE_ASSETS[@]#dist/}" > SHA256SUMS.txt )
+RELEASE_ASSETS+=("dist/SHA256SUMS.txt")
 # Sign only the final, stapled bytes. Use the same account as sparkle-keys.sh.
 SIGNATURE="$("$ROOT/.cache/sparkle/sdk/bin/sign_update" --account tokenwise-studio -p "dist/tokenwise-studio-$VERSION.dmg")"
 node scripts/update-appcast.mjs "$VERSION" "dist/tokenwise-studio-$VERSION.dmg" "$SIGNATURE" \
