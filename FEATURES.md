@@ -96,6 +96,8 @@ A NolienLabs project. Landing page: https://tokenwise.site
 - **`max` and `ultra` effort are refused**; Codex astra is blocked unless enabled.
 
 ### Install and updates
+- **Signed, notarized Mac DMG** with bundled Node (Apple Silicon and Intel), **Sparkle updates** (daily check, Check for Updates… menu, signed appcast at tokenwise.site), and **one-line installers** (`install.sh`, `install.ps1`).
+- **Windows desktop beta:** unsigned WebView2 app with bundled Node, one window per project. Untested on real hardware; dictation, Roblox playtest and Sparkle are Mac-only.
 - `npm install -g github:OnurSamett/tokenwise-studio`, then `tokenwise-studio setup` registers the MCP server with Claude Code and Antigravity (`--no-gemini` skips Antigravity) and builds the Mac app. `--dry-run` shows the plan first.
 - `doctor` shows which workers are ready and how to fix the rest; `uninstall` removes everything.
 - **Automatic updates** (default): the studio installs new versions in the background, at most once a day, never while work is running and never over a git checkout; you press Restart now when it suits you. Modes: Automatic, Notify only, Off.
@@ -147,7 +149,7 @@ The studio was built with tokenwise. The main Claude session acted only as orche
 - **Computer control through Roblox Studio's MCP:** StudioMCP playtesting (read-only, signature-verified, allowlisted, capped, stoppable) is now shipped; desktop browser/app visual verification flows remain planned.
 - **Mobile access:** an opt-in remote view of the existing UI over Tailscale, with pairing by QR code, device revocation and read-only by default. Not a native app, and never exposed to the public internet.
 
-**Later, from the roadmap:** session replay, multi-project queue, Linux and Windows, chat search.
+**Later, from the roadmap:** session replay, multi-project queue, Linux, chat search.
 
 ## 8. Version history
 
@@ -160,4 +162,4 @@ The studio was built with tokenwise. The main Claude session acted only as orche
 - **0.7:** Turkish UI, chat compaction, research role with citations.
 - **0.8:** Undo Apply, combined check after Apply, Roblox Output error import, automatic updates, stale-server protection, worker fixes.
 - **0.9:** Workspace side panel, pull requests from the review drawer, conflict check, dictation, model shootout, quota pacing and cooldowns, free-model probe, Rojo project map, welcome window and restore, app-only notifications.
-- **0.10 (unreleased):** Composer model + effort picker with live limit hints, composer Team picker popover with per-message overrides and Free preset, `@mentions` per-message worker routing, sidebar chat folders with date groups and pinning, effort-aware working animations with a sticky Stop banner and Settings toggle, `⌘K` command palette with `?` shortcuts sheet, read-only, signature-verified Roblox Studio MCP playtesting, and orchestrator fallback beyond Claude/Codex (`claude → codex → gemini → free → local`) with Free/local in-process orchestrators, Gemini orchestrator via Antigravity, and Free mode.
+- **0.10:** Composer model + effort picker with live limit hints, composer Team picker popover with per-message overrides and Free preset, `@mentions` per-message worker routing, sidebar chat folders with date groups and pinning, effort-aware working animations with a sticky Stop banner and Settings toggle, `⌘K` command palette with `?` shortcuts sheet, read-only, signature-verified Roblox Studio MCP playtesting, and orchestrator fallback beyond Claude/Codex (`claude → codex → gemini → free → local`) with Free/local in-process orchestrators, Gemini orchestrator via Antigravity, and Free mode. Signed notarized DMG with Sparkle updates, Windows beta app, installers, site refresh.
