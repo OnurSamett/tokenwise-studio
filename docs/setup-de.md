@@ -1,6 +1,6 @@
 # Erste Schritte mit tokenwise studio
 
-**Sprache dieser Anleitung:** Deutsch. Die Studio-Oberfläche ist auf Englisch und Türkisch verfügbar; diese übersetzte Anleitung ergänzt die Anwendung nicht um Deutsch.
+**Sprache dieser Anleitung:** Deutsch. Ab Version 0.10.2 ist die Oberfläche auch auf Deutsch sowie auf Englisch, Türkisch, Spanisch und Französisch verfügbar.
 
 ## 1. Studio installieren
 

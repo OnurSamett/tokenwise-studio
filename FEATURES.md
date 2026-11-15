@@ -88,7 +88,7 @@ Version 0.10.1: verified commit-pinned updates, hardened Windows tool resolution
 - **Chat export and backups.** Markdown or JSON, `tokenwise-studio export`, backup of all chats. Why: nothing is lost with a browser or app window.
 - **Project instructions** (`TOKENWISE.md`), with a section for workers. Why: rules are written once; they cannot override review or plan-only.
 - **Usage screen.** Tokens and API-equivalent cost by day (14 days), agent and model. Why: you see where usage goes.
-- **Turkish UI.** English, Türkçe or Auto, also for notifications.
+- **Languages.** English, Türkçe, Español, Deutsch, Français or Auto, also for notifications. New translations are machine-generated.
 
 ### Safety
 - **Reviewed changes only.** Workers write to their worktree; you apply.

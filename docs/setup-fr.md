@@ -1,6 +1,6 @@
 # Premiers pas avec tokenwise studio
 
-**Langue de ce guide :** français. L’interface de Studio est disponible en anglais et en turc ; la traduction de ce guide n’ajoute pas le français à l’application.
+**Langue de ce guide :** français. Depuis la version 0.10.2, l’interface est également disponible en français, ainsi qu’en anglais, turc, espagnol et allemand.
 
 ## 1. Installer Studio
 

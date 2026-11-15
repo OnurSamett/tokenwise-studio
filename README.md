@@ -317,7 +317,7 @@ The **Studio errors** button in the composer opens an importer: paste the Roblox
 <details>
 <summary><b>Language</b></summary>
 
-Settings has a Language choice: Auto (follows the system or browser language), English or Türkçe. It covers the interface and desktop notifications.
+Settings has a Language choice: Auto (follows the system or browser language), English, Türkçe, Español, Deutsch or Français. It covers the interface and desktop notifications. The new translations are machine-generated and welcome native-speaker feedback.
 
 </details>
 
