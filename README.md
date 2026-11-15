@@ -15,6 +15,8 @@ A Mac app that lets Claude Opus orchestrate Codex, Claude and Gemini workers in 
 
 <p align="center"><a href="https://tokenwise.site">Website</a> · <a href="#install">Install</a> · <a href="#how-it-works">How it works</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="https://github.com/OnurSamett/tokenwise">tokenwise skill</a></p>
 
+<p align="center"><b>Getting started:</b> <a href="docs/getting-started.md">English</a> · <a href="docs/baslangic.md">Türkçe</a> · <a href="docs/setup-es.md">Español</a> · <a href="docs/setup-de.md">Deutsch</a> · <a href="docs/setup-fr.md">Français</a></p>
+
 <p align="center"><img src="assets/chat-ready.jpg" alt="tokenwise studio: the orchestrator split a task between a Codex Sol worker and a Claude Haiku worker, and 3 files are ready for review" width="900"></p>
 
 You describe a task in one chat. The orchestrator (Claude Opus) plans it and hands each piece to the worker that fits: Codex Sol for code, Claude Haiku for reading and search, Gemini, free hosted models, or a local model. Each writing worker has its own git worktree. Nothing touches your project until you apply the diff.

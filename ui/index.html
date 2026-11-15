@@ -309,6 +309,9 @@
   .projbtn .car { color: var(--dim); font-size: 11px; }
   .cost { font-size: 12.5px; color: var(--dim); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .cost b { color: var(--muted); font-weight: 550; }
+  .setup-guide p, .setup-guide li { font-size: 14px; line-height: 1.55; }
+  .setup-guide ol { padding-left: 22px; }
+  .setup-provider a { color: var(--accent); }
   .doctor { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
   .doc { font-size: 12.5px; border: 1px solid var(--line); background: var(--s1); border-radius: 999px; padding: 3px 11px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
   .doc i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
@@ -955,7 +958,7 @@
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> <span id="newtasklbl">New task</span></button>
   <button class="side-search" id="searchbtn" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span id="searchlbl">Search chats…</span><span class="kbd" id="searchkbd">⌘K</span></button>
   <div class="chats" id="chats"></div>
-  <div class="sidefoot"><div class="updready" id="updready" hidden></div><button class="newver" id="newver" hidden></button><div class="label" id="limitslbl">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><button class="ghost" id="usagebtn">Usage</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="settingsbtn" title="Settings" aria-label="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
+  <div class="sidefoot"><div class="updready" id="updready" hidden></div><button class="newver" id="newver" hidden></button><div class="label" id="limitslbl">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="setupguidebtn">Connect models…</button><button class="ghost" id="modelsbtn">Model guide</button><button class="ghost" id="usagebtn">Usage</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="settingsbtn" title="Settings" aria-label="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
 </aside>
 
 <div class="main">
@@ -1062,6 +1065,7 @@ function applyStaticI18n() {
   $("#searchlbl").textContent = t("side.searchChats");
   $("#searchkbd").textContent = isMac ? "⌘K" : "Ctrl+K";
   $("#limitslbl").textContent = t("side.planLimits");
+  $("#setupguidebtn").textContent = t("setupGuide.open");
   $("#modelsbtn").textContent = t("side.modelGuide");
   $("#usagebtn").textContent = t("side.usage");
   $("#directbtn").textContent = t("side.runSingleWorker");
@@ -1849,7 +1853,8 @@ function welcome() {
     h("h2", {}, t("welcome.title")),
     h("p", {}, t("welcome.subtitle")),
     h("div", { class: "examples" }, ex.map(([ttl, s]) => h("button", { onclick: () => { $("#input").value = ttl; autosize(); $("#send").disabled = false; $("#input").focus(); } }, ttl, h("small", {}, s)))),
-    doctorRow());
+    doctorRow(),
+    h("button", { class: "linkbtn", onclick: () => openDrawer("setup-guide") }, t("setupGuide.open")));
 }
 
 function doctorRow() {
@@ -2478,6 +2483,37 @@ function conflictActionBar(j, conflicts) {
 async function renderDrawer(full) {
   if (!drawer) return;
   const d = $("#drawer");
+  if (drawer.kind === "setup-guide") {
+    if (!full) return;
+    const opening = drawer;
+    let status = null;
+    try { status = await api("doctor"); } catch {}
+    if (drawer !== opening) return;
+    const state = (name) => {
+      if (!status) return t("setupGuide.statusUnknown");
+      const v = status[name];
+      if (!v?.installed) return t("setupGuide.notInstalled");
+      if (!v.signedIn) return t("setupGuide.signInNeeded");
+      return t("setupGuide.ready");
+    };
+    const link = (url, label) => h("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, label);
+    const provider = (name, title, intro, steps, url) => h("section", { class: "section setup-provider" },
+      h("h4", {}, title, " · ", h("span", { class: "muted" }, state(name))),
+      h("p", {}, intro),
+      h("ol", {}, steps.map((step) => h("li", {}, step))),
+      link(url, t("setupGuide.official")));
+    set(d,
+      h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("setupGuide.title")), h("div", { class: "meta" }, t("setupGuide.subtitle"))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
+      h("div", { class: "d-body setup-guide" },
+        h("p", {}, t("setupGuide.explain")),
+        provider("codex", "Codex", t("setupGuide.codexIntro"), [t("setupGuide.codexInstall"), [t("setupGuide.terminal"), h("code", {}, "codex login")]], "https://developers.openai.com/codex/cli/"),
+        provider("claude", "Claude Code", t("setupGuide.claudeIntro"), [t("setupGuide.claudeInstall"), [t("setupGuide.terminal"), h("code", {}, "claude auth login")]], "https://code.claude.com/docs/en/setup"),
+        provider("gemini", "Gemini / Antigravity", t("setupGuide.geminiIntro"), [t("setupGuide.geminiInstall"), t("setupGuide.geminiLogin")], "https://antigravity.google/docs/get-started"),
+        h("section", { class: "section setup-provider" }, h("h4", {}, t("setupGuide.optional")), h("p", {}, t("setupGuide.optionalText")), link("https://build.nvidia.com/models", "NVIDIA"), " · ", link("https://docs.ollama.com/quickstart", "Ollama")),
+        h("p", { class: "muted" }, t("setupGuide.recheck"))),
+      h("div", { class: "d-foot" }, h("button", { class: "btn", onclick: () => openDrawer("setup-guide") }, t("setupGuide.refresh")), h("button", { class: "btn primary", onclick: closeDrawer }, t("drawer.done"))));
+    return;
+  }
   if (drawer.kind === "job") {
     const j = S.jobs.find((x) => x.id === drawer.id); if (!j) return;
     let ptResp = null;
@@ -5476,6 +5512,7 @@ $("#stop").onclick = () => chatId && api(`stop/${chatId}`, {}).then(refresh);
 $("#newtask").onclick = () => newTask();
 $("#directbtn").onclick = openDirect;
 $("#settingsbtn").onclick = () => openDrawer("settings");
+$("#setupguidebtn").onclick = () => openDrawer("setup-guide");
 $("#keysbtn").onclick = openShortcutsSheet;
 $("#composer-so-off").onclick = () => { composerShootout = false; renderComposerShootout(); };
 $("#modelsbtn").onclick = () => openDrawer("models");
