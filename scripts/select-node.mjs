@@ -13,4 +13,5 @@ const candidates = releases.filter(r => (pin ? r.version === `v${pin.replace(/^v
   && ['osx-arm64-tar', 'osx-x64-tar'].every(f => r.files.includes(f)))
   .sort((a, b) => compare(parts(b.version), parts(a.version)));
 if (!candidates.length) throw new Error(`No macOS arm64 + x64 ${pin || 'LTS'} release satisfies ${engine}`);
+if (!/^v\d+\.\d+\.\d+$/.test(candidates[0].version)) throw new Error(`Unexpected Node version string ${JSON.stringify(candidates[0].version)}`);
 console.log(candidates[0].version);

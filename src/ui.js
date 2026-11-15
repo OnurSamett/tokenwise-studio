@@ -8,7 +8,7 @@ import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "./process.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { saveUpload, resolveUpload, UPLOAD_BODY_LIMIT } from "./uploads.js";
 import { Jobs, gitSetupPreview, setupGit } from "./jobs.js";
@@ -27,7 +27,7 @@ import { exportChat, backupAll } from "./export.js";
 import { loadInstructions, instructionsPath, workerNotes, INSTRUCTIONS_CAP, INSTRUCTIONS_FILE } from "./instructions.js";
 import { aggregateUsage } from "./usage.js";
 import { resolveJobImage, imageType } from "./jobimages.js";
-import { runTests, testRunning, testTail, detectTestCommand, loadTestOverride, loadLintOverride, saveTestConfig, runCombinedCheck, loadCombinedCheck, combinedCheckRunning, combinedTail } from "./testrun.js";
+import { runTests, testRunning, testTail, detectTestCommand, loadTestOverride, loadLintOverride, saveTestConfig, isTestConfigConfirmed, runCombinedCheck, loadCombinedCheck, combinedCheckRunning, combinedTail } from "./testrun.js";
 import { createSnapshot } from "./snapshots.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
 import { runAutoUpdate, readyFor, readUpdateState, needsAppSetup, runSetup, quitStudioServers, logUpdate } from "./autoupdate.js";
@@ -157,8 +157,10 @@ function instructionsInfo() {
     loaded: !!loaded, source: loaded ? loaded.rel : null, bytes: loaded ? loaded.bytes : 0, truncated: !!loaded?.truncated, workerNotes: !!workerNotes(loaded) };
 }
 
+// HTML must never be framed by another site (clickjacking the approve/apply buttons).
+export const FRAME_HEADERS = Object.freeze({ "content-security-policy": "frame-ancestors 'none'", "x-frame-options": "DENY" });
 const send = (res, code, body, type = "application/json") => {
-  res.writeHead(code, { "content-type": type, "cache-control": "no-store" });
+  res.writeHead(code, { "content-type": type, "cache-control": "no-store", ...(type.startsWith("text/html") ? FRAME_HEADERS : {}) });
   res.end(type === "application/json" ? JSON.stringify(body) : body);
 };
 const readBody = (req, limit = 1024 * 1024) => new Promise((resolve, reject) => {
@@ -180,9 +182,17 @@ const readBody = (req, limit = 1024 * 1024) => new Promise((resolve, reject) => 
 // header plus a local Origin on every state-changing request (blocks CSRF from other websites:
 // browsers can't send a custom header cross-origin without a CORS preflight, which we never grant).
 const LOCAL_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
-function allowed(req) {
+// GET /api/* has side effects too (doctor starts CLIs, models probes free APIs), so a cross-site <img>/<script>
+// must not trigger it: browsers label such requests Sec-Fetch-Site: cross-site/same-site. Accept same-origin and
+// user-typed (none) requests, or any client that sends x-tokenwise (our app shells and the CLI).
+export function allowed(req) {
   if (!LOCAL_HOST.test(req.headers.host || "")) return false;
-  if (req.method === "GET" || req.method === "HEAD") return true;
+  if (req.method === "GET" || req.method === "HEAD") {
+    if (!String(req.url || "").startsWith("/api/")) return true;
+    if (req.headers["x-tokenwise"] === "1") return true;
+    const site = req.headers["sec-fetch-site"];
+    return site === "same-origin" || site === "none";
+  }
   if (req.headers["x-tokenwise"] !== "1") return false;
   const origin = req.headers.origin;
   if (origin) { try { if (!LOCAL_HOST.test(new URL(origin).host)) return false; } catch { return false; } }
@@ -247,7 +257,7 @@ function settingsPayload() {
 let versionCheck = null;
 function versionInfo() {
   const current = currentVersion(), source = installSource(), settings = loadSettings();
-  const base = { current, loaded: LOADED_VERSION, source, autoUpdate: settings.autoUpdate, ready: readyFor(LOADED_VERSION), autoFailed: !!readUpdateState().autoFailed };
+  const base = { current, loaded: LOADED_VERSION, source, autoUpdate: settings.autoUpdate, autoUpdateNote: settings.autoUpdateNoteSeen === false, ready: readyFor(LOADED_VERSION), autoFailed: !!readUpdateState().autoFailed };
   if (!settings.updateCheck) return { ...base, latest: null, updateAvailable: false, disabled: true };
   const c = cachedLatest();
   if (!c && !versionCheck) versionCheck = latestVersion().catch(() => null).finally(() => { versionCheck = null; });
@@ -353,7 +363,7 @@ export const handler = async (req, res) => {
       if (what === "combinedcheck") { const c = combinedCheckInfo(); return send(res, 200, { check: c, running: combinedCheckRunning(jobs), tail: c?.tail || "" }); }
       if (what === "testcmd") {
         const d = detectTestCommand(repo);
-        return send(res, 200, { override: loadTestOverride(jobs.home), lint: loadLintOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null });
+        return send(res, 200, { override: loadTestOverride(jobs.home), lint: loadLintOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null, projectProvided: !isTestConfigConfirmed(jobs.home) });
       }
       if (what === "state") return send(res, 200, state());
       if (what === "export") {
@@ -481,15 +491,16 @@ export const handler = async (req, res) => {
         fs.writeFileSync(f, b.text);
         return send(res, 200, instructionsInfo());
       }
-      if (what === "test") { const { job } = runTests(jobs, id); return send(res, 200, { test: { ...job.test, tail: undefined }, running: true }); }
-      if (what === "combinedcheck") { const { check } = runCombinedCheck(jobs); return send(res, 200, { check, running: true }); }
+      if (what === "test") { const { job } = runTests(jobs, id, { confirm: b.confirm === true }); return send(res, 200, { test: { ...job.test, tail: undefined }, running: true }); }
+      if (what === "combinedcheck") { const { check } = runCombinedCheck(jobs, { confirm: b.confirm === true }); return send(res, 200, { check, running: true }); }
       if (what === "testcmd") {
         saveTestConfig(jobs.home, {
           ...(b.command !== undefined ? { command: b.command } : {}),
           ...(b.lint !== undefined ? { lint: b.lint } : {}),
+          ...(b.confirm === true ? { confirm: true } : {}),
         });
         const d = detectTestCommand(repo);
-        return send(res, 200, { override: loadTestOverride(jobs.home), lint: loadLintOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null });
+        return send(res, 200, { override: loadTestOverride(jobs.home), lint: loadLintOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null, projectProvided: !isTestConfigConfirmed(jobs.home) });
       }
       if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
       if (what === "folders") return send(res, 200, b && Object.hasOwn(b, "action") ? applyFolderAction(jobs.home, b) : saveFolders(jobs.home, b));
@@ -632,7 +643,7 @@ export const handler = async (req, res) => {
     }
     return send(res, 404, { error: "not found" });
   } catch (e) {
-    return send(res, e?.status || 400, { error: String(e.message || e), ...(e?.details ? { details: e.details } : {}) });
+    return send(res, e?.status || 400, { error: String(e.message || e), ...(e?.needsConfirmation ? { code: "needs-confirmation", command: e.command } : {}), ...(e?.details ? { details: e.details } : {}) });
   }
 };
 

@@ -137,7 +137,7 @@ test("/api/chat validates mentions and /api/mentions lists them; /mentions.js is
       initServer({ repo, spawn: capturingSpawn([]) });
       const call = async (method, url, body) => {
         const req = new PassThrough(); req.method = method; req.url = url;
-        req.headers = { host: "127.0.0.1:4790", ...(method === "POST" ? { "x-tokenwise": "1" } : {}) };
+        req.headers = { host: "127.0.0.1:4790", "sec-fetch-site": "same-origin", ...(method === "POST" ? { "x-tokenwise": "1" } : {}) };
         let status = 200; const chunks = [];
         const res = { writeHead(c) { status = c; }, end(d) { if (d) chunks.push(Buffer.from(String(d))); } };
         const p = handler(req, res);

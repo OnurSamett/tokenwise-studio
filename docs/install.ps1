@@ -14,8 +14,14 @@
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Fail 'Install Git from https://git-scm.com/download/win, reopen PowerShell, and retry.' }
     & git --version
     if ($LASTEXITCODE -ne 0) { Fail 'git is installed but could not run. Repair Git and retry.' }
-    Step '3/4 Running npm install -g github:OnurSamett/tokenwise-studio'
-    & npm.cmd install -g github:OnurSamett/tokenwise-studio
+    Step '3/4 Finding the latest verified GitHub release'
+    Set-Location -Path $HOME
+    $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/OnurSamett/tokenwise-studio/releases/latest' -Headers @{ 'User-Agent' = 'tokenwise-studio-installer'; 'Accept' = 'application/vnd.github+json' }
+    $tag = [string]$rel.tag_name
+    $hasSums = @($rel.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' }).Count -gt 0
+    if ($rel.draft -or $rel.prerelease -or $tag -notmatch '^v\d+\.\d+\.\d+$' -or -not $hasSums) { Fail 'Could not find a valid GitHub release. Retry later.' }
+    Step "Running npm install -g github:OnurSamett/tokenwise-studio#$tag"
+    & npm.cmd install -g --ignore-scripts "github:OnurSamett/tokenwise-studio#$tag"
     if ($LASTEXITCODE -ne 0) { Fail 'npm installation failed. Check network access and npm global prefix permissions, then retry.' }
     Step '4/4 Installation complete (Windows beta)'
     Write-Host 'Open a project folder in your terminal, then run:'

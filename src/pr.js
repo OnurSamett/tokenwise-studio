@@ -1,6 +1,6 @@
 // Create a branch, commit staged work, push to origin, and open a GitHub PR via `gh`.
 // Every subprocess runs via execFile with argument arrays (never a shell).
-import { execFile } from "node:child_process";
+import { execFile } from "./process.js";
 import { createSnapshot } from "./snapshots.js";
 import { agentLabel } from "./notify.js";
 

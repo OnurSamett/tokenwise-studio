@@ -2,7 +2,7 @@
 // safe image preview resolver, and staged/unstaged working-tree diff.
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "./process.js";
 import { BLOCKED_DIRS, isSecret, norm } from "./freeagent.js";
 import { imageType } from "./jobimages.js";
 

@@ -2,6 +2,11 @@
 // Shared between ui/index.html (browser / Mac WKWebView) and Node unit tests.
 import { parseFileLineRefs } from "./workspace.js";
 
+// Markdown link [title](url). Linear-time: the url alternatives (a char, or one balanced paren group) start with
+// different characters, and every run is bounded, so adversarial input cannot blow up (ReDoS).
+const MD_LINK_RE = /\[([^\]]{1,500})\]\(((?:[^()\s]|\([^()\s]*\)){1,2000})\)/;
+const MAX_LINK_INPUT = 20000;
+
 export function safeHttpUrl(raw) {
   if (typeof raw !== "string") return null;
   const s = raw.trim();
@@ -61,7 +66,7 @@ export function parseSourceLine(line, fallbackNum = null) {
   }
 
   // 1. Markdown link: [Title](url)
-  const mdLink = rest.match(/\[([^\]]+)\]\(((?:[^()\s]+|\([^()\s]*\))+)\)/);
+  const mdLink = rest.slice(0, MAX_LINK_INPUT).match(MD_LINK_RE);
   if (mdLink) {
     const rawUrl = mdLink[2].trim();
     const url = safeHttpUrl(rawUrl);
@@ -256,7 +261,7 @@ function renderTextAndCitations(s, srcMap, fileLinks = false) {
 }
 
 function renderNonCodeSegment(s, srcMap, fileLinks = false) {
-  const linkRe = /\[([^\]]+)\]\(((?:[^()\s]+|\([^()\s]*\))+)\)/g;
+  const linkRe = new RegExp(MD_LINK_RE.source, "g");
   let out = "";
   let last = 0;
   for (const m of s.matchAll(linkRe)) {

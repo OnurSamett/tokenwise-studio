@@ -2,7 +2,9 @@
 // support optional override and lint command in Settings, and run without a shell.
 import { spawn } from "./process.js";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 
 export const TEST_TIMEOUT_MS = 10 * 60 * 1000;
 const TAIL_BYTES = 6000;
@@ -66,7 +68,7 @@ export function loadTestConfig(home) {
   }
 }
 
-export function saveTestConfig(home, { command, lint } = {}) {
+export function saveTestConfig(home, { command, lint, confirm } = {}) {
   const cur = loadTestConfig(home);
   const next = {
     command: command !== undefined ? validateCommand(command, "test") : cur.command,
@@ -74,7 +76,45 @@ export function saveTestConfig(home, { command, lint } = {}) {
   };
   fs.mkdirSync(home, { recursive: true });
   fs.writeFileSync(path.join(home, OVERRIDE), JSON.stringify(next, null, 2));
+  if (command !== undefined || lint !== undefined || confirm) confirmTestConfig(home); // typed or approved by the user in Settings
   return next;
+}
+
+// <home>/test.json lives inside the project, so a repository can ship one. A command in it only runs after the user
+// confirmed it: saving it from Settings counts, otherwise the exact command pair is recorded in the USER's
+// ~/.tokenwise-studio/test-confirmed.json (outside any project) when they confirm it in the UI.
+const confirmFile = () => path.join(os.homedir(), ".tokenwise-studio", "test-confirmed.json");
+const configHash = ({ command = "", lint = "" } = {}) => crypto.createHash("sha256").update(`${command}\0${lint}`).digest("hex");
+const readConfirmed = () => { try { const j = JSON.parse(fs.readFileSync(confirmFile(), "utf8")); return j && typeof j === "object" ? j : {}; } catch { return {}; } };
+export function isTestConfigConfirmed(home) {
+  const cfg = loadTestConfig(home);
+  if (!cfg.command && !cfg.lint) return true;
+  const list = readConfirmed()[path.resolve(home)];
+  return Array.isArray(list) && list.includes(configHash(cfg));
+}
+export function confirmTestConfig(home) {
+  const all = readConfirmed(), key = path.resolve(home);
+  const list = new Set(Array.isArray(all[key]) ? all[key] : []);
+  list.add(configHash(loadTestConfig(home)));
+  all[key] = [...list].slice(-20);
+  fs.mkdirSync(path.dirname(confirmFile()), { recursive: true });
+  fs.writeFileSync(confirmFile(), JSON.stringify(all, null, 2));
+}
+
+const SECRET_ENV = new Set(["NVIDIA_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "TOKENWISE_FREE_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GH_TOKEN", "GITHUB_TOKEN", "NPM_TOKEN"]);
+const SECRET_ENV_RE = /(_API_KEY|_SECRET_KEY|_SECRET_ACCESS_KEY|_SECRET|_AUTH_TOKEN|_ACCESS_TOKEN)$/i;
+/** Environment for test/lint/check children: nothing that looks like an API key or token. Project code is not trusted with them. */
+export function testEnv(env = process.env) {
+  const out = {};
+  for (const [k, v] of Object.entries(env)) if (!SECRET_ENV.has(k.toUpperCase()) && !SECRET_ENV_RE.test(k)) out[k] = v;
+  out.CI = "1";
+  return out;
+}
+
+function needsConfirmation(home, specs) {
+  const e = new Error(`this project ships its own test command (${specs.filter(Boolean).map((s) => s.label).join(" && ")}) in .tokenwise-studio/test.json; confirm it before it runs`);
+  e.needsConfirmation = true; e.command = specs.filter(Boolean).map((s) => s.label).join(" && ");
+  return e;
 }
 
 export const loadTestOverride = (home) => loadTestConfig(home).command;
@@ -85,7 +125,7 @@ export const saveLintOverride = (home, lint) => saveTestConfig(home, { lint }).l
 /** The command to run for a project: the Settings override if set, else the detected one (looked up in `dir`). */
 export function testCommandFor(home, dir) {
   const o = loadTestOverride(home);
-  if (o) { const [cmd, ...args] = splitCommand(o); return { cmd, args, label: o, source: "settings" }; }
+  if (o) { const [cmd, ...args] = splitCommand(o); return { cmd, args, label: o, source: isTestConfigConfirmed(home) ? "settings" : "project", unconfirmed: !isTestConfigConfirmed(home) }; }
   return detectTestCommand(dir);
 }
 
@@ -94,7 +134,7 @@ export function lintCommandFor(home) {
   const l = loadLintOverride(home);
   if (!l) return null;
   const [cmd, ...args] = splitCommand(l);
-  return { cmd, args, label: l, source: "settings" };
+  return { cmd, args, label: l, source: isTestConfigConfirmed(home) ? "settings" : "project", unconfirmed: !isTestConfigConfirmed(home) };
 }
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -175,7 +215,7 @@ function executeSteps(steps, cwd, logFile, { timeoutMs = TEST_TIMEOUT_MS, onChil
       if (idx > 0) out.write(`\n$ ${spec.label}\n`);
       let child;
       try {
-        child = spawn(spec.cmd, spec.args, { cwd, env: { ...process.env, CI: "1" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+        child = spawn(spec.cmd, spec.args, { cwd, env: testEnv(), stdio: ["ignore", "pipe", "pipe"], detached: true });
       } catch (e) {
         return finish("error", null, `could not start: ${e.message}`);
       }
@@ -201,7 +241,7 @@ function executeSteps(steps, cwd, logFile, { timeoutMs = TEST_TIMEOUT_MS, onChil
  * Start the test run for a finished write job. Returns { job, done } where done resolves with the final job.
  * Throws when the job is not a finished write job, has no test command, or is already being tested.
  */
-export function runTests(jobs, id, { timeoutMs = TEST_TIMEOUT_MS } = {}) {
+export function runTests(jobs, id, { timeoutMs = TEST_TIMEOUT_MS, confirm = false } = {}) {
   const j = jobs.get(id);
   if (!j.write) throw new Error("tests run in the worktree of a write job; this job is read-only");
   if (j.status !== "done") throw new Error(`job is ${j.status}; tests can run once it is done and before it is applied`);
@@ -214,6 +254,7 @@ export function runTests(jobs, id, { timeoutMs = TEST_TIMEOUT_MS } = {}) {
   if (testRunning(j)) throw new Error("tests are already running for this job");
   const spec = testCommandFor(jobs.home, cwd);
   if (!spec) throw new Error("no test command found (no npm test script, pytest, go.mod or Cargo.toml). Set one in Settings.");
+  if (spec.unconfirmed) { if (!confirm) throw needsConfirmation(jobs.home, [spec]); confirmTestConfig(jobs.home); }
 
   const started = Date.now();
   const test = { status: "running", command: spec.label, source: spec.source, started: new Date(started).toISOString(), finished: null, exitCode: null, durationMs: null, pid: null, tail: "" };
@@ -242,7 +283,7 @@ export function runTests(jobs, id, { timeoutMs = TEST_TIMEOUT_MS } = {}) {
  * Run the project's test command (detected or overridden in Settings) plus optional lint command
  * in the MAIN working tree with a 10-minute timeout. Refuses while a previous run is active.
  */
-export function runCombinedCheck(jobs, { timeoutMs = TEST_TIMEOUT_MS } = {}) {
+export function runCombinedCheck(jobs, { timeoutMs = TEST_TIMEOUT_MS, confirm = false } = {}) {
   if (combinedCheckRunning(jobs)) throw new Error("combined check is already running");
   let cwd;
   try { cwd = fs.realpathSync(jobs.repo); } catch { throw new Error("project folder no longer exists"); }
@@ -250,6 +291,7 @@ export function runCombinedCheck(jobs, { timeoutMs = TEST_TIMEOUT_MS } = {}) {
   const lintSpec = lintCommandFor(jobs.home);
   const steps = [testSpec, lintSpec].filter(Boolean);
   if (!steps.length) throw new Error("no test or lint command found (no npm test script, pytest, go.mod or Cargo.toml). Set one in Settings.");
+  if (steps.some((x) => x.unconfirmed)) { if (!confirm) throw needsConfirmation(jobs.home, steps.filter((x) => x.unconfirmed)); confirmTestConfig(jobs.home); }
 
   const started = Date.now();
   const label = steps.map((s) => s.label).join(" && ");

@@ -34,7 +34,7 @@ async function callHandler(method, urlPath, bodyObj, headers = {}) {
   const req = new PassThrough();
   req.method = method;
   req.url = urlPath;
-  const h = { host: "127.0.0.1:4790", ...(method === "POST" ? { "x-tokenwise": "1" } : {}) };
+  const h = { host: "127.0.0.1:4790", "sec-fetch-site": "same-origin", ...(method === "POST" ? { "x-tokenwise": "1" } : {}) };
   for (const [k, v] of Object.entries(headers)) {
     if (v === undefined) delete h[k];
     else h[k] = v;

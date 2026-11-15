@@ -1113,10 +1113,19 @@ const h = (tag, attrs = {}, ...kids) => {
 };
 const set = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false));
 const api = async (p, body) => {
-  const r = await fetch("/api/" + p, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json", "x-tokenwise": "1" }, body: JSON.stringify(body) });
+  const r = await fetch("/api/" + p, body === undefined ? { headers: { "x-tokenwise": "1" } } : { method: "POST", headers: { "content-type": "application/json", "x-tokenwise": "1" }, body: JSON.stringify(body) });
   const j = await r.json();
-  if (j.error) { const err = new Error(j.error); if (j.details) err.details = j.details; throw err; }
+  if (j.error) { const err = new Error(j.error); if (j.details) err.details = j.details; if (j.code) { err.code = j.code; err.command = j.command; } throw err; }
   return j;
+};
+// Test/check commands that the project itself ships (.tokenwise-studio/test.json) run only after the user agrees.
+const apiConfirmed = async (p, body = {}) => {
+  try { return await api(p, body); }
+  catch (e) {
+    if (e.code !== "needs-confirmation") throw e;
+    if (!confirm(t("test.confirmProject", { command: e.command || "" }))) throw new Error(t("test.confirmDeclined"));
+    return api(p, { ...body, confirm: true });
+  }
 };
 const kb = (n) => (n < 1024 ? t("unit.bytes", { n }) : t("unit.kb", { n: (n / 1024).toFixed(1) }));
 const clock = (a, b) => { const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
@@ -1488,7 +1497,7 @@ function testPanel(j) {
   const draw = (tail) => {
     const running = t0?.status === "running";
     set(chip, t0 ? h("span", { class: "chip " + t0.status }, running ? h("span", { class: "spin", style: "width:9px;height:9px" }) : null, testWord(t0.status)) : null);
-    msg.textContent = t0 ? `${t0.command}${t0.durationMs != null ? ` · ${(t0.durationMs / 1000).toFixed(1)}s` : ""}${t0.exitCode != null && t0.status !== "pass" ? t("test.exitCode", { code: t0.exitCode }) : ""}` : t("test.help");
+    msg.textContent = t0 ? `${t0.command}${t0.source === "project" ? ` (${t("test.fromProject")})` : ""}${t0.durationMs != null ? ` · ${(t0.durationMs / 1000).toFixed(1)}s` : ""}${t0.exitCode != null && t0.status !== "pass" ? t("test.exitCode", { code: t0.exitCode }) : ""}` : t("test.help");
     btn.disabled = running; btn.textContent = running ? t("test.running") : t0 ? t("test.runAgain") : t("test.run");
     out.hidden = !tail; out.textContent = tail || "";
     if (tail) out.scrollTop = out.scrollHeight;
@@ -1499,7 +1508,7 @@ function testPanel(j) {
   }
   async function start() {
     btn.disabled = true;
-    try { const r = await api(`test/${j.id}`, {}); t0 = r.test; draw(""); timer = setTimeout(poll, 700); } catch (e) { toast(e.message, true); draw(out.textContent); }
+    try { const r = await apiConfirmed(`test/${j.id}`, {}); t0 = r.test; draw(""); timer = setTimeout(poll, 700); } catch (e) { toast(e.message, true); draw(out.textContent); }
   }
   const box = h("div", { class: "testbox" }, h("div", { class: "trow" }, h("b", {}, t("test.title")), chip, msg, btn), out);
   draw("");
@@ -2043,7 +2052,7 @@ async function undoApplyJobs(ids) {
 }
 async function runCombined() {
   try {
-    const r = await api("combinedcheck", {});
+    const r = await apiConfirmed("combinedcheck", {});
     S.combinedCheck = r.check;
     renderBanner();
     await refresh();
@@ -3252,6 +3261,7 @@ async function renderDrawer(full) {
             h("input", { type: "checkbox", checked: s.checkAfterApply ? true : null, disabled: !!lock.checkAfterApply, onchange: (e) => applyPatch({ checkAfterApply: e.target.checked }) }),
             h("span", {}, t("settings.checkAfterApply"), h("small", {}, t("settings.checkAfterApplyDesc")))),
           tcmd ? [
+            tcmd.projectProvided ? h("p", { class: "shelp", style: "margin-top:12px;color:var(--warn, #c77700)" }, t("settings.testCmdProject", { command: tcmd.override || tcmd.lint || "" })) : null,
             h("div", { class: "sfield", style: "margin-top:12px" },
               h("label", {}, t("settings.testCommand")),
               h("p", { class: "shelp", style: "margin:0" }, tcmd.detected ? [t("settings.testCmdDetected1"), h("code", {}, tcmd.detected.label), t("settings.testCmdDetected2", { source: tcmd.detected.source })] : t("settings.testCmdNone")),
@@ -3288,8 +3298,9 @@ async function renderDrawer(full) {
             h("span", {}, [t("settings.checkUpdates"), envBadge("updateCheck")], h("small", {}, t("settings.checkUpdatesDesc")))),
           h("div", { class: "shead", style: "margin-top:14px" }, h("h4", {}, t("settings.updates"))),
           h("p", { class: "shelp" }, t("settings.updatesHelp")),
+          s.autoUpdateNoteSeen === false ? h("div", { class: "sline", style: "margin:8px 0;padding:8px 10px;border:1px solid var(--line);border-radius:8px" }, t("settings.updNote"), " ", h("button", { class: "btn", onclick: () => applyPatch({ autoUpdateNoteSeen: true }) }, t("settings.updNoteOk"))) : null,
           window.__tokenwiseWindows ? h("p", { class: "shelp" }, h("a", { href: "https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip", target: "_blank", rel: "noopener" }, "Download the latest Windows beta zip to update.")) : h("div", { class: "seg three" }, [["auto", "settings.upd.auto", "settings.upd.autoDesc"], ["notify", "settings.upd.notify", "settings.upd.notifyDesc"], ["off", "settings.upd.off", "settings.upd.offDesc"]].map(([val, tk, dk]) =>
-            h("button", { class: (s.autoUpdate || "auto") === val ? "on" : "", onclick: () => applyPatch({ autoUpdate: val }) },
+            h("button", { class: (s.autoUpdate || "notify") === val ? "on" : "", onclick: () => applyPatch({ autoUpdate: val }) },
               h("b", {}, t(tk)), h("span", {}, t(dk)))))),
         isMac ? h("div", { class: "section" },
           secHead(t("settings.robloxTitle"), "playtestEnabled"),
@@ -5170,7 +5181,7 @@ function runSelectedJobTests() {
   const activeJob = drawer?.kind === "job" ? S.jobs.find((j) => j.id === drawer.id) : null;
   const scoped = activeJob || chatJobs().find((j) => j.write || (j.files || []).length) || chatJobs()[0] || S.jobs.find((j) => j.write || (j.files || []).length);
   if (!scoped) { toast(t("pal.noTestableJob"), true); return; }
-  api(`test/${scoped.id}`, {}).then(() => {
+  apiConfirmed(`test/${scoped.id}`, {}).then(() => {
     toast(t("pal.testsStarted", { job: scoped.title || scoped.id }));
     openJob(scoped.id);
     refresh();
@@ -5511,6 +5522,7 @@ function renderVersion() {
 }
 async function checkVersion() {
   try { ver = await api("version"); } catch { return; }
+  if (ver.autoUpdateNote && !window.__twUpdNoted) { window.__twUpdNoted = true; toast(t("settings.updNoteToast")); }
   renderVersion();
   if (!ver.disabled && !ver.updateAvailable && !ver.latest) setTimeout(checkVersion, 4000); // first check runs in the background
 }

@@ -1,5 +1,5 @@
 // Desktop notifications: native Mac app, or a queue delivered to the browser Notification API. Never throws.
-import { execFile } from "node:child_process";
+import { execFile } from "./process.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

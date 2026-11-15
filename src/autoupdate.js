@@ -55,7 +55,9 @@ export function decideAutoUpdate({ mode, updateCheck = true, source, current, la
   if (compareVersions(latest.version, current) <= 0) return { action: "skip", reason: "up to date", retry: false };
   if (ready?.version && compareVersions(ready.version, latest.version) >= 0) return { action: "skip", reason: "already installed", retry: false };
   if (busy) return { action: "skip", reason: "busy", retry: true };
-  return { action: "install", args: installArgs(latest.source) };
+  let args;
+  try { args = installArgs(latest.tag); } catch { return { action: "skip", reason: "no verified release tag", retry: false }; }
+  return { action: "install", args };
 }
 
 // One installer at a time across all studio servers on this machine.
@@ -74,7 +76,7 @@ async function withLock(fn) {
 export function npmInstall(args, { timeoutMs = 5 * 60 * 1000 } = {}) {
   return new Promise((resolve) => {
     let child;
-    try { child = spawn("npm", args, { timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"] }); }
+    try { child = spawn("npm", args, { timeout: timeoutMs, cwd: os.homedir(), stdio: ["ignore", "pipe", "pipe"] }); }
     catch (err) { resolve({ ok: false, out: err.message }); return; }
     let out = "";
     const capture = chunk => { out = (out + chunk).slice(-2000); };

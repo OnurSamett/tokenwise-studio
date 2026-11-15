@@ -90,7 +90,7 @@ With Node.js 20+ installed, run:
 curl -fsSL https://tokenwise.site/install.sh | sh
 ```
 
-The script checks Node, installs the latest CLI from npm if published (otherwise GitHub), runs `tokenwise-studio setup`, and opens the Mac app. It never installs Node silently and never uses sudo. Install Node from [nodejs.org](https://nodejs.org) or with `brew install node` first.
+The script checks Node, installs the latest verified GitHub release (never the npm registry), runs `tokenwise-studio setup`, and opens the Mac app. It never installs Node silently and never uses sudo. Install Node from [nodejs.org](https://nodejs.org) or with `brew install node` first.
 
 ### Windows (beta)
 
@@ -187,9 +187,9 @@ Details for the features above. Each section opens on click.
 
 **DMG installs (Mac):** Sparkle checks for updates once a day. Choose **tokenwise studio > Check for Updates…** to check manually and install an update. Updates replace the signed app; npm is not used.
 
-**CLI/npm installs:** use `tokenwise-studio update` or the existing automatic updater. Settings > **Updates** has three modes: **Automatic (default)**, **Notify only** and **Off**.
+**CLI/npm installs:** use `tokenwise-studio update` or the existing automatic updater. Settings > **Updates** has three modes: **Automatic**, **Notify only (default)** and **Off**. An earlier stored "Automatic" is read as Notify only once, with a note.
 
-- **Automatic**: at most once every 24 hours the studio checks for a newer version and, if there is one, installs it in the background (`npm install -g`, from the npm registry if the package is published there, otherwise from GitHub, the same rule as `update`). It never installs while a job, test run or chat turn is running (it retries later), and never over a git checkout. When it is done the sidebar shows "Updated to vX — restart to use it" with a **Restart now** button. Progress is logged in `~/.tokenwise-studio/update.log`.
+- **Automatic** (opt-in): at most once every 24 hours the studio checks the latest GitHub release and, if it is newer and verified (tag vX.Y.Z, SHA256SUMS.txt present, tag commit matches the release target), installs that exact tag in the background (`npm install -g github:OnurSamett/tokenwise-studio#vX.Y.Z`, the same rule as `update`). It never installs while a job, test run or chat turn is running (it retries later), and never over a git checkout. When it is done the sidebar shows "Updated to vX — restart to use it" with a **Restart now** button. Progress is logged in `~/.tokenwise-studio/update.log`.
 - **Restart now** stops the studio servers gracefully and the Mac app reloads its windows with the new version. If the app's Swift launcher changed in the new version, the app is rebuilt first (`tokenwise-studio setup --no-mcp`, no prompts).
 - **Notify only**: a small "New version" note with the command to copy; nothing is installed for you.
 - **Off**: no installs and no notice (turning off "Check for updates" does the same).
@@ -201,7 +201,7 @@ tokenwise-studio update --check   # just report whether a newer version exists
 tokenwise-studio update           # install it, rebuild the Mac app, stop running studio servers
 ```
 
-`update` reinstalls the way you installed (npm or GitHub), runs `tokenwise-studio setup` so the Mac app matches, and stops running studio servers (busy ones are left alone) so open windows reload on the new version. Running from a git checkout? Use `git pull` instead. Release notes are in [CHANGELOG.md](CHANGELOG.md).
+`update` installs the latest verified GitHub release tag, runs `tokenwise-studio setup` so the Mac app matches, and stops running studio servers (busy ones are left alone) so open windows reload on the new version. Running from a git checkout? Use `git pull` instead. Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 **Stale-server protection.** A studio server started before an upgrade keeps running old code but serves the new page files, which used to leave a blank window. Now every server reports the version it started with; the Mac app only reuses a server whose version matches the app, otherwise it asks the old one to quit (`POST /api/quit`, local and CSRF-protected) and starts a fresh one. If a page still fails to load, a banner says "This studio server is outdated or failed to load. Quit the app and reopen it."
 

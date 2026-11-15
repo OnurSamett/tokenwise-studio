@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Security fixes from the v0.10.0 audit.
+- Updates come only from validated GitHub release tags; the npm registry package name is never queried or installed. Automatic updates now default to "Notify only"; a stored "Automatic" is read as Notify only once, with a note.
+- Tools (git, claude, codex, npm) resolve to absolute paths from PATH, never from the project or working directory (Windows binary planting). The server no longer runs with the project as its working directory.
+- Local server: GET /api needs a same-origin request or x-tokenwise; HTML refuses framing. The Mac app pins navigation and its bridge to its own server and confirms links that open unknown folders.
+- Project-shipped test commands need a one-time confirmation; test runs no longer inherit API keys. Markdown/file-reference scanners are linear-time. zod 4.6.7, npm-shrinkwrap.json, `npm ci --ignore-scripts` for the DMG.
+
 ## 0.10.0
 
 - Composer model + effort picker: compact control at the bottom-right next to Send (`⌘/`), grouping Claude (Opus, Sonnet, Haiku) and Codex (Sol, Terra, Luna) orchestrators, with effort sub-choice (`low`, `medium`, `high`, `xhigh`), fast mode switch, keyboard navigation, and live plan-limit switch hints from `/api/limits` and `/api/orchestrator`.

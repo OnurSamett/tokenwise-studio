@@ -2,7 +2,7 @@
 // Maps instance paths <-> repo-relative script files using src/studiolog.js, extracts
 // lightweight Luau summaries without models (return keys, exported functions, remotes,
 // require() edges), caches in .tokenwise-studio/projectmap.json, and slices/caps at 40 KB.
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "./process.js";
 import fs from "node:fs";
 import path from "node:path";
 import { collectRojoScripts, findRojoProject } from "./studiolog.js";

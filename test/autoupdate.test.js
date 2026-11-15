@@ -19,15 +19,19 @@ function withHome(fn) {
   return Promise.resolve().then(() => fn(home)).finally(done);
 }
 
-const base = { mode: "auto", updateCheck: true, source: "github", current: "0.8.0", latest: { version: "0.9.0", source: "github" }, busy: false, lastAttemptAt: 0, ready: null, now: 1_000_000_000_000 };
+const base = { mode: "auto", updateCheck: true, source: "github", current: "0.8.0", latest: { version: "0.9.0", tag: "v0.9.0", source: "github" }, busy: false, lastAttemptAt: 0, ready: null, now: 1_000_000_000_000 };
 
-test("decideAutoUpdate: installs a newer version with the same source rule as `update`", () => {
+test("decideAutoUpdate: installs a newer version pinned to the verified release tag, never from npm", () => {
   const d = decideAutoUpdate(base);
   assert.equal(d.action, "install");
-  assert.deepEqual(d.args, ["install", "-g", "github:OnurSamett/tokenwise-studio"]);
-  const n = decideAutoUpdate({ ...base, latest: { version: "0.9.0", source: "npm" } });
-  assert.deepEqual(n.args, ["install", "-g", "tokenwise-studio@latest"]);
-  assert.deepEqual(installArgs("npm"), n.args);
+  assert.deepEqual(d.args, ["install", "-g", "--ignore-scripts", "github:OnurSamett/tokenwise-studio#v0.9.0"]);
+  assert.ok(!d.args.some((a) => /^tokenwise-studio(@|$)/.test(a)), "no registry package spec");
+  // A latest without a validated tag (e.g. an old cache entry from the npm registry) is never installed.
+  assert.equal(decideAutoUpdate({ ...base, latest: { version: "0.9.0", source: "npm" } }).action, "skip");
+  assert.equal(decideAutoUpdate({ ...base, latest: { version: "0.9.0", tag: "main", source: "github" } }).action, "skip");
+  assert.throws(() => installArgs("latest"));
+  assert.throws(() => installArgs("v1.2.3; rm -rf"));
+  assert.deepEqual(installArgs("v1.2.3"), ["install", "-g", "--ignore-scripts", "github:OnurSamett/tokenwise-studio#v1.2.3"]);
 });
 
 test("decideAutoUpdate: skips for mode, dev checkout, update check off, up to date, already installed", () => {
@@ -53,7 +57,7 @@ function harness(over = {}) {
   const state = {};
   const deps = {
     mode: () => "auto", updateCheck: () => true, source: () => "github", current: () => "0.8.0",
-    latest: async () => ({ version: "0.9.0", source: "github" }), busy: () => false,
+    latest: async () => ({ version: "0.9.0", tag: "v0.9.0", source: "github" }), busy: () => false,
     install: async (args) => { calls.install.push(args); return { ok: true, out: "" }; },
     now: () => 5_000_000_000_000, readState: () => state, writeState: (p) => Object.assign(state, p),
     log: (m) => calls.log.push(m), lock: async (fn) => ({ locked: false, value: await fn() }),
@@ -139,17 +143,38 @@ test("needsAppSetup: compares the Swift source hash stored in the app's config.j
   } finally { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(app, { recursive: true, force: true }); }
 });
 
-test("settings: autoUpdate defaults to auto and validates", () => withHome(() => {
-  assert.equal(DEFAULTS.autoUpdate, "auto");
-  assert.equal(loadSettings().autoUpdate, "auto");
-  assert.equal(saveSettings({ autoUpdate: "notify" }).autoUpdate, "notify");
+test("settings: autoUpdate defaults to notify and validates", () => withHome(() => {
+  assert.equal(DEFAULTS.autoUpdate, "notify");
+  assert.equal(loadSettings().autoUpdate, "notify");
+  assert.equal(saveSettings({ autoUpdate: "off" }).autoUpdate, "off");
   assert.throws(() => saveSettings({ autoUpdate: "yes" }), /autoUpdate/);
+}));
+
+test("settings: a stored auto from before this version reads as notify once, with a one-time note; choosing auto sticks", () => withHome((home) => {
+  const f = path.join(home, ".tokenwise-studio", "settings.json");
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, JSON.stringify({ autoUpdate: "auto", notifications: true }));
+  assert.equal(loadSettings().autoUpdate, "notify");
+  assert.equal(loadSettings().autoUpdateNoteSeen, false);
+  // Saving anything else persists the reset (and the pending note).
+  saveSettings({ animations: false });
+  assert.equal(JSON.parse(fs.readFileSync(f, "utf8")).autoUpdate, "notify");
+  assert.equal(loadSettings().autoUpdateNoteSeen, false);
+  saveSettings({ autoUpdateNoteSeen: true });
+  assert.equal(loadSettings().autoUpdateNoteSeen, true);
+  // An explicit choice of auto afterwards is respected.
+  assert.equal(saveSettings({ autoUpdate: "auto" }).autoUpdate, "auto");
+  assert.equal(loadSettings().autoUpdate, "auto");
+  // Explicit non-auto settings are left alone.
+  fs.writeFileSync(f, JSON.stringify({ autoUpdate: "off" }));
+  assert.equal(loadSettings().autoUpdate, "off");
+  assert.equal(loadSettings().autoUpdateNoteSeen, true);
 }));
 
 async function call(method, urlPath, { headers = {}, body } = {}) {
   const req = new PassThrough();
   req.method = method; req.url = urlPath;
-  req.headers = { host: "127.0.0.1:4790", ...(method === "POST" ? { "x-tokenwise": "1" } : {}), ...headers };
+  req.headers = { host: "127.0.0.1:4790", "sec-fetch-site": "same-origin", ...(method === "POST" ? { "x-tokenwise": "1" } : {}), ...headers };
   let status = 200; const chunks = [];
   const res = { writeHead(c) { status = c; }, end(d) { if (d) chunks.push(Buffer.from(String(d))); }, on() {} };
   const p = handler(req, res);
@@ -169,7 +194,7 @@ test("/api/state and /api/version carry the loaded version; /api/quit is CSRF pr
     assert.match(st.json.version, /^\d+\.\d+\.\d+/);
     const v = await call("GET", "/api/version");
     assert.equal(v.json.loaded, st.json.version);
-    assert.equal(v.json.autoUpdate, "auto");
+    assert.equal(v.json.autoUpdate, "notify");
     assert.equal(v.json.ready, null);
 
     assert.equal((await call("POST", "/api/quit", { headers: { "x-tokenwise": "" } })).status, 403, "missing header");

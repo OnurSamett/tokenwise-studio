@@ -337,15 +337,16 @@ async function doUpdate() {
   const latest = await latestVersion({ force: true });
   console.log(`tokenwise studio ${cur} (installed from ${source})`);
   if (!latest) { console.log("could not check for the latest version (offline?)"); if (has("--check")) return; }
-  else console.log(`latest: ${latest.version} (${latest.source})`);
+  else console.log(`latest: ${latest.version} (verified GitHub release ${latest.tag})`);
   const newer = latest && compareVersions(latest.version, cur) > 0;
   if (latest && !newer) return console.log("you are up to date");
   if (has("--check")) return console.log(newer ? "an update is available: run `tokenwise-studio update`" : "");
   if (source === "dev") return console.log("this is a git checkout: update it with `git pull` (then `tokenwise-studio setup` to rebuild the Mac app)");
-  // npm records no install source, so a registry install looks like "github". If the registry has the package, use it.
-  const args = installArgs(latest?.source);
+  if (!latest?.tag) { console.error("no verified release found to install; try again later or download a release from https://github.com/OnurSamett/tokenwise-studio/releases"); process.exit(1); }
+  if (source === "npm") console.log("note: this copy looks like it came from the npm registry. That package name is not published by this project; installing the verified GitHub release instead.");
+  const args = installArgs(latest.tag); // GitHub release tag only, never the npm registry
   console.log(`\nnpm ${args.join(" ")}\n`);
-  try { execFileSync("npm", args, { stdio: "inherit" }); }
+  try { execFileSync("npm", args, { stdio: "inherit", cwd: os.homedir() }); }
   catch { console.error("\nupdate failed; nothing else was changed. Try the command above yourself (you may need different permissions)."); process.exit(1); }
   console.log("\nrebuilding the Mac app with the new version ...\n");
   const r = spawnSync(EXE, ["setup"], { stdio: "inherit" });
@@ -375,6 +376,8 @@ async function startUi() {
   const repo = path.resolve(dir || process.cwd());
   const bad = projectProblem(repo, { allowTemp: true });
   if (bad) { console.error(`tokenwise studio: cannot use this project folder: ${bad}`); process.exit(2); }
+  // The project is untrusted input: never keep it as the working directory (Windows searches it for executables).
+  try { process.chdir(os.homedir()); } catch {}
   let url = null;
   for (let p = first; p <= first + 10 && !url; p++) {
     try { url = await startServer({ repo, port: p }); } catch (e) {

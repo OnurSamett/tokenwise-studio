@@ -180,7 +180,7 @@ async function callHandler({ method = "GET", url, body = null }) {
   req.method = method;
   req.url = url;
   req.headers = {
-    host: "127.0.0.1:4795",
+    host: "127.0.0.1:4795", "sec-fetch-site": "same-origin",
     ...(method === "POST" ? { origin: "http://127.0.0.1:4795", "x-tokenwise": "1" } : {}),
   };
   let statusCode = 200;

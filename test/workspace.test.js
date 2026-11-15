@@ -32,7 +32,7 @@ async function callHandler(method, url, { headers = {} } = {}) {
     on() {},
   };
   await handler(
-    { method, url, headers: { host: "127.0.0.1:4777", ...headers } },
+    { method, url, headers: { host: "127.0.0.1:4777", "sec-fetch-site": "same-origin", ...headers } },
     res,
   );
   const raw = Buffer.concat(chunks);

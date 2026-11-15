@@ -31,7 +31,9 @@ export const DEFAULTS = Object.freeze({
   fastMode: false,
   notifications: true,
   updateCheck: true,
-  autoUpdate: "auto", // auto: install new versions in the background; notify: only tell; off: neither
+  autoUpdate: "notify", // notify: only tell (default); auto: install verified GitHub releases in the background; off: neither
+  autoUpdateMigrated: false, // internal: true once the user has chosen an update mode themselves (a stored "auto" from before v0.10.1 is read as "notify" until then)
+  autoUpdateNoteSeen: true, // internal: false shows a one-time note that "auto" was reset to "notify"
   runTestsBeforeApply: false, // run the project tests in a write job's worktree when it finishes
   checkAfterApply: false, // run combined tests and lint in the main working tree after every Apply
   turnBudget: 0, // tokens per orchestrator turn (orchestrator + its workers); 0 = off
@@ -75,6 +77,8 @@ export const VALIDATORS = {
   fastMode: (v) => typeof v === "boolean" || "fastMode must be true or false",
   notifications: (v) => typeof v === "boolean" || "notifications must be true or false",
   autoUpdate: (v) => AUTO_UPDATE_MODES.includes(v) || `autoUpdate must be one of ${AUTO_UPDATE_MODES.join(", ")}`,
+  autoUpdateMigrated: (v) => typeof v === "boolean" || "autoUpdateMigrated must be true or false",
+  autoUpdateNoteSeen: (v) => typeof v === "boolean" || "autoUpdateNoteSeen must be true or false",
   updateCheck: (v) => typeof v === "boolean" || "updateCheck must be true or false",
   runTestsBeforeApply: (v) => typeof v === "boolean" || "runTestsBeforeApply must be true or false",
   checkAfterApply: (v) => typeof v === "boolean" || "checkAfterApply must be true or false",
@@ -115,6 +119,12 @@ function loadStored() {
       if (k in raw && VALIDATORS[k](raw[k]) === true) {
         out[k] = Array.isArray(raw[k]) ? [...raw[k]] : raw[k];
       }
+    }
+    // Before v0.10.1 "auto" was the default, so a stored "auto" may never have been a deliberate choice (and it
+    // installed from an unpinned source). Read it as "notify" once and tell the user; choosing a mode clears this.
+    if (raw.autoUpdate === "auto" && raw.autoUpdateMigrated !== true) {
+      out.autoUpdate = "notify";
+      if (!("autoUpdateNoteSeen" in raw)) out.autoUpdateNoteSeen = false;
     }
   } catch {}
   return out;
@@ -203,6 +213,7 @@ export function saveSettings(patch = {}) {
   for (const k of Object.keys(patch)) {
     cur[k] = Array.isArray(patch[k]) ? [...patch[k]] : patch[k];
   }
+  if ("autoUpdate" in patch) { cur.autoUpdateMigrated = true; if (!("autoUpdateNoteSeen" in patch)) cur.autoUpdateNoteSeen = true; }
   const effLimit = applyEnv(cur).settings.limitThreshold;
   if ("pacingThreshold" in patch && cur.pacingThreshold >= effLimit) {
     throw new Error(`pacingThreshold must be below limitThreshold (${effLimit})`);

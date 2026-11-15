@@ -36,7 +36,7 @@ async function callHandler(method, urlPath, bodyObj, { csrf = true } = {}) {
   const req = new PassThrough();
   req.method = method;
   req.url = urlPath;
-  req.headers = { host: "127.0.0.1:4790", ...(method === "POST" && csrf ? { "x-tokenwise": "1" } : {}) };
+  req.headers = { host: "127.0.0.1:4790", "sec-fetch-site": "same-origin", ...(method === "POST" && csrf ? { "x-tokenwise": "1" } : {}) };
   let status = 200;
   let headers = {};
   const chunks = [];

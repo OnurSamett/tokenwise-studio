@@ -38,6 +38,22 @@ func isLocalHost(_ h: String?) -> Bool {
     return h == "127.0.0.1" || h == "localhost" || h == "::1" || h == "[::1]"
 }
 
+/// Exact scheme + host + port match. A window only trusts the one local server it was loaded from;
+/// another process listening on a different localhost port is a different origin.
+func sameOrigin(_ a: URL?, _ b: URL?) -> Bool {
+    guard let a = a, let b = b,
+          let sa = a.scheme?.lowercased(), let sb = b.scheme?.lowercased(), sa == sb,
+          let ha = a.host?.lowercased(), let hb = b.host?.lowercased(), ha == hb else { return false }
+    func port(_ u: URL, _ scheme: String) -> Int { u.port ?? (scheme == "https" ? 443 : 80) }
+    return port(a, sa) == port(b, sb)
+}
+
+/// Only these schemes may be handed to the default handler (NSWorkspace) from page content.
+func isSafeExternalScheme(_ scheme: String?) -> Bool {
+    guard let s = scheme?.lowercased() else { return false }
+    return s == "http" || s == "https" || s == "mailto"
+}
+
 func readServers() -> [String: String] {
     guard let data = try? Data(contentsOf: stateDir.appendingPathComponent("servers.json")),
           let map = try? JSONSerialization.jsonObject(with: data) as? [String: String] else { return [:] }
@@ -258,6 +274,7 @@ func logLine(_ msg: String) {
 func serverState(_ base: URL) -> (ok: Bool, version: String?) {
     var req = URLRequest(url: base.appendingPathComponent("api/state"), timeoutInterval: 1)
     req.httpMethod = "GET"
+    req.setValue("1", forHTTPHeaderField: "x-tokenwise") // the server refuses /api requests that are not same-origin or marked
     let sem = DispatchSemaphore(value: 0)
     var ok = false
     var version: String? = nil
@@ -343,6 +360,16 @@ func ensureServer(repo: String) -> URL? {
         if let u = registeredServer(for: repo), u != stale { return u }
     }
     return nil
+}
+
+/// tokenwise-studio:// links come from other apps and web pages. The url must be exactly the server registered
+/// for that folder (an unrelated local port is dropped, the app then starts or finds the real server), and a folder
+/// that is not in the recent projects needs the user's confirmation (done by the caller).
+func validateSchemeLink(repo: String?, url: String?) -> (repo: String, url: URL?)? {
+    guard let v = validate(repo: repo, url: url) else { return nil }
+    guard let u = v.url else { return v }
+    if let s = readServers()[v.repo], let reg = URL(string: s), sameOrigin(reg, u) { return (v.repo, reg) }
+    return (v.repo, nil)
 }
 
 /// Only plain http to the local machine, and an existing directory.
@@ -1548,7 +1575,11 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// The one server this window talks to. Navigation and the `tw` bridge accept only this exact origin.
+    var pinnedServer: URL?
+
     func load(_ url: URL) {
+        pinnedServer = url
         if web.url?.absoluteString == url.absoluteString { return }
         web.load(URLRequest(url: url))
     }
@@ -1565,7 +1596,7 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
             let u = ensureServer(repo: repo)
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                if let u = u { self.web.load(URLRequest(url: u)) } else { self.failed("The studio server did not restart within 15 seconds.") }
+                if let u = u { self.pinnedServer = u; self.web.load(URLRequest(url: u)) } else { self.failed("The studio server did not restart within 15 seconds.") }
             }
         }
     }
@@ -1587,7 +1618,7 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         if url.scheme == "tokenwise-native", action.sourceFrame.isMainFrame,
-           let source = action.sourceFrame.request.url, source.scheme == "http", isLocalHost(source.host) {
+           let source = action.sourceFrame.request.url, sameOrigin(source, pinnedServer) {
             if url.host == "choose-project" {
                 decisionHandler(.cancel)
                 onChooseProject?()
@@ -1603,10 +1634,10 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         if action.shouldPerformDownload { decisionHandler(.download); return }
         let scheme = url.scheme ?? ""
         if scheme == "about" || scheme == "blob" || scheme == "data" { decisionHandler(.allow); return }
-        if (scheme == "http" || scheme == "https") && isLocalHost(url.host) && action.targetFrame != nil {
+        if (scheme == "http" || scheme == "https") && sameOrigin(url, pinnedServer) && action.targetFrame != nil {
             decisionHandler(.allow); return
         }
-        if scheme == "http" || scheme == "https" || scheme == "mailto" { NSWorkspace.shared.open(url) }
+        if isSafeExternalScheme(scheme) { NSWorkspace.shared.open(url) }
         decisionHandler(.cancel)
     }
 
@@ -1662,7 +1693,7 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
 
     func webView(_ w: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url { NSWorkspace.shared.open(url) }
+        if let url = action.request.url, isSafeExternalScheme(url.scheme) { NSWorkspace.shared.open(url) }
         return nil
     }
 
@@ -1683,11 +1714,18 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         failed("The page did not load: \(error.localizedDescription)")
     }
 
+    private func messageOriginIsPinned(_ o: WKSecurityOrigin) -> Bool {
+        guard let pin = pinnedServer, let pscheme = pin.scheme, let phost = pin.host else { return false }
+        let pport = pin.port ?? (pscheme == "https" ? 443 : 80)
+        let oport = o.port == 0 ? (o.protocol == "https" ? 443 : 80) : o.port
+        return o.protocol.lowercased() == pscheme.lowercased() && o.host.lowercased() == phost.lowercased() && oport == pport
+    }
+
     // JS bridge: window.webkit.messageHandlers.tw.postMessage(...)
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "tw",
               message.frameInfo.isMainFrame,
-              isLocalHost(message.frameInfo.securityOrigin.host),
+              messageOriginIsPinned(message.frameInfo.securityOrigin),
               let body = message.body as? [String: Any],
               let type = body["type"] as? String else { return }
         if type == "dictation" {
@@ -1822,13 +1860,26 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         }
     }
 
+    /// A link asked to open a folder that is not one of the user's recent projects.
+    func confirmOpenFromLink(_ repo: String) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.alertStyle = .warning
+        a.messageText = "Open this folder in tokenwise studio?"
+        a.informativeText = "A link outside the app asked to open:\n\n\(repo)\n\nOnly continue if you started this."
+        a.addButton(withTitle: "Cancel")
+        a.addButton(withTitle: "Open")
+        return a.runModal() == .alertSecondButtonReturn
+    }
+
     // tokenwise-studio://open?repo=...&url=...
     func application(_ app: NSApplication, open urls: [URL]) {
         for u in urls where u.scheme == "tokenwise-studio" {
             handledLaunch = true
             let items = URLComponents(url: u, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let q = { (n: String) in items.first { $0.name == n }?.value }
-            guard u.host == "open", let v = validate(repo: q("repo"), url: q("url")) else { continue }
+            guard u.host == "open", let v = validateSchemeLink(repo: q("repo"), url: q("url")) else { continue }
+            if windows[v.repo] == nil && !readRecents().contains(v.repo) && !confirmOpenFromLink(v.repo) { continue }
             openProject(repo: v.repo, url: v.url)
         }
     }

@@ -11,6 +11,7 @@ import { resolveJobImage, safeRel, captureImages } from "../src/jobimages.js";
 import { handler, initServer } from "../src/ui.js";
 import { PassThrough } from "node:stream";
 
+process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), "tw-testrun-home-")); // confirmations are stored under the user home
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "tw-test-"));
 const put = (d, f, c = "") => { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), c); return d; };
 
@@ -43,7 +44,7 @@ test("override from Settings beats detection", () => {
   const home = tmp(), d = put(tmp(), "go.mod", "module x");
   assert.equal(testCommandFor(home, d).cmd, "go");
   saveTestOverride(home, "make check");
-  assert.deepEqual(testCommandFor(home, d), { cmd: "make", args: ["check"], label: "make check", source: "settings" });
+  assert.deepEqual(testCommandFor(home, d), { cmd: "make", args: ["check"], label: "make check", source: "settings", unconfirmed: false });
   saveTestOverride(home, "");
   assert.equal(testCommandFor(home, d).cmd, "go");
 });
@@ -176,7 +177,7 @@ test("checkAfterApply setting defaults to false, validates, and triggers combine
     const call = async (method, urlPath, bodyObj) => {
       const req = new PassThrough();
       req.method = method; req.url = urlPath;
-      req.headers = { host: "127.0.0.1:4790", ...(method === "POST" ? { "x-tokenwise": "1" } : {}) };
+      req.headers = { host: "127.0.0.1:4790", "sec-fetch-site": "same-origin", ...(method === "POST" ? { "x-tokenwise": "1" } : {}) };
       let status = 200; const chunks = [];
       const res = { writeHead(c) { status = c; }, end(d) { if (d) chunks.push(Buffer.isBuffer(d) ? d : Buffer.from(String(d))); } };
       const p = handler(req, res);

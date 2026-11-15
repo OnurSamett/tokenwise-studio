@@ -2,7 +2,7 @@
 // Captures BOTH index and working tree (including untracked files) via git plumbing
 // without modifying the user's current branch, index, or working tree.
 import crypto from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "./process.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

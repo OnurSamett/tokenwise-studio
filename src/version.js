@@ -6,8 +6,13 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const PKG_NAME = "tokenwise-studio";
-const NPM_URL = `https://registry.npmjs.org/${PKG_NAME}/latest`;
-const GITHUB_URL = `https://raw.githubusercontent.com/OnurSamett/${PKG_NAME}/main/package.json`;
+// Updates come ONLY from validated GitHub release tags. The npm registry name "tokenwise-studio" is not ours:
+// never query it and never install from it.
+export const REPO = `OnurSamett/${PKG_NAME}`;
+const API = `https://api.github.com/repos/${REPO}`;
+const RAW = `https://raw.githubusercontent.com/${REPO}`;
+export const TAG_RE = /^v\d+\.\d+\.\d+$/;
+export const SUMS_ASSET = "SHA256SUMS.txt";
 const TTL = 24 * 3600 * 1000;
 
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
@@ -39,41 +44,76 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-// npm arguments that install the latest version: from the registry if it is published there, else from GitHub.
-export const installArgs = (latestSource) =>
-  latestSource === "npm" ? ["install", "-g", `${PKG_NAME}@latest`] : ["install", "-g", `github:OnurSamett/${PKG_NAME}`];
+// npm arguments that install a release: always the GitHub repository pinned to a validated vX.Y.Z tag.
+export function installArgs(tag) {
+  if (typeof tag !== "string" || !TAG_RE.test(tag)) throw new Error("refusing to install: not a validated release tag");
+  return ["install", "-g", "--ignore-scripts", `github:${REPO}#${tag}`];
+}
 
 export const cacheFile = () => path.join(os.homedir(), ".tokenwise-studio", "update.json");
 
-async function fetchVersion(url) {
-  const r = await fetch(url, { signal: AbortSignal.timeout(2000), headers: { accept: "application/json" } });
-  if (!r.ok) throw new Error(String(r.status));
-  const v = (await r.json())?.version;
-  if (typeof v !== "string" || !/^\d+\.\d+\.\d+/.test(v)) throw new Error("bad version");
-  return v;
+const HEX40 = /^[0-9a-f]{40}$/i;
+
+async function getJson(fetchFn, url, timeoutMs) {
+  const r = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: "application/vnd.github+json", "user-agent": "tokenwise-studio-update-check" } });
+  if (!r.ok) throw new Error(`${r.status} ${url}`);
+  return r.json();
 }
 
-// Cached read only: { version, source } or null. Never touches the network.
+/**
+ * Latest GitHub release, verified: a published (non-draft, non-prerelease) release whose tag is exactly vX.Y.Z,
+ * that ships SHA256SUMS.txt, whose tag commit matches (or is contained in) the release target, and whose
+ * package.json at that tag carries the same version. Throws on any mismatch. `fetchFn` is injectable for tests.
+ * Returns { version, tag, commit, source: "github" }.
+ */
+export async function verifyLatestRelease(fetchFn = fetch, { timeoutMs = 4000 } = {}) {
+  const rel = await getJson(fetchFn, `${API}/releases/latest`, timeoutMs);
+  const tag = rel?.tag_name;
+  if (typeof tag !== "string" || !TAG_RE.test(tag)) throw new Error("release tag is not vX.Y.Z");
+  if (rel.draft || rel.prerelease) throw new Error("release is a draft or prerelease");
+  if (!Array.isArray(rel.assets) || !rel.assets.some((a) => a?.name === SUMS_ASSET)) throw new Error(`release has no ${SUMS_ASSET}`);
+  const version = tag.slice(1);
+  const ref = await getJson(fetchFn, `${API}/git/ref/tags/${tag}`, timeoutMs);
+  let obj = ref?.object;
+  if (obj?.type === "tag") obj = (await getJson(fetchFn, `${API}/git/tags/${obj.sha}`, timeoutMs))?.object;
+  const commit = obj?.type === "commit" && HEX40.test(obj.sha || "") ? obj.sha.toLowerCase() : null;
+  if (!commit) throw new Error("tag does not point at a commit");
+  const target = rel.target_commitish;
+  if (typeof target === "string" && HEX40.test(target)) {
+    if (target.toLowerCase() !== commit) throw new Error("tag commit differs from the release target");
+  } else if (typeof target === "string" && /^[\w./-]{1,100}$/.test(target)) {
+    const cmp = await getJson(fetchFn, `${API}/compare/${commit}...${encodeURIComponent(target)}`, timeoutMs);
+    if (cmp?.status !== "identical" && cmp?.status !== "ahead") throw new Error("tag commit is not part of the release target");
+  } else throw new Error("release has no usable target");
+  const pj = await (async () => {
+    const r = await fetchFn(`${RAW}/${commit}/package.json`, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: "application/json" } });
+    if (!r.ok) throw new Error(String(r.status));
+    return r.json();
+  })();
+  if (pj?.version !== version) throw new Error("package.json version does not match the tag");
+  return { version, tag, commit, source: "github" };
+}
+
+// Cached read only: { version, tag, source } or null. Never touches the network.
 export function cachedLatest({ maxAge = TTL } = {}) {
   const c = readJson(cacheFile());
-  if (c && typeof c.version === "string" && Date.now() - (c.checkedAt || 0) < maxAge) return { version: c.version, source: c.source };
+  if (c && c.source === "github" && typeof c.tag === "string" && TAG_RE.test(c.tag) && c.version === c.tag.slice(1) && Date.now() - (c.checkedAt || 0) < maxAge) {
+    return { version: c.version, tag: c.tag, source: "github" };
+  }
   return null;
 }
 
-// { version, source: "npm" | "github" } or null. { force } skips the 24h cache.
-export async function latestVersion({ force = false } = {}) {
+// { version, tag, source: "github" } or null. { force } skips the 24h cache.
+export async function latestVersion({ force = false, fetchFn } = {}) {
   if (!force) { const c = cachedLatest(); if (c) return c; }
-  for (const [source, url] of [["npm", NPM_URL], ["github", GITHUB_URL]]) {
+  try {
+    const r = await verifyLatestRelease(fetchFn);
     try {
-      const version = await fetchVersion(url);
-      try {
-        fs.mkdirSync(path.dirname(cacheFile()), { recursive: true });
-        // Keep other keys in this file (auto-update state lives here too).
-        const old = readJson(cacheFile()) || {};
-        fs.writeFileSync(cacheFile(), JSON.stringify({ ...old, version, source, checkedAt: Date.now() }, null, 2));
-      } catch {}
-      return { version, source };
+      fs.mkdirSync(path.dirname(cacheFile()), { recursive: true });
+      // Keep other keys in this file (auto-update state lives here too).
+      const old = readJson(cacheFile()) || {};
+      fs.writeFileSync(cacheFile(), JSON.stringify({ ...old, version: r.version, tag: r.tag, commit: r.commit, source: "github", checkedAt: Date.now() }, null, 2));
     } catch {}
-  }
-  return null;
+    return { version: r.version, tag: r.tag, source: "github" };
+  } catch { return null; }
 }

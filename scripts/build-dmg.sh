@@ -40,7 +40,7 @@ fetch() {
 }
 # Pin the exact upstream binary distribution; NEVER execute its tools before verification.
 SPARKLE_VERSION='2.8.1'
-# TODO: fill with the official SHA-256 for Sparkle-2.8.1.tar.xz from this release:
+# Official SHA-256 of Sparkle-2.8.1.tar.xz (verified against the digest GitHub publishes for the release):
 # https://github.com/sparkle-project/Sparkle/releases/tag/2.8.1
 SPARKLE_SHA256='5cddb7695674ef7704268f38eccaee80e3accbf19e61c1689efff5b6116d85be'
 [[ "$SPARKLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail 'Fill SPARKLE_SHA256 in scripts/build-dmg.sh with the official release checksum first.'
@@ -96,7 +96,7 @@ log '4/8 Copy the app and install production dependencies from package-lock.json
 for entry in src ui assets launcher package.json package-lock.json LICENSE; do
   ditto "$ROOT/$entry" "$RES/app/$entry"
 done
-(cd "$RES/app" && npm ci --omit=dev --no-audit --no-fund)
+(cd "$RES/app" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
 printf '%s\n' "$NODE_RELEASE" > "$RES/app/.bundled"
 printf '%s\n' "$NODE_RELEASE" > "$RES/node/version.txt"
 # Check relative config resolution and the bundled JS without launching the GUI or a server.

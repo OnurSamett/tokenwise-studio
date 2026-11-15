@@ -270,7 +270,9 @@ internal static class StudioServer
     {
         try
         {
-            using var response = await http.GetAsync(new Uri(uri, "api/state"));
+            using var probe = new HttpRequestMessage(HttpMethod.Get, new Uri(uri, "api/state"));
+            probe.Headers.Add("x-tokenwise", "1");
+            using var response = await http.SendAsync(probe);
             response.EnsureSuccessStatusCode();
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             if (!string.Equals(Path.GetFullPath(doc.RootElement.GetProperty("repo").GetString()!), repo, StringComparison.OrdinalIgnoreCase)) return null;
@@ -305,7 +307,7 @@ internal static class StudioServer
                 }
             }
             var node = Path.Combine(AppContext.BaseDirectory, "node", "node.exe");
-            var info = new ProcessStartInfo(node) { WorkingDirectory = repo, UseShellExecute = false, CreateNoWindow = true };
+            var info = new ProcessStartInfo(node) { WorkingDirectory = AppDir, UseShellExecute = false, CreateNoWindow = true };
             info.ArgumentList.Add(Path.Combine(AppDir, "src", "cli.js"));
             info.ArgumentList.Add(repo); info.ArgumentList.Add("--no-open");
             info.Environment["PATH"] = Path.GetDirectoryName(node) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");

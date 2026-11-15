@@ -35,7 +35,7 @@ export function normalizeWorkspaceRefPath(rawPath) {
   return p;
 }
 
-const SCAN_RE = /([a-z][a-z0-9+.-]*:\/\/[^\s<>[\]()]+)|([A-Za-z0-9_.][A-Za-z0-9_.\-/]*):([1-9]\d*)(?:(?::([1-9]\d*))|(?:-([1-9]\d*)))?/gi;
+const SCAN_RE = /([a-z][a-z0-9+.-]{0,39}:\/\/[^\s<>[\]()]+)|([A-Za-z0-9_.][A-Za-z0-9_.\-/]{0,299}):([1-9]\d*)(?:(?::([1-9]\d*))|(?:-([1-9]\d*)))?/gi;
 const PREV_OK = /^[\s(\[{"'`:,<>*\u2014\u2013-]$/;
 const NEXT_OK = /^[\s)\]}"'`.,;!?<>*]$/;
 
@@ -43,10 +43,20 @@ const NEXT_OK = /^[\s)\]}"'`.,;!?<>*]$/;
 export function parseFileLineRefs(text) {
   const s = String(text ?? "");
   const refs = [];
-  SCAN_RE.lastIndex = 0;
-  for (const m of s.matchAll(SCAN_RE)) {
+  // Scan line by line and skip very long lines (minified output, base64): the file:line pattern is quadratic on them.
+  let offset = 0;
+  for (const line of s.split("\n")) {
+    if (line.length <= MAX_SCAN_LINE) scanLine(s, line, offset, refs);
+    offset += line.length + 1;
+  }
+  return refs;
+}
+const MAX_SCAN_LINE = 2000;
+
+function scanLine(s, line, offset, refs) {
+  for (const m of line.matchAll(SCAN_RE)) {
     if (m[1]) continue; // skip URLs (http://, https://, file://, etc.)
-    const idx = m.index;
+    const idx = m.index + offset;
     const prev = idx > 0 ? s[idx - 1] : "";
     const afterIdx = idx + m[0].length;
     const next = afterIdx < s.length ? s[afterIdx] : "";
@@ -64,7 +74,6 @@ export function parseFileLineRefs(text) {
       length: m[0].length,
     });
   }
-  return refs;
 }
 
 // ---------- Syntax highlighter ----------
