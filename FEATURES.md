@@ -15,7 +15,7 @@ A NolienLabs project. Landing page: https://tokenwise.site
 1. **Model and effort chosen separately, per piece of work.** Opus/low for a quick design check, Sonnet/high for a big routine refactor. Effort rises one step per signal: many interacting parts, ambiguity, a prior failure, a costly mistake.
 2. **Orchestrator plus workers.** Opus plans and reviews. Workers run in their own git worktrees, and the orchestrator cannot edit your files itself.
 3. **Nothing lands without review.** Per-file diffs with checkboxes. Changes are staged, never committed for you.
-4. **Never stuck on a limit.** Worker fallback chain `codex → gemini → claude → free → local`, triggered at 90% of a plan limit (adjustable, 50–100%). The orchestrator itself moves from Claude to Codex Sol.
+4. **Never stuck on a limit.** Worker fallback chain `codex → gemini → claude → free → local`, triggered at 90% of a plan limit (adjustable, 50–100%). The orchestrator itself falls back along `claude → codex → gemini → free → local`.
 5. **Five kinds of worker.** Codex, Claude, Gemini (via Antigravity), free NVIDIA models, and local Ollama, which is free and unlimited.
 6. **Benchmark-led model guide.** Free models are ranked by Terminal-Bench 4.0 of the version actually served. DeepSeek V4.1 Flash (40.0) ties Claude Haiku 5.5 (40.0).
 7. **A native Mac app.** One window per project, Dock icon, desktop notifications, `tokenwise-studio://` links.
@@ -30,14 +30,14 @@ A NolienLabs project. Landing page: https://tokenwise.site
 - **Three hosts.** Works in Claude Code, Codex CLI and Gemini CLI. Why: any agent can hand work to the others.
 - **Live plan limits.** Claude and Codex 5-hour and weekly usage shown in the sidebar; readings from before a reset are ignored. Why: routing uses current numbers, not stale ones.
 - **Worker fallback chain.** Pre-start skip of plans at the threshold, plus a re-run on the next worker after a rate-limit error. Why: a run finishes even when one plan is exhausted.
-- **Orchestrator fallback.** Claude to Codex Sol (read-only, same tools, conversation handed over), with a sidebar card showing who orchestrates. Gemini cannot orchestrate, because Antigravity has no per-session MCP. Why: the chat continues when Claude runs out.
+- **Orchestrator fallback and Free mode.** Orchestrator fallback chain `claude → codex → gemini → free → local` (reorderable in Settings, honoring `automatic` / `ask me` / `off`, cooldowns, and pacing). Gemini orchestrates through Antigravity (on by default; registered via `agy mcp add` in `setup` and toggled in Settings). Free and local (Ollama) orchestrators run an in-process tool loop with read-only repo tools and delegation/review tools, keeping a compact running chat history. **Free mode** ("Free mode — no plan usage" in Settings and the model picker) forces the orchestrator and every worker role to free/local and refuses delegations to paid agents. Why: the chat continues even when paid plans are exhausted or when you want zero plan usage.
 
 ### Orchestration and review
 - **Isolated worktrees.** Each write job works on its own branch from `HEAD`. Why: parallel workers cannot collide, and your tree stays untouched.
 - **Team cards.** Each worker shows agent, model, effort and live progress. Why: you see who is doing what.
 - **Per-file review, apply, commit.** Why: you decide what enters the project.
 - **Team panel and composer picker.** Auto, or pick agent, model and effort per role (code, quick work, reviews, images, research); presets quality, balanced, cheap, and free. Open the Team popover directly from the composer to see TB 4.0 scores, cost hints, plan-limit bars, and a one-line "why", and apply changes to the project or for one message only. Why: control when you want it, defaults when you do not.
-- **Composer model picker.** Compact orchestrator button next to Send (⌘/) with Claude Opus/Sonnet/Haiku and Codex Sol/Terra/Luna, effort sub-choice (low/medium/high/xhigh), fast mode toggle, and live plan-limit switch hints. Why: the most-used choice is one click away.
+- **Composer model picker.** Compact orchestrator button next to Send (⌘/) with Claude (Opus/Sonnet/Haiku), Codex (Sol/Terra/Luna), Gemini (Hydrogen/Argon), Free, and Local orchestrators, effort sub-choice (low/medium/high/xhigh), fast mode toggle, **Free mode — no plan usage** toggle with a "Free" badge and benchmark note (`TB 4.0 ≈ 40 vs Opus 5.5 64.8`), and live plan-limit switch hints. Why: the most-used choice is one click away.
 - **Per-message `@mentions` routing.** Type `@` in the composer for `@codex`, `@claude`, `@gemini`, `@free`, `@local`, or models (`@sol`, `@terra`, `@luna`, `@opus`, `@sonnet`, `@haiku`, `@hydrogen`, `@argon`); validated server-side and injected into the orchestrator guide for that message only. Why: steer a single turn without changing project team settings.
 - **Research role.** Read-only web search on Claude and Codex, with numbered citations and a Sources list. Why: answers you can check.
 - **Test runner.** Per-project test command, a Run tests button per job, optional run before Apply, and a `job_test` tool for the orchestrator. Why: pass or fail sits next to the diff.
@@ -96,7 +96,7 @@ A NolienLabs project. Landing page: https://tokenwise.site
 - **`max` and `ultra` effort are refused**; Codex astra is blocked unless enabled.
 
 ### Install and updates
-- `npm install -g github:OnurSamett/tokenwise-studio`, then `tokenwise-studio setup` registers the MCP server with Claude Code and builds the Mac app. `--dry-run` shows the plan first.
+- `npm install -g github:OnurSamett/tokenwise-studio`, then `tokenwise-studio setup` registers the MCP server with Claude Code and Antigravity (`--no-gemini` skips Antigravity) and builds the Mac app. `--dry-run` shows the plan first.
 - `doctor` shows which workers are ready and how to fix the rest; `uninstall` removes everything.
 - **Automatic updates** (default): the studio installs new versions in the background, at most once a day, never while work is running and never over a git checkout; you press Restart now when it suits you. Modes: Automatic, Notify only, Off.
 - `update` reinstalls, rebuilds the app and stops running studio servers so windows reload on the new version.
@@ -160,4 +160,4 @@ The studio was built with tokenwise. The main Claude session acted only as orche
 - **0.7:** Turkish UI, chat compaction, research role with citations.
 - **0.8:** Undo Apply, combined check after Apply, Roblox Output error import, automatic updates, stale-server protection, worker fixes.
 - **0.9:** Workspace side panel, pull requests from the review drawer, conflict check, dictation, model shootout, quota pacing and cooldowns, free-model probe, Rojo project map, welcome window and restore, app-only notifications.
-- **0.10 (unreleased):** Composer model + effort picker with live limit hints, composer Team picker popover with per-message overrides and Free preset, `@mentions` per-message worker routing, sidebar chat folders with date groups and pinning, effort-aware working animations with a sticky Stop banner and Settings toggle, `⌘K` command palette with `?` shortcuts sheet, and read-only, signature-verified Roblox Studio MCP playtesting.
+- **0.10 (unreleased):** Composer model + effort picker with live limit hints, composer Team picker popover with per-message overrides and Free preset, `@mentions` per-message worker routing, sidebar chat folders with date groups and pinning, effort-aware working animations with a sticky Stop banner and Settings toggle, `⌘K` command palette with `?` shortcuts sheet, read-only, signature-verified Roblox Studio MCP playtesting, and orchestrator fallback beyond Claude/Codex (`claude → codex → gemini → free → local`) with Free/local in-process orchestrators, Gemini orchestrator via Antigravity, and Free mode.

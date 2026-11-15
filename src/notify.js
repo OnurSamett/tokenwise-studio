@@ -156,28 +156,44 @@ export function turnNotice({ turn, chatTitle, failed, stopped, readyJobs = 0, la
 
 export const handoffNotice = (reason, opts = {}) => {
   const l = noticeLang(opts);
-  const clean = translateReason(reason || t("reason.unavailable", {}, l), l).replace(/^Claude\s+/i, "");
-  return { title: t("notify.codexTookOver", {}, l), message: t("notify.claudeReason", { reason: clean }, l) };
+  const toLabel = opts.toAgent && AGENTS[opts.toAgent] ? AGENTS[opts.toAgent] : "Codex";
+  const fromLabel = opts.fromAgent && AGENTS[opts.fromAgent] ? AGENTS[opts.fromAgent] : "Claude";
+  const clean = translateReason(reason || t("reason.unavailable", {}, l), l).replace(/^(?:Claude|Codex|Gemini|Free API|Local)\s+/i, "");
+  if (toLabel === "Codex" && fromLabel === "Claude") {
+    return { title: t("notify.codexTookOver", {}, l), message: t("notify.claudeReason", { reason: clean }, l) };
+  }
+  return {
+    title: t("notify.agentTookOver", { to: toLabel }, l),
+    message: t("notify.agentReason", { from: fromLabel, reason: clean }, l),
+  };
 };
 
 /** Limit handoff notice with optional reset time ("Claude hit its limit · Codex is orchestrating until HH:MM"). */
-export function limitHandoffNotice({ resetsAt = null, lang, settings } = {}, opts = {}) {
+export function limitHandoffNotice({ provider = "claude", toAgent = "codex", resetsAt = null, lang, settings } = {}, opts = {}) {
   const l = noticeLang({ lang: lang ?? opts.lang, settings: settings ?? opts.settings, env: opts.env, intlLocale: opts.intlLocale });
   const now = opts.now ?? Date.now();
   const hasReset = typeof resetsAt === "number" && Number.isFinite(resetsAt) && resetsAt > now;
+  const fromLabel = AGENTS[provider] || cap(provider || "Claude");
+  const toLabel = AGENTS[toAgent] || cap(toAgent || "Codex");
+  if (provider === "claude" && (!toAgent || toAgent === "codex")) {
+    const message = hasReset
+      ? t("notify.claudeLimitUntil", { time: formatHHMM(resetsAt) }, l)
+      : t("notify.claudeLimit", {}, l);
+    return { title: t("notify.codexTookOver", {}, l), message };
+  }
   const message = hasReset
-    ? t("notify.claudeLimitUntil", { time: formatHHMM(resetsAt) }, l)
-    : t("notify.claudeLimit", {}, l);
-  return { title: t("notify.codexTookOver", {}, l), message };
+    ? t("notify.agentLimitUntil", { from: fromLabel, to: toLabel, time: formatHHMM(resetsAt) }, l)
+    : t("notify.agentLimit", { from: fromLabel, to: toLabel }, l);
+  return { title: t("notify.agentTookOver", { to: toLabel }, l), message };
 }
 
 /** Notify once per provider limit window (persisted in ~/.tokenwise-studio/notified.json). */
-export function notifyLimitHandoff({ provider = "claude", resetsAt = null, subtitle = "", repo = "", lang, settings } = {}, deps = {}) {
+export function notifyLimitHandoff({ provider = "claude", toAgent = "codex", resetsAt = null, subtitle = "", repo = "", lang, settings } = {}, deps = {}) {
   const now = typeof deps.now === "function" ? deps.now() : (deps.now ?? Date.now());
   const home = typeof deps.home === "function" ? deps.home() : (deps.home || os.homedir());
   const fsys = deps.fs || fs;
   if (!shouldNotifyLimit(provider, { now, home, fs: fsys })) return false;
-  const n = limitHandoffNotice({ resetsAt, lang, settings }, { ...deps, now });
+  const n = limitHandoffNotice({ provider, toAgent, resetsAt, lang, settings }, { ...deps, now });
   const sent = notify({ ...n, subtitle, repo }, deps);
   if (sent) recordLimitNotified(provider, { resetsAt, now, home, fs: fsys });
   return sent;

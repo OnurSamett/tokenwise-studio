@@ -10,6 +10,7 @@ import { loadSettings } from "./settings.js";
 import { claudePacing, getCooldown } from "./fallback.js";
 
 export const ROLES = ["code", "quick", "review", "research", "images"];
+export const JOB_ROLES = [...ROLES, "playtest"];
 const LABELS = {
   code: "Writes code",
   quick: "Quick & mechanical work",
@@ -171,7 +172,7 @@ export function teamOptions(freeModels = [], { home = null, orchestratorAgent = 
   const settings = loadSettings();
   let pacing = null;
   try { pacing = home ? claudePacing(home, { settings, orchestratorAgent }) : null; } catch {}
-  const freeAllowed = settings.allowFree && (!home || loadTeam(home).allow.free !== false);
+  const freeAllowed = (settings.allowFree || settings.freeMode) && (!home || settings.freeMode || loadTeam(home).allow.free !== false);
   const prefer = pacing?.active ? ["codex", "gemini", ...(freeAllowed ? ["free"] : [])] : null;
   const cdOf = (a) => {
     const cd = getCooldown(a);
@@ -179,10 +180,10 @@ export function teamOptions(freeModels = [], { home = null, orchestratorAgent = 
   };
   return {
     agents: {
-      codex: { ready: ready("codex"), cooldown: cdOf("codex"), models: ["luna", "terra", "sol", "astra"], labels: fam("codex"), unsupportedRoles: [] },
-      claude: { ready: ready("claude"), cooldown: cdOf("claude"), pacing: !!pacing?.active, models: ["haiku", "sonnet", "opus"], labels: fam("claude"), unsupportedRoles: [] },
-      gemini: { ready: ready("gemini"), cooldown: cdOf("gemini"), models: geminiFamilies(), labels: fam("gemini"), unsupportedRoles: [] },
-      free: { ready: providers.length > 0, cooldown: cdOf("free"), models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: settings.allowFree, unsupportedRoles: ["research"] },
+      codex: { ready: ready("codex") && !settings.freeMode, cooldown: cdOf("codex"), models: ["luna", "terra", "sol", "astra"], labels: fam("codex"), unsupportedRoles: [] },
+      claude: { ready: ready("claude") && !settings.freeMode, cooldown: cdOf("claude"), pacing: !!pacing?.active, models: ["haiku", "sonnet", "opus"], labels: fam("claude"), unsupportedRoles: [] },
+      gemini: { ready: ready("gemini") && !settings.freeMode, cooldown: cdOf("gemini"), models: geminiFamilies(), labels: fam("gemini"), unsupportedRoles: [] },
+      free: { ready: providers.length > 0, cooldown: cdOf("free"), models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: Boolean(settings.allowFree || settings.freeMode), unsupportedRoles: ["research"] },
     },
     roles: ROLES.map((id) => ({
       id,
@@ -191,11 +192,21 @@ export function teamOptions(freeModels = [], { home = null, orchestratorAgent = 
     })),
     presets: Object.keys(PRESETS),
     pacing: pacing?.active ? { ...pacing, prefer } : { active: false },
+    freeMode: Boolean(settings.freeMode),
   };
 }
 
 /** Text block appended to the orchestrator's system prompt. Empty in auto mode unless pacing is active. */
-export function teamGuide(team, { pacing = null, allowFree = loadSettings().allowFree } = {}) {
+export function teamGuide(team, { pacing = null, allowFree = loadSettings().allowFree, freeMode = loadSettings().freeMode } = {}) {
+  if (freeMode) {
+    return [
+      "Free mode is ON (no plan usage): all worker roles are forced to free or local models.",
+      "- Writing code: free (auto model) or local",
+      "- Quick & mechanical work: free (auto model) or local",
+      "- Reviews and second opinions: free (auto model) or local",
+      "Never delegate to codex, claude, or gemini while Free mode is on (delegations to paid plans are refused).",
+    ].join("\n");
+  }
   const freeAllowed = allowFree && team?.allow?.free !== false;
   const preferList = freeAllowed ? "codex, gemini or free" : "codex or gemini";
   const paceLine = pacing?.active

@@ -17,6 +17,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ensureModelReady, forcedModelFor, freeProviders, isDownError, isTimeoutError, pickModels, recordModelHealth } from "./freechat.js";
+import { createOrchestratorTools, getOrchToolSpecs } from "./mcp.js";
+import { loadSettings } from "./settings.js";
+import { parseFreeModel } from "./workers.js";
 
 const MAX_STEPS = Number(process.env.TOKENWISE_FREE_MAX_STEPS || 40);
 const MAX_MINUTES = Number(process.env.TOKENWISE_FREE_MAX_MINUTES) > 0 ? Number(process.env.TOKENWISE_FREE_MAX_MINUTES) : 15;
@@ -39,16 +42,16 @@ const out = (o) => process.stdout.write(redact(JSON.stringify(o)) + "\n");
 // ---------- path policy (used by every tool) ----------
 const ROOT = fs.realpathSync(process.cwd());
 // Returns the absolute path, or throws. `file: true` additionally blocks secret file names.
-function safePath(p, { file = false } = {}) {
-  const abs = path.resolve(ROOT, String(p || "."));
-  const rel = path.relative(ROOT, abs);
+function safePath(p, { file = false, root = ROOT } = {}) {
+  const abs = path.resolve(root, String(p || "."));
+  const rel = path.relative(root, abs);
   if (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) throw new Error(`path outside the working folder: ${p}`);
   const parts = rel ? rel.split(path.sep) : [];
   if (parts.some((x) => /[^\x20-\x7e]/.test(x))) throw new Error(`non-ASCII path names are not allowed: ${p}`);
   if (parts.some((x) => BLOCKED_DIRS.has(norm(x)))) throw new Error(`access to this folder is not allowed: ${p}`);
   if (file && parts.length && isSecret(parts[parts.length - 1])) throw new Error(`secret files are not accessible: ${p}`);
   // Every existing component, including the last, must not be a symbolic link.
-  let cur = ROOT;
+  let cur = root;
   for (const part of parts) {
     cur = path.join(cur, part);
     let st;
@@ -57,41 +60,41 @@ function safePath(p, { file = false } = {}) {
   }
   return abs;
 }
-const relp = (abs) => path.relative(ROOT, abs) || ".";
+const relp = (abs, root = ROOT) => path.relative(root, abs) || ".";
 
 // Read a regular file (never a FIFO, device, directory or symlink) through an O_NOFOLLOW descriptor.
-function readText(abs, max) {
+function readText(abs, max, root = ROOT) {
   const st = fs.lstatSync(abs);
-  if (!st.isFile()) throw new Error(`not a regular file: ${relp(abs)}`);
-  if (st.size > max) throw new Error(`file too large (${st.size} bytes, limit ${max}): ${relp(abs)}`);
+  if (!st.isFile()) throw new Error(`not a regular file: ${relp(abs, root)}`);
+  if (st.size > max) throw new Error(`file too large (${st.size} bytes, limit ${max}): ${relp(abs, root)}`);
   const fd = fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   try { return fs.readFileSync(fd, "utf8"); } finally { fs.closeSync(fd); }
 }
 // Write through an O_NOFOLLOW descriptor after re-checking the (possibly just created) parent folder.
-function writeText(abs, content) {
+function writeText(abs, content, root = ROOT) {
   if (Buffer.byteLength(content) > MAX_WRITE) throw new Error(`content too large (limit ${MAX_WRITE} bytes)`);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
-  safePath(path.dirname(abs));
-  try { if (!fs.lstatSync(abs).isFile()) throw new Error(`not a regular file: ${relp(abs)}`); } catch (e) { if (e.code !== "ENOENT") throw e; }
+  safePath(path.dirname(abs), { root });
+  try { if (!fs.lstatSync(abs).isFile()) throw new Error(`not a regular file: ${relp(abs, root)}`); } catch (e) { if (e.code !== "ENOENT") throw e; }
   const { O_WRONLY, O_CREAT, O_TRUNC, O_NOFOLLOW } = fs.constants;
   const fd = fs.openSync(abs, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0o644);
   try { fs.writeFileSync(fd, content); } finally { fs.closeSync(fd); }
 }
 
 // ---------- tools ----------
-function listDir(p = ".") {
-  const abs = safePath(p);
+function listDir(p = ".", root = ROOT) {
+  const abs = safePath(p, { root });
   const items = fs.readdirSync(abs, { withFileTypes: true }).filter((d) => !SKIP_DIRS.has(d.name)).slice(0, 300);
   return items.map((d) => (d.isDirectory() ? d.name + "/" : d.name)).join("\n") || "(empty)";
 }
-function readFile(p, start, end) {
-  const lines = readText(safePath(p, { file: true }), MAX_READ).split("\n");
+function readFile(p, start, end, root = ROOT) {
+  const lines = readText(safePath(p, { file: true, root }), MAX_READ, root).split("\n");
   const a = Math.max(1, Number(start) || 1), b = Math.min(lines.length, Number(end) || lines.length);
   const text = lines.slice(a - 1, b).map((l, i) => `${a + i}: ${l}`).join("\n");
   return text.length > 60000 ? text.slice(0, 60000) + "\n…(truncated; ask for a line range)" : text;
 }
 // Literal, case-insensitive substring search (no regex from model input).
-function search(pattern, p = ".") {
+function search(pattern, p = ".", root = ROOT) {
   const needle = String(pattern ?? "").toLowerCase();
   if (!needle) throw new Error("empty search pattern");
   const hits = [];
@@ -108,12 +111,12 @@ function search(pattern, p = ".") {
         const size = fs.lstatSync(f).size;
         if (size > MAX_SEARCH_FILE) continue;
         scanned += size;
-        text = readText(f, MAX_SEARCH_FILE);
+        text = readText(f, MAX_SEARCH_FILE, root);
       } catch { continue; }
-      text.split("\n").forEach((l, i) => { if (hits.length < MAX_HITS && l.toLowerCase().includes(needle)) hits.push(`${relp(f)}:${i + 1}: ${l.slice(0, 200)}`); });
+      text.split("\n").forEach((l, i) => { if (hits.length < MAX_HITS && l.toLowerCase().includes(needle)) hits.push(`${relp(f, root)}:${i + 1}: ${l.slice(0, 200)}`); });
     }
   };
-  walk(safePath(p));
+  walk(safePath(p, { root }));
   return hits.join("\n") || "(no matches)";
 }
 function writeFile(p, content) {
@@ -132,30 +135,53 @@ function replaceInFile(p, oldText, newText) {
 }
 
 const fn = (name, description, properties, required) => ({ type: "function", function: { name, description, parameters: { type: "object", properties, required } } });
-const READ_TOOLS = [
+export const READ_TOOLS = [
   fn("list_dir", "List files and folders (relative path, default '.').", { path: { type: "string" } }, []),
   fn("read_file", "Read a text file with line numbers; optionally a line range.", { path: { type: "string" }, start_line: { type: "integer" }, end_line: { type: "integer" } }, ["path"]),
   fn("search", "Search file contents for a literal text (case-insensitive substring, not a regex) under a folder.", { pattern: { type: "string" }, path: { type: "string" } }, ["pattern"]),
 ];
-const WRITE_TOOLS = [
+export const WRITE_TOOLS = [
   fn("replace_in_file", "Replace one exact, unique snippet in a file. Prefer this for edits.", { path: { type: "string" }, old_text: { type: "string" }, new_text: { type: "string" } }, ["path", "old_text", "new_text"]),
   fn("write_file", "Create or overwrite a whole file.", { path: { type: "string" }, content: { type: "string" } }, ["path", "content"]),
 ];
-function callTool(name, a) {
+export function getFreeOrchestratorTools(permissionMode = "ask") {
+  return [...READ_TOOLS, ...getOrchToolSpecs(permissionMode)];
+}
+function callTool(name, a, root = ROOT) {
   switch (name) {
-    case "list_dir": return listDir(a.path);
-    case "read_file": return readFile(a.path, a.start_line, a.end_line);
-    case "search": return search(a.pattern, a.path);
+    case "list_dir": return listDir(a.path, root);
+    case "read_file": return readFile(a.path, a.start_line, a.end_line, root);
+    case "search": return search(a.pattern, a.path, root);
     case "replace_in_file": return replaceInFile(a.path, a.old_text, a.new_text);
     case "write_file": return writeFile(a.path, a.content);
     default: throw new Error(`unknown tool ${name}`);
   }
 }
-const toolEvent = (name, a) => ({
-  list_dir: { kind: "search", text: `list ${a.path || "."}` }, read_file: { kind: "read", text: a.path },
-  search: { kind: "search", text: `search ${a.pattern}` }, replace_in_file: { kind: "edit", text: `edit ${a.path}` },
-  write_file: { kind: "edit", text: `write ${a.path}` },
-}[name] || { kind: "tool", text: name });
+const toolEvent = (name, a) => {
+  if (name === "delegate") {
+    const label = String(a.title || a.task || "").split("\n")[0].slice(0, 140);
+    return {
+      name,
+      kind: "delegate",
+      text: `${a.agent} ${a.model || ""} · ${a.effort || "default"}${a.write ? " · writes" : ""}: ${label}`,
+    };
+  }
+  if (name === "project_map") {
+    return { name, kind: "tool", text: "project map" + (a.prefix ? ` ${a.prefix}` : a.name ? ` ${a.name}` : "") };
+  }
+  if (typeof name === "string" && name.startsWith("job_")) {
+    const idPart = a.id || (Array.isArray(a.ids) ? a.ids.join(",") : "");
+    return { name, kind: "tool", text: `${name.replace("_", " ")}${idPart ? ` ${idPart}` : ""}` };
+  }
+  const mapped = {
+    list_dir: { kind: "search", text: `list ${a.path || "."}` },
+    read_file: { kind: "read", text: a.path },
+    search: { kind: "search", text: `search ${a.pattern}` },
+    replace_in_file: { kind: "edit", text: `edit ${a.path}` },
+    write_file: { kind: "edit", text: `write ${a.path}` },
+  }[name] || { kind: "tool", text: name };
+  return { name, ...mapped };
+};
 
 // ---------- the loop ----------
 async function chat(p, model, messages, tools, timeoutMs = 180_000) {
@@ -282,6 +308,211 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
   }
   emit({ type: "free.usage", usage });
   const message = last ? (last.status === 429 || /rate limit/i.test(last.message) ? `rate limit reached on every free provider (${last.message})` : last.message) : `stopped after ${MAX_STEPS} steps without finishing`;
+  emit({ type: "free.error", status: last?.status || 0, message });
+  return { ok: false, exitCode: 1, status: last?.status || 0, message, usage };
+}
+
+/**
+ * In-process orchestrator loop for "free" and "local" orchestrators.
+ * Exposes read-only repo tools (list_dir, read_file, search) + in-process MCP orchestrator tools
+ * (delegate, job_wait, job_status, job_diff, job_merge [respecting permissionMode], job_discard, job_test, project_map).
+ * Never exposes write/edit tools.
+ */
+export async function runFreeOrchestrator({
+  repo,
+  jobs,
+  chatId = null,
+  agent = "free",
+  model = "auto",
+  guide = "",
+  prompt = "",
+  permissionMode = null,
+  emit = out,
+  onUsage = null,
+  chatFn = null,
+  signal = null,
+  probeTimeout,
+} = {}) {
+  const root = fs.realpathSync(repo || jobs?.repo || process.cwd());
+  const effPerm = permissionMode || loadSettings().permissionMode;
+  const tools = getFreeOrchestratorTools(effPerm);
+  const mcp = createOrchestratorTools({ jobs, parent: chatId, permissionMode: effPerm });
+
+  const sysContent = guide || "You are the orchestrating agent in tokenwise studio.";
+  const messages = [
+    { role: "system", content: sysContent },
+    { role: "user", content: String(prompt || "") },
+  ];
+
+  const isLocal = agent === "local";
+  const pairs = [];
+  if (isLocal) {
+    const baseRaw = (process.env.TOKENWISE_OLLAMA_BASE || process.env.OLLAMA_HOST || "http://127.0.0.1:11434").replace(/\/+$/, "");
+    const base = baseRaw.endsWith("/v1") ? baseRaw : `${baseRaw}/v1`;
+    const localModel = model && model !== "local" && model !== "auto" && model !== "free"
+      ? model
+      : (process.env.TOKENWISE_LOCAL_MODEL || "gpt-oss:20b");
+    pairs.push([{ name: "ollama", base, key: process.env.OLLAMA_API_KEY || "ollama" }, localModel, true]);
+  } else {
+    const parsed = parseFreeModel(model === "free" ? "auto" : model);
+    const providerFilter = parsed.provider || undefined;
+    const forcedModel = (parsed.kind === "provider_model" || parsed.kind === "id") ? parsed.id : null;
+    const hint = parsed.kind === "hint" ? parsed.hint : undefined;
+    const providers = freeProviders({ providers: providerFilter });
+    if (chatFn) {
+      const p0 = providers[0] || { name: parsed.provider || "nvidia", base: "http://stub.local/v1", key: "stub" };
+      pairs.push([p0, forcedModel || "stub-free-model", true]);
+    } else if (!providers.length) {
+      const message = "no free provider: set NVIDIA_API_KEY, OPENROUTER_API_KEY, GROQ_API_KEY or MISTRAL_API_KEY";
+      emit({ type: "free.error", status: 0, message });
+      return { ok: false, exitCode: 2, status: 0, message };
+    } else {
+      for (const [i, p] of providers.entries()) {
+        try {
+          const explicitForced = i === 0 ? forcedModel : null;
+          const effForced = forcedModelFor(p, i === 0, explicitForced);
+          const list = await pickModels(p, i === 0, { hint, forcedModel: explicitForced });
+          for (const m of list) pairs.push([p, m, effForced === m]);
+        } catch (e) {
+          emit({ type: "free.skip", provider: p.name, status: Number(e?.status) || 0, message: String(e?.message || e).slice(0, 200) });
+        }
+      }
+    }
+  }
+
+  if (!pairs.length) {
+    const message = isLocal ? "no usable local model" : "no usable free model";
+    emit({ type: "free.error", status: 0, message });
+    return { ok: false, exitCode: 1, status: 0, message };
+  }
+
+  const callChat = async (p, m, msgs, tls, timeoutMs, step) => {
+    if (chatFn) {
+      if (chatFn.length >= 3) return await chatFn(p, m, msgs, tls, timeoutMs, step);
+      return await chatFn({ provider: p, model: m, messages: msgs, tools: tls, timeoutMs, step, signal });
+    }
+    return await chat(p, m, msgs, tls, timeoutMs);
+  };
+
+  let k = 0, usage = { prompt_tokens: 0, completion_tokens: 0 }, announced = -1, last = null;
+  const deadline = Date.now() + MAX_MINUTES * 60_000;
+  const checkStoppedOrExpired = () => {
+    if (signal?.aborted) {
+      return { ok: false, stopped: true, exitCode: 130, status: 0, message: "stopped by user", usage };
+    }
+    if (Date.now() < deadline) return null;
+    const message = `stopped after the ${MAX_MINUTES} minute time limit`;
+    emit({ type: "free.usage", usage });
+    emit({ type: "free.error", status: 0, message });
+    return { ok: false, exitCode: 1, status: 0, message, usage };
+  };
+
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const stopRes = checkStoppedOrExpired();
+    if (stopRes) return stopRes;
+    if (k >= pairs.length) break;
+    const [p, curModel, isForced] = pairs[k];
+    if (announced !== k) {
+      if (!isForced && !isLocal && !chatFn) {
+        try {
+          await ensureModelReady(p, curModel, { forced: false, timeoutMs: probeTimeout });
+        } catch (e) {
+          const status = Number(e?.status) || 0;
+          const message = isTimeoutError(e) ? `probe to ${p.name} timed out` : String(e?.message || e).slice(0, 200);
+          last = { status, message };
+          emit({ type: "free.skip", provider: p.name, model: curModel, status, message });
+          if (status === 401 || status === 403 || status === 429) { const name = p.name; while (k < pairs.length && pairs[k][0].name === name) k++; } else k++;
+          step--; continue;
+        }
+      }
+      emit({ type: "free.init", provider: p.name, model: curModel, agent: true, orchestrator: true, write: false });
+      announced = k;
+    }
+
+    const perCallCap = k + 1 < pairs.length ? 60_000 : 180_000;
+    let data;
+    try {
+      data = await callChat(p, curModel, messages, tools, Math.max(1000, Math.min(perCallCap, deadline - Date.now())), step);
+      if (!isLocal && !chatFn) recordModelHealth(p.name, curModel, true, "ok");
+    } catch (e) {
+      const status = Number(e?.status) || 0;
+      const message = isTimeoutError(e) ? `request to ${p.name} timed out` : String(e?.message || e).slice(0, 200);
+      if (!isLocal && !chatFn && isDownError(e)) recordModelHealth(p.name, curModel, false, message);
+      last = { status, message };
+      emit({ type: "free.skip", provider: p.name, model: curModel, status, message });
+      if (status === 401 || status === 403 || status === 429) { const name = p.name; while (k < pairs.length && pairs[k][0].name === name) k++; } else k++;
+      step--; continue;
+    }
+
+    const stepIn = data?.usage?.prompt_tokens || 0;
+    const stepOut = data?.usage?.completion_tokens || 0;
+    if (stepIn || stepOut) {
+      usage.prompt_tokens += stepIn;
+      usage.completion_tokens += stepOut;
+      if (onUsage) { try { onUsage({ ...usage }); } catch {} }
+    }
+
+    const msg = data?.choices?.[0]?.message || data?.message || data?.msg || data || {};
+    const thinkText = msg.reasoning_content || msg.thinking;
+    if (typeof thinkText === "string" && thinkText.trim()) {
+      emit({ type: "free.think", text: thinkText.trim() });
+    }
+    const calls = msg.tool_calls || [];
+    if (!calls.length) {
+      const text = String(msg.content || "");
+      emit({ type: "free.usage", provider: p.name, model: curModel, usage: { ...usage } });
+      emit({ type: "free.message", text });
+      return { ok: true, exitCode: 0, provider: p.name, model: curModel, text, usage };
+    }
+
+    if (typeof msg.content === "string" && msg.content.trim()) {
+      emit({ type: "free.message", text: msg.content.trim() });
+    }
+    messages.push({ role: "assistant", content: msg.content || null, tool_calls: calls });
+
+    for (const c of calls) {
+      const stopRes2 = checkStoppedOrExpired();
+      if (stopRes2) return stopRes2;
+      if (!c || typeof c !== "object") continue;
+      let a = {};
+      if (typeof c.function?.arguments === "string") {
+        try { a = JSON.parse(c.function.arguments || "{}"); } catch {}
+      } else if (c.function?.arguments && typeof c.function.arguments === "object") {
+        a = c.function.arguments;
+      }
+      if (!a || typeof a !== "object" || Array.isArray(a)) a = {};
+      const name = c.function?.name;
+      let result;
+      try {
+        if (!tools.some((t) => t.function.name === name)) {
+          throw new Error(`tool ${name} is not available in this mode`);
+        }
+        if (name === "list_dir" || name === "read_file" || name === "search") {
+          result = callTool(name, a, root);
+          emit({ type: "free.tool", ...toolEvent(name, a) });
+        } else {
+          const r = await mcp.callTool(name, a);
+          result = r.text;
+          if (r.isError) {
+            emit({ type: "free.tool", ...toolEvent(name, a), error: r.text });
+          } else {
+            emit({ type: "free.tool", ...toolEvent(name, a) });
+          }
+        }
+      } catch (e) {
+        result = `ERROR: ${e.message}`;
+        emit({ type: "free.tool", ...toolEvent(name, a), error: e.message });
+      }
+      messages.push({ role: "tool", tool_call_id: c.id || name, content: String(result) });
+    }
+  }
+
+  const message = last
+    ? (last.status === 429 || /rate limit/i.test(last.message)
+      ? `rate limit reached on every ${isLocal ? "local" : "free"} provider (${last.message})`
+      : last.message)
+    : `stopped after ${MAX_STEPS} steps without finishing`;
+  if (usage.prompt_tokens || usage.completion_tokens) emit({ type: "free.usage", usage: { ...usage } });
   emit({ type: "free.error", status: last?.status || 0, message });
   return { ok: false, exitCode: 1, status: last?.status || 0, message, usage };
 }

@@ -10,7 +10,8 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { saveUpload, resolveUpload, UPLOAD_BODY_LIMIT } from "./uploads.js";
 import { Jobs, gitSetupPreview, setupGit } from "./jobs.js";
-import { Chats, pickOrchestrator } from "./orchestrator.js";
+import { Chats, pickOrchestrator, modelToOrchAgent } from "./orchestrator.js";
+import { findAgy, syncGeminiMcp, readAgyMcpState } from "./antigravity.js";
 import { normalize } from "./events.js";
 import { limits } from "./limits.js";
 import { claudePacing, getCooldown } from "./fallback.js";
@@ -194,25 +195,48 @@ function loadBenchmarks() {
 // so the answer is cached briefly per model/effort.
 const orchCache = new Map();
 const CODEX_ORCH_MODELS = ["sol", "terra", "luna", "astra"];
+const GEMINI_ORCH_MODELS = ["hydrogen", "argon"];
 function orchestratorNow(model, effort) {
   if (!["low", "medium", "high", "xhigh"].includes(effort)) effort = "medium";
+  const settings = loadSettings();
+  if (settings.freeMode) {
+    const p = pickOrchestrator(jobs.home, model || "free", effort);
+    const cd = getCooldown(p.agent);
+    return { agent: p.agent, model: p.model, effort: p.effort, from: p.from || null, reason: p.reason || null, isLimit: false, explicit: false, freeMode: true, pacing: null, cooldown: cd ? { until: cd.until, reason: cd.reason } : null };
+  }
   if (CODEX_ORCH_MODELS.includes(model)) {
     const cd = getCooldown("codex");
-    return { agent: "codex", model, effort, reason: null, explicit: true, pacing: null, cooldown: cd ? { until: cd.until, reason: cd.reason } : null };
+    return { agent: "codex", model, effort, reason: null, explicit: true, freeMode: false, pacing: null, cooldown: cd ? { until: cd.until, reason: cd.reason } : null };
+  }
+  if (GEMINI_ORCH_MODELS.includes(model)) {
+    const cd = getCooldown("gemini");
+    return { agent: "gemini", model, effort, reason: null, explicit: true, freeMode: false, pacing: null, cooldown: cd ? { until: cd.until, reason: cd.reason } : null };
+  }
+  if (model === "free" || model === "auto" || (typeof model === "string" && model.includes(":"))) {
+    const cd = getCooldown("free");
+    return { agent: "free", model: model === "free" ? "auto" : model, effort, reason: null, explicit: true, freeMode: false, pacing: null, cooldown: cd ? { until: cd.until, reason: cd.reason } : null };
+  }
+  if (model === "local") {
+    const cd = getCooldown("local");
+    return { agent: "local", model: "local", effort, reason: null, explicit: true, freeMode: false, pacing: null, cooldown: cd ? { until: cd.until, reason: cd.reason } : null };
   }
   if (!["opus", "sonnet", "haiku"].includes(model)) model = "opus";
-  const key = `${jobs.home}|${model}|${effort}`, hit = orchCache.get(key);
+  const key = `${jobs.home}|${model}|${effort}|${settings.freeMode ? 1 : 0}`, hit = orchCache.get(key);
   let base;
   if (hit && Date.now() - hit.at < 5_000) {
     base = hit.v;
   } else {
     const p = pickOrchestrator(jobs.home, model, effort);
-    base = { agent: p.agent, model: p.model, effort: p.effort, reason: p.reason || null, isLimit: !!p.isLimit };
+    base = { agent: p.agent, model: p.model, effort: p.effort, from: p.from || null, reason: p.reason || null, isLimit: !!p.isLimit, freeMode: false };
     orchCache.set(key, { at: Date.now(), v: base });
   }
   const pacing = base.agent === "claude" ? claudePacing(jobs.home) : null;
   const cd = getCooldown(base.agent);
   return { ...base, pacing, cooldown: cd ? { until: cd.until, reason: cd.reason } : null };
+}
+
+function settingsPayload() {
+  return { ...settingsInfo(), agyInstalled: !!findAgy(), agyMcp: readAgyMcpState() };
 }
 
 // Update check for the sidebar: cached answer if fresh, else kick off a background check and answer latest:null.
@@ -250,8 +274,13 @@ export function startAutoUpdater({ firstDelayMs = 60_000, everyMs = 3600_000 } =
 // Exit after the response has been flushed (graceful: servers.json is cleaned by the exit hook).
 const exitSoon = (res) => { res.on?.("finish", () => setTimeout(() => hooks.exit(0), 100)); setTimeout(() => hooks.exit(0), 1500).unref?.(); };
 
-export function initServer({ repo: start, summarize, spawn, exec, studioStatus, studioMcpPath } = {}) {
-  serverChatOpts = { ...(summarize ? { summarize } : {}), ...(spawn ? { spawn } : {}) };
+export function initServer({ repo: start, summarize, spawn, chatFn, freeRunner, exec, studioStatus, studioMcpPath } = {}) {
+  serverChatOpts = {
+    ...(summarize ? { summarize } : {}),
+    ...(spawn ? { spawn } : {}),
+    ...(chatFn ? { chatFn } : {}),
+    ...(freeRunner ? { freeRunner } : {}),
+  };
   serverPrOpts = exec ? { exec } : {};
   serverStudioOpts = {
     ...(exec ? { exec } : {}),
@@ -337,7 +366,7 @@ export const handler = async (req, res) => {
       if (what === "doctor") return send(res, 200, doctor());
       if (what === "team") {
         const orch = url.searchParams.get("orch") || "";
-        const orchestratorAgent = CODEX_ORCH_MODELS.includes(orch) ? "codex" : "claude";
+        const orchestratorAgent = loadSettings().freeMode ? "free" : modelToOrchAgent(orch || "opus");
         return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions(await listFreeModels(), { home: jobs.home, orchestratorAgent }) });
       }
       if (what === "models") {
@@ -351,7 +380,7 @@ export const handler = async (req, res) => {
       }
       if (what === "mentions") return send(res, 200, { mentions: MENTIONS });
       if (what === "folders") return send(res, 200, loadFolders(jobs.home));
-      if (what === "settings") return send(res, 200, settingsInfo());
+      if (what === "settings") return send(res, 200, settingsPayload());
       if (what === "version") return send(res, 200, versionInfo());
       if (what === "limits") return send(res, 200, limits(jobs.home));
       if (what === "orchestrator") return send(res, 200, orchestratorNow(url.searchParams.get("model"), url.searchParams.get("effort")));
@@ -425,10 +454,14 @@ export const handler = async (req, res) => {
         return send(res, 200, parseStudioErrors(b.text, { repo }));
       }
       if (what === "settings") {
-        saveSettings(b);
+        const next = saveSettings(b);
+        let agyMcpSync = null;
+        if (b && Object.hasOwn(b, "allowGeminiOrchestrator")) {
+          agyMcpSync = syncGeminiMcp(Boolean(next.allowGeminiOrchestrator));
+        }
         orchCache.clear();
         clearDoctorCache();
-        return send(res, 200, settingsInfo());
+        return send(res, 200, { ...settingsPayload(), ...(agyMcpSync ? { agyMcpSync } : {}) });
       }
       if (what === "backup") return send(res, 200, backupAll(jobs, chats));
       if (what === "instructions") {
@@ -597,8 +630,8 @@ function registerServer(repoPath, url) {
 
 let activeServer = null;
 let shootoutPruneTimer = null;
-export function startServer({ repo: start, port = 4777, summarize, spawn, exec } = {}) {
-  initServer({ repo: start, summarize, spawn, exec });
+export function startServer({ repo: start, port = 4777, summarize, spawn, chatFn, freeRunner, exec } = {}) {
+  initServer({ repo: start, summarize, spawn, chatFn, freeRunner, exec });
   if (!shootoutPruneTimer) {
     shootoutPruneTimer = setInterval(() => maybePruneShootouts(true), 15 * 60 * 1000);
     shootoutPruneTimer.unref?.();

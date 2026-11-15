@@ -5,11 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { command, resolve, textOf } from "./workers.js";
-import { loadTeam, ROLES } from "./team.js";
+import { loadTeam, ROLES, JOB_ROLES } from "./team.js";
 import { allowedToolSet, scrubBase64Images, setStopFlag } from "./studioproxy.js";
 import { PLAYTEST_WORKER_SYSTEM_PROMPT, resolvePlaytestWorker, parsePlaytestReport } from "./playtest.js";
 
-export const JOB_ROLES = [...ROLES, "playtest"];
+export { JOB_ROLES };
 const STUDIO_PROXY_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "studioproxy.js");
 import { RATE_LIMIT, available, nearLimit, nextAgent, recordProviderCooldown, clearCooldown, getCooldown, formatHHMM } from "./fallback.js";
 import { recordGeminiRun } from "./gemini-usage.js";
@@ -279,10 +279,13 @@ export class Jobs {
       agent = pw.agent;
       if (!model) model = pw.model;
     }
+    if (settings.freeMode && (agent === "codex" || agent === "claude" || agent === "gemini")) {
+      throw new Error(`Free mode is on (no plan usage): paid worker '${agent}' is disabled. Use agent='free' or agent='local' instead.`);
+    }
     if (role === "images" && agent !== "codex") throw new Error("image generation needs Codex");
     const attachments = validateImages(this.repo, images);
     const team = loadTeam(this.home);
-    if (agent === "free" && team.allow.free === false) throw new Error("free workers are disabled in the team settings");
+    if (agent === "free" && team.allow.free === false && !settings.freeMode) throw new Error("free workers are disabled in the team settings");
     // Before starting: if this plan is near its limit, cooling down, or not usable, pick the next one in the chain.
     if (!noFallback) {
       const cd = getCooldown(agent);

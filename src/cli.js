@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // tokenwise-studio [path] [--port N] [--no-open] [--browser] [--pick]
 // tokenwise-studio export [--chat <id>] [--out <dir>]
-// tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-app] | uninstall [--dry-run] | update [--check]
+// tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-gemini] [--no-app] | uninstall [--dry-run] | update [--check]
 import { projectProblem } from "./projectpath.js";
 import path from "node:path";
 import fs from "node:fs";
@@ -11,6 +11,7 @@ import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { launcherHash, quitStudioServers } from "./autoupdate.js";
 import { installArgs } from "./version.js";
 import { BUNDLE_ID, APP_NAME, EXE, defaultAppPath, appJsonPath, findAppBundle, findOwnedAppBundles, verifyAppBundle } from "./appbundle.js";
+import { findAgy, agyMcpAddArgs, agyMcpRemoveArgs, syncGeminiMcp } from "./antigravity.js";
 
 const SRC = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(SRC);
@@ -25,8 +26,8 @@ Usage:
                                                    opens in the tokenwise studio app if installed, --browser forces a browser tab
   tokenwise-studio --pick                          choose the project in a macOS folder dialog
   tokenwise-studio doctor                          check which workers are ready
-  tokenwise-studio setup [--dry-run] [--no-mcp] [--no-app]
-                                                   register the MCP server with Claude Code (user scope)
+  tokenwise-studio setup [--dry-run] [--no-mcp] [--no-gemini] [--no-app]
+                                                   register the MCP server with Claude Code and Antigravity (Gemini)
                                                    and, on macOS, create ~/Applications/tokenwise studio.app
   tokenwise-studio uninstall [--dry-run]           undo what setup did
   tokenwise-studio update [--check]                install the latest version and rebuild the Mac app
@@ -193,66 +194,99 @@ ${hasIcon ? "  <key>CFBundleIconFile</key><string>AppIcon</string>\n" : ""}  <ke
   return app;
 }
 
-async function doSetup() {
-  const dry = has("--dry-run"), mac = process.platform === "darwin";
-  const wantMcp = !has("--no-mcp"), wantApp = !has("--no-app") && mac;
-  const targetApp = wantApp ? appPath() : defaultAppPath(home());
-  const mcpPath = path.join(SRC, "mcp.js");
-  const claude = wantMcp && hasClaude();
-  const registered = claude && mcpRegistered();
-  console.log(`tokenwise studio setup${dry ? " (dry run, nothing will be changed)" : ""}\n`);
-  console.log("This will:");
-  if (!wantMcp) console.log("  - skip MCP registration (--no-mcp)");
-  else if (!claude) console.log("  - skip MCP registration: the `claude` CLI was not found (install Claude Code, then re-run setup)");
-  else if (registered) console.log(`  - skip MCP registration: "${MCP_NAME}" is already registered with Claude Code`);
-  else console.log(`  - register the MCP server with Claude Code (user scope):\n      claude mcp add ${MCP_NAME} --scope user -- ${stableNode()} ${mcpPath}`);
-  if (has("--no-app")) console.log("  - skip the launcher app (--no-app)");
-  else if (!mac) console.log("  - skip the launcher app (macOS only)");
-  else console.log(`  - ${fs.existsSync(targetApp) ? "update" : "create"} the launcher app ${targetApp}\n      (log: ${logPath()})`);
-  console.log("");
+export async function doSetup(opts = {}) {
+  const args = opts.args || argv;
+  const flag = (f) => args.includes(f);
+  const log = opts.log || console.log;
+  const dry = flag("--dry-run"), mac = (opts.platform ?? process.platform) === "darwin";
+  const wantMcp = !flag("--no-mcp"), noGemini = flag("--no-gemini"), wantApp = !flag("--no-app") && mac;
+  const homeDir = opts.homeDir || home();
+  const targetApp = wantApp ? appPath() : defaultAppPath(homeDir);
+  const mcpPath = opts.mcpPath || path.join(SRC, "mcp.js");
+  const node = opts.nodePath || stableNode();
+  const claude = wantMcp && (opts.claudeInstalled !== undefined ? opts.claudeInstalled : hasClaude());
+  const registered = claude && (opts.claudeRegistered !== undefined ? opts.claudeRegistered : mcpRegistered());
+  const agy = wantMcp && (opts.agyBin !== undefined ? opts.agyBin : findAgy());
+  log(`tokenwise studio setup${dry ? " (dry run, nothing will be changed)" : ""}\n`);
+  log("This will:");
+  if (!wantMcp) log("  - skip MCP registration (--no-mcp)");
+  else if (!claude) log("  - skip MCP registration: the `claude` CLI was not found (install Claude Code, then re-run setup)");
+  else if (registered) log(`  - skip MCP registration: "${MCP_NAME}" is already registered with Claude Code`);
+  else log(`  - register the MCP server with Claude Code (user scope):\n      claude mcp add ${MCP_NAME} --scope user -- ${node} ${mcpPath}`);
+  if (wantMcp) {
+    if (noGemini) log("  - skip Antigravity MCP registration (--no-gemini)");
+    else if (agy) {
+      const agyArgs = agyMcpAddArgs({ name: MCP_NAME, nodePath: node, mcpPath });
+      log(`  - add tokenwise to Antigravity's MCP servers (Gemini can orchestrate):\n      ${agy} ${agyArgs.join(" ")}`);
+    }
+  }
+  if (flag("--no-app")) log("  - skip the launcher app (--no-app)");
+  else if (!mac) log("  - skip the launcher app (macOS only)");
+  else log(`  - ${fs.existsSync(targetApp) ? "update" : "create"} the launcher app ${targetApp}\n      (log: ${logPath()})`);
+  log("");
   if (!dry) {
     if (claude && !registered) {
-      const r = run("claude", ["mcp", "add", MCP_NAME, "--scope", "user", "--", stableNode(), mcpPath]);
-      console.log(r.ok ? "registered MCP server with Claude Code" : `MCP registration failed: ${r.out.trim()}`);
+      const execClaude = opts.claudeRunner || ((c, a) => run(c, a));
+      const r = execClaude("claude", ["mcp", "add", MCP_NAME, "--scope", "user", "--", node, mcpPath]);
+      log(r.ok ? "registered MCP server with Claude Code" : `MCP registration failed: ${r.out.trim()}`);
+    }
+    if (wantMcp && !noGemini && agy) {
+      const r = syncGeminiMcp(true, { agyBin: agy, name: MCP_NAME, nodePath: node, mcpPath, runner: opts.runner, force: true, home: homeDir });
+      log(r.ok ? "registered MCP server with Antigravity" : `Antigravity MCP registration failed: ${r.error || "unknown error"}`);
     }
     if (wantApp) {
-      try { console.log(`created ${buildApp(targetApp)}`); } catch (e) { console.error(`could not create the launcher app: ${e.message}`); }
+      try { log(`created ${buildApp(targetApp)}`); } catch (e) { console.error(`could not create the launcher app: ${e.message}`); }
     }
-    console.log("");
+    log("");
   }
-  await doDoctor();
-  if (!dry) console.log(`\nDone. Start it with: cd your-project && tokenwise-studio${wantApp ? `  (or open ${targetApp})` : ""}`);
+  if (!opts.skipDoctor) await doDoctor();
+  if (!dry) log(`\nDone. Start it with: cd your-project && tokenwise-studio${wantApp ? `  (or open ${targetApp})` : ""}`);
 }
 
 function ownedApp(p = appPath()) {
   return Boolean(verifyAppBundle(p, { requireExecutable: false }));
 }
 
-function doUninstall() {
-  const dry = has("--dry-run");
-  console.log(`tokenwise studio uninstall${dry ? " (dry run, nothing will be changed)" : ""}\n`);
-  const claude = hasClaude(), registered = claude && mcpRegistered();
+export function doUninstall(opts = {}) {
+  const args = opts.args || argv;
+  const flag = (f) => args.includes(f);
+  const log = opts.log || console.log;
+  const dry = flag("--dry-run");
+  const homeDir = opts.homeDir || home();
+  log(`tokenwise studio uninstall${dry ? " (dry run, nothing will be changed)" : ""}\n`);
+  const claude = opts.claudeInstalled !== undefined ? opts.claudeInstalled : hasClaude();
+  const registered = claude && (opts.claudeRegistered !== undefined ? opts.claudeRegistered : mcpRegistered());
   if (registered) {
-    console.log(`  - remove the MCP registration: claude mcp remove ${MCP_NAME} --scope user`);
+    log(`  - remove the MCP registration: claude mcp remove ${MCP_NAME} --scope user`);
     if (!dry) {
-      const r = run("claude", ["mcp", "remove", MCP_NAME, "--scope", "user"]);
-      console.log(r.ok ? "    removed" : `    failed: ${r.out.trim()}`);
+      const execClaude = opts.claudeRunner || ((c, a) => run(c, a));
+      const r = execClaude("claude", ["mcp", "remove", MCP_NAME, "--scope", "user"]);
+      log(r.ok ? "    removed" : `    failed: ${r.out.trim()}`);
     }
-  } else console.log("  - MCP registration: nothing to remove");
-  const owned = findOwnedAppBundles({ home });
-  const def = defaultAppPath(home());
+  } else log("  - MCP registration: nothing to remove");
+  const agy = opts.agyBin !== undefined ? opts.agyBin : findAgy();
+  if (agy) {
+    const rmArgs = agyMcpRemoveArgs({ name: MCP_NAME });
+    log(`  - remove Antigravity MCP registration: ${agy} ${rmArgs.join(" ")}`);
+    if (!dry) {
+      const r = syncGeminiMcp(false, { agyBin: agy, name: MCP_NAME, runner: opts.runner, home: homeDir });
+      log(r.ok ? "    removed" : `    failed: ${r.error || "unknown error"}`);
+    }
+  }
+  const owned = findOwnedAppBundles({ home: () => homeDir });
+  const def = defaultAppPath(homeDir);
   if (owned.length) {
     for (const p of owned) {
-      console.log(`  - delete ${p}`);
-      if (!dry) { fs.rmSync(p, { recursive: true, force: true }); console.log("    deleted"); }
+      log(`  - delete ${p}`);
+      if (!dry) { fs.rmSync(p, { recursive: true, force: true }); log("    deleted"); }
     }
-    if (!dry) fs.rmSync(appJsonPath(home()), { force: true });
-  } else if (fs.existsSync(def)) console.log(`  - ${def} exists but is not ours (bundle id mismatch); leaving it alone`);
+    if (!dry) fs.rmSync(appJsonPath(homeDir), { force: true });
+  } else if (fs.existsSync(def)) log(`  - ${def} exists but is not ours (bundle id mismatch); leaving it alone`);
   else {
-    console.log("  - launcher app: nothing to remove");
-    if (!dry) fs.rmSync(appJsonPath(home()), { force: true });
+    log("  - launcher app: nothing to remove");
+    if (!dry) fs.rmSync(appJsonPath(homeDir), { force: true });
   }
-  console.log("\nTo finish, run: npm uninstall -g tokenwise-studio");
+  log("\nTo finish, run: npm uninstall -g tokenwise-studio");
 }
 
 async function doUpdate() {

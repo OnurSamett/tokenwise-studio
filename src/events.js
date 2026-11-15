@@ -96,6 +96,13 @@ function antigravity(e, base) {
   const s = e.step_update;
   if (s && s.state === "DONE" && s.step_type === "tool") {
     const p = s.tool_info?.parameters || {};
+    if (s.tool_name === "call_mcp_tool" && p.ToolName) {
+      return [toolUse({ name: `mcp__${p.ServerName || "tokenwise-studio"}__${p.ToolName}`, input: p.Arguments || {} }, base)];
+    }
+    const mcpMatch = s.tool_name?.match(/^mcp_([^_]+)_(delegate|project_map|job_[a-z]+)$/);
+    if (mcpMatch) {
+      return [toolUse({ name: `mcp__${mcpMatch[1]}__${mcpMatch[2]}`, input: p }, base)];
+    }
     const kind = AGY_TOOL[s.tool_name] || "tool";
     const target = p.Path || p.TargetFile || p.AbsolutePath || p.DirectoryPath || p.SearchPath || "";
     if (kind === "cmd") return [{ kind, text: short(p.CommandLine || p.Command || s.tool_name, 200) }];
@@ -142,16 +149,17 @@ export function normalize(agent, entry, base) {
     return [{ kind: /error|fail|denied/i.test(l) ? "error" : "meta", text: short(l, 400) }];
   }
   let e; try { e = JSON.parse(entry.line); } catch { return [{ kind: "say", text: entry.line }]; }
-  if (agent === "codex" || agent === "local") return codex(e, base);
-  if (agent === "claude") return claude(e, base);
-  if (e.event) return antigravity(e, base);
   if (typeof e.type === "string" && e.type.startsWith("free.")) {
-    if (e.type === "free.init") return [{ kind: "meta", text: `free API · ${e.provider} · ${e.model}` }];
+    if (e.type === "free.init") return [{ kind: "meta", text: `${e.provider === "ollama" ? "local" : "free API"} · ${e.provider} · ${e.model}` }];
     if (e.type === "free.skip") return [{ kind: "meta", text: `${e.model ? `${e.provider} · ${e.model}` : e.provider} unavailable (${e.message}); trying the next ${e.model ? "free model" : "free provider"}` }];
     if (e.type === "free.message") return [{ kind: "say", text: e.text }];
+    if (e.type === "free.think") return [{ kind: "think", text: e.text }];
     if (e.type === "free.tool") return [{ kind: e.error ? "error" : e.kind, text: e.error ? `${e.text}: ${e.error}` : e.text }];
     if (e.type === "free.usage") return [{ kind: "usage", text: `${e.usage?.prompt_tokens ?? 0} in · ${e.usage?.completion_tokens ?? 0} out` }];
     if (e.type === "free.error") return [{ kind: "error", text: e.message }];
   }
+  if (agent === "codex" || agent === "local") return codex(e, base);
+  if (agent === "claude") return claude(e, base);
+  if (e.event) return antigravity(e, base);
   return gemini(e);
 }

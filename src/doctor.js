@@ -49,7 +49,8 @@ function localCheck() {
 function freeCheck() {
   const list = freeProviders().map((p) => p.name);
   const via = list.join(" → ") || null;
-  const optIn = loadSettings().allowFree;
+  const s = loadSettings();
+  const optIn = Boolean(s.allowFree || s.freeMode);
   return { installed: list.length > 0, signedIn: list.length > 0 && optIn, via, providers: list, optIn, fix: !list.length ? "export NVIDIA_API_KEY=…" : optIn ? null : "enable in Settings or TOKENWISE_ALLOW_FREE=1" };
 }
 
@@ -57,5 +58,5 @@ let cache = null;
 export function clearDoctorCache() { cache = null; }
 export function doctor() {
   if (!cache || Date.now() - cache.at > 60000) cache = { at: Date.now(), value: check() };
-  return cache.value;
+  return { ...cache.value, free: freeCheck() };
 }

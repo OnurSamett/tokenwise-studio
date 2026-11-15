@@ -5,8 +5,9 @@ import os from "node:os";
 import path from "node:path";
 
 export const WORKER_AGENTS = ["codex", "gemini", "claude", "free", "local"];
+export const ORCH_AGENTS = ["claude", "codex", "gemini", "free", "local"];
 export const PERMISSION_MODES = ["ask", "auto-apply", "plan-only"];
-export const ORCH_MODELS = ["opus", "sonnet", "haiku"];
+export const ORCH_MODELS = ["opus", "sonnet", "haiku", "sol", "terra", "luna", "hydrogen", "argon", "free", "local"];
 export const EFFORTS = ["low", "medium", "high", "xhigh"];
 export const ORCH_FALLBACK_MODES = ["auto", "ask", "off"];
 export const LANGUAGES = ["auto", "en", "tr"];
@@ -19,6 +20,9 @@ export const DEFAULTS = Object.freeze({
   defaultModel: "opus",
   defaultEffort: "medium",
   orchFallback: "auto",
+  orchFallbackOrder: [...ORCH_AGENTS], // claude -> codex -> gemini -> free -> local
+  allowGeminiOrchestrator: true, // adds tokenwise to Antigravity's global MCP settings (on by default)
+  freeMode: false, // Free mode — no plan usage: orchestrator & all workers forced to free/local
   limitThreshold: 90,
   saveClaudeForPlanning: true, // keep Claude for planning and steer workers away once Claude passes pacingThreshold
   pacingThreshold: 70, // 50–89%, below limitThreshold
@@ -41,7 +45,11 @@ export const DEFAULTS = Object.freeze({
   playtestAllowInput: true, // allow keyboard/mouse input simulation in Roblox Studio playtests
 });
 
-const cloneDefaults = () => ({ ...DEFAULTS, fallbackOrder: [...DEFAULTS.fallbackOrder] });
+const cloneDefaults = () => ({
+  ...DEFAULTS,
+  orchFallbackOrder: [...DEFAULTS.orchFallbackOrder],
+  fallbackOrder: [...DEFAULTS.fallbackOrder],
+});
 const isObj = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
 const settingsFile = () => path.join(os.homedir(), ".tokenwise-studio", "settings.json");
 
@@ -51,6 +59,11 @@ const VALIDATORS = {
   defaultModel: (v) => ORCH_MODELS.includes(v) || `defaultModel must be one of ${ORCH_MODELS.join(", ")}`,
   defaultEffort: (v) => EFFORTS.includes(v) || `defaultEffort must be one of ${EFFORTS.join(", ")}`,
   orchFallback: (v) => ORCH_FALLBACK_MODES.includes(v) || `orchFallback must be one of ${ORCH_FALLBACK_MODES.join(", ")}`,
+  orchFallbackOrder: (v) =>
+    (Array.isArray(v) && v.length === ORCH_AGENTS.length && new Set(v).size === ORCH_AGENTS.length && v.every((a) => ORCH_AGENTS.includes(a))) ||
+    `orchFallbackOrder must be a permutation of ${ORCH_AGENTS.join(", ")}`,
+  allowGeminiOrchestrator: (v) => typeof v === "boolean" || "allowGeminiOrchestrator must be true or false",
+  freeMode: (v) => typeof v === "boolean" || "freeMode must be true or false",
   limitThreshold: (v) => (typeof v === "number" && Number.isFinite(v) && v >= 50 && v <= 100) || "limitThreshold must be a number between 50 and 100",
   saveClaudeForPlanning: (v) => typeof v === "boolean" || "saveClaudeForPlanning must be true or false",
   pacingThreshold: (v) => (typeof v === "number" && Number.isFinite(v) && v >= 50 && v <= 89) || "pacingThreshold must be a number between 50 and 89",
@@ -92,13 +105,29 @@ function loadStored() {
 
 /** Apply environment variable overrides onto a settings object and record locked keys. */
 function applyEnv(base) {
-  const settings = { ...base, fallbackOrder: [...base.fallbackOrder] };
+  const settings = {
+    ...base,
+    orchFallbackOrder: [...(base.orchFallbackOrder || DEFAULTS.orchFallbackOrder)],
+    fallbackOrder: [...base.fallbackOrder],
+  };
   const envLocked = {};
 
   const orchEnv = process.env.TOKENWISE_ORCH_FALLBACK;
   if (orchEnv === "0" || orchEnv === "1") {
     settings.orchFallback = orchEnv === "0" ? "off" : "auto";
     envLocked.orchFallback = true;
+  }
+
+  const geminiOrchEnv = process.env.TOKENWISE_ALLOW_GEMINI_ORCH;
+  if (geminiOrchEnv === "0" || geminiOrchEnv === "1") {
+    settings.allowGeminiOrchestrator = geminiOrchEnv === "1";
+    envLocked.allowGeminiOrchestrator = true;
+  }
+
+  const freeModeEnv = process.env.TOKENWISE_FREE_MODE;
+  if (freeModeEnv === "0" || freeModeEnv === "1") {
+    settings.freeMode = freeModeEnv === "1";
+    envLocked.freeMode = true;
   }
 
   const thEnv = process.env.TOKENWISE_LIMIT_THRESHOLD;

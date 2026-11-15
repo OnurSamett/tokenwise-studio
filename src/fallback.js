@@ -90,13 +90,15 @@ export function preferredWorkers(home, { write, role, pacing = null, settings = 
 }
 
 export function available(agent, { write, role } = {}, home) {
+  const s = loadSettings();
+  if (s.freeMode && (agent === "codex" || agent === "claude" || agent === "gemini")) return false;
   if (role === "research" && (agent === "free" || agent === "local")) return false;
   if (role === "images" && agent !== "codex") return false;
   if (role === "playtest" && agent !== "claude" && agent !== "codex") return false;
   if (inCooldown(agent)) return false;
   const d = doctor()[agent];
   if (!d || !d.installed || !d.signedIn) return false;
-  if (agent === "free") return loadSettings().allowFree && (!home || loadTeam(home).allow.free !== false);
+  if (agent === "free") return (s.freeMode || s.allowFree) && (!home || s.freeMode || loadTeam(home).allow.free !== false);
   return true;
 }
 

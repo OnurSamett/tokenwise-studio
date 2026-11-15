@@ -26,8 +26,9 @@ const KNOWN = {
 };
 
 /** Configured providers in priority order: [{ name, base, key, prefer, onlyFree }]. */
-export function freeProviders() {
-  const order = (process.env.TOKENWISE_FREE_PROVIDERS || "nvidia,openrouter,groq,mistral,custom").split(",").map((s) => s.trim());
+export function freeProviders({ providers: providerFilter } = {}) {
+  const rawOrder = providerFilter || process.env.TOKENWISE_FREE_PROVIDERS || "nvidia,openrouter,groq,mistral,custom";
+  const order = rawOrder.split(",").map((s) => s.trim()).filter(Boolean);
   const out = [];
   for (const name of order) {
     if (name === "custom") {
@@ -179,13 +180,14 @@ function applyHint(ids, hint) {
   return [...head, ...tail];
 }
 
-export function forcedModelFor(p, first = false) {
+export function forcedModelFor(p, first = false, explicitForced = null) {
+  if (explicitForced) return String(explicitForced).trim() || null;
   return (process.env[`TOKENWISE_${p.name.toUpperCase()}_MODEL`] || (first ? process.env.TOKENWISE_FREE_MODEL : "") || "").trim() || null;
 }
 
 /** Up to 3 candidate models for this provider, best first (forced goes first with ranked fallbacks; hint reorders ranked ids). */
-export async function pickModels(p, first = false, { hint = process.env.TOKENWISE_FREE_HINT } = {}) {
-  const forced = forcedModelFor(p, first);
+export async function pickModels(p, first = false, { hint = process.env.TOKENWISE_FREE_HINT, forcedModel = null } = {}) {
+  const forced = forcedModelFor(p, first, forcedModel);
   let ranked = [];
   if (forced) {
     try { ranked = await rankedModels(p); } catch {}

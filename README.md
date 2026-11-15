@@ -49,7 +49,7 @@ The benchmark numbers are a snapshot and are updated in the app's Model guide. T
 
 More:
 
-- **Never stuck on a limit.** Workers fall back along `codex → gemini → claude → free → local`. The orchestrator itself moves from Claude to Codex Sol near a limit.
+- **Never stuck on a limit.** Workers fall back along `codex → gemini → claude → free → local`. The orchestrator itself falls back along `claude → codex → gemini → free → local`, and **Free mode** runs both orchestrator and workers with zero paid plan usage.
 - **Native Mac app.** One window per project, Dock icon, desktop notifications.
 - **Five kinds of worker.** Codex, Claude, Gemini (via Antigravity), free NVIDIA models, and local Ollama.
 - **Tests and checks.** A per-project test command runs in the worker's worktree, and a combined check runs after Apply.
@@ -85,12 +85,13 @@ npm install -g github:OnurSamett/tokenwise-studio
 tokenwise-studio setup
 ```
 
-`setup` prints what it will change, then does two things:
+`setup` prints what it will change, then does three things:
 
 - registers the MCP server with Claude Code at user scope (`claude mcp add tokenwise-studio --scope user`), if the `claude` CLI is installed and it is not registered yet;
+- adds `tokenwise-studio` to Antigravity's MCP servers (`agy mcp add tokenwise-studio …`), if `agy` is installed, so Gemini can also act as orchestrator;
 - on macOS, creates the app `~/Applications/tokenwise studio.app`: a normal Mac app with its own window and Dock icon (no browser tab). Opening it restores your last projects, or shows a welcome window to pick one; ⌘O opens another project (File > Open Recent lists earlier ones), each project gets its own window. Servers keep running when you quit the app, so they stay shared with terminal use.
 
-Run `tokenwise-studio setup --dry-run` to see the plan without changing anything (`--no-mcp` and `--no-app` skip a part). Then start it from your project:
+Run `tokenwise-studio setup --dry-run` to see the plan without changing anything (`--no-mcp`, `--no-gemini` and `--no-app` skip individual parts). Then start it from your project:
 
 ```bash
 cd your-project && tokenwise-studio     # options: --port N, --no-open, --browser, --pick
@@ -201,7 +202,7 @@ Per project you choose how the orchestrator picks workers. **Auto** (default) le
 Click the gear button in the sidebar footer to open **Settings** (stored in `~/.tokenwise-studio/settings.json`; environment variables still override and lock individual fields):
 
 - **Permission mode**: `ask` (default; you review and apply worker diffs), `auto-apply` (the orchestrator reviews diffs and merges them itself), or `plan-only` (plans and read-only research only; write delegation is blocked).
-- **Orchestrator defaults & limits**: preselected model/effort, what happens when Claude reaches its limit (`switch automatically`, `ask me`, or `off`), fast mode (`--settings fastMode` for Claude, `service_tier="fast"` for Codex), limit threshold % (50–100), worker fallback order, and opting in to free hosted models.
+- **Orchestrator defaults, fallback & Free mode**: preselected model/effort (Claude, Codex, Gemini, Free, or Local), what happens when an orchestrator reaches its limit (`switch automatically`, `ask me`, or `off`), reorderable orchestrator fallback chain (`claude → codex → gemini → free → local`), allowing Gemini as orchestrator (registers/removes `tokenwise-studio` in Antigravity's global MCP settings), **Free mode — no plan usage** (forces orchestrator and all workers to free/local and refuses paid agents), fast mode (`--settings fastMode` for Claude, `service_tier="fast"` for Codex), limit threshold % (50–100), worker fallback order, and opting in to free hosted models.
 - **Notifications & updates**: desktop notification and update check toggles, and the **Updates** mode (see Updating).
 - **Turn budget**: off by default, presets of 50k / 100k / 250k / 500k tokens per turn (accepts 10k–50M in `settings.json`), counting the orchestrator and the workers it starts (see Turn budget below).
 - **Tests**: run tests before Apply, and the test command (see Tests below).
@@ -331,7 +332,7 @@ Jobs fall back automatically along `codex → gemini → claude → free → loc
 
 - **Before starting**, a job skips any plan at or above `TOKENWISE_LIMIT_THRESHOLD` (default 90%) of its 5-hour or weekly limit, or a worker that isn't signed in.
 - **While running**, a job that fails with a rate/usage-limit error is re-run on the next worker; the UI shows "↪ took over from Codex · hit a rate limit", and `job_wait` follows the move.
-- **The orchestrator itself** moves from Claude to Codex (read-only, same delegation tools) when Claude is near its limit or hits it mid-turn; the UI shows "↪ Codex Sol took over". Gemini cannot orchestrate because Antigravity has no per-session MCP. Disable with `TOKENWISE_ORCH_FALLBACK=0`.
+- **The orchestrator itself** falls back along `claude → codex → gemini → free → local` (reorderable in Settings) when the active orchestrator is near its limit or hits a rate limit mid-turn. Gemini orchestrates via Antigravity (enabled by default; registered during `setup` or toggled in Settings). Free and local orchestrators run an in-process read-only tool loop with the same delegation and review tools (`delegate`, `job_wait`, `job_status`, `job_diff`, `job_merge`, `job_discard`, `job_test`, `project_map`, plus read-only repo tools) and a compact running chat history. Turn on **Free mode** in the model picker or Settings to run with zero paid plan usage. Disable automatic orchestrator switching with `TOKENWISE_ORCH_FALLBACK=0`.
 - **local**: an Ollama model driven by Codex CLI's `--oss` mode: free, unlimited, full agent (`brew install ollama && ollama pull gpt-oss:20b`).
 - **free**: free-tier hosted APIs, tried in order: NVIDIA (`NVIDIA_API_KEY` from build.nvidia.com), OpenRouter `:free`, Groq, Mistral, or any OpenAI-compatible endpoint (`TOKENWISE_FREE_BASE` + `TOKENWISE_FREE_KEY`). A rate limit on one moves to the next. Free models run inside studio's own small tool loop (`src/freeagent.js`), so they read the repo and, in write jobs, edit files in their worktree; they cannot run commands, and paths are confined to the worktree with symlinks, `.git` and secret files blocked. Used only after you opt in with `TOKENWISE_ALLOW_FREE=1`, since free tiers may use prompts for training.
 
