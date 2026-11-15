@@ -27,10 +27,9 @@ function extractVars(str) {
 }
 
 test("i18n dictionaries: matching keys, non-empty strings, and matching placeholders", () => {
-  assert.deepEqual(SUPPORTED_LANGUAGES, ["en", "tr"]);
+  assert.deepEqual(SUPPORTED_LANGUAGES, ["en", "tr", "es", "de", "fr"]);
   const enKeys = Object.keys(DICT.en).sort();
-  const trKeys = Object.keys(DICT.tr).sort();
-  assert.deepEqual(trKeys, enKeys);
+  for (const language of SUPPORTED_LANGUAGES) assert.deepEqual(Object.keys(DICT[language]).sort(), enKeys, `dictionary keys: ${language}`);
 
   for (const key of enKeys) {
     assert.equal(hasKey(key, "en"), true, `hasKey(en) missing ${key}`);
@@ -40,11 +39,7 @@ test("i18n dictionaries: matching keys, non-empty strings, and matching placehol
       assert.equal(typeof val, "string", `${lang}.${key} must be a string`);
       assert.ok(val.trim().length > 0, `${lang}.${key} must not be empty`);
     }
-    assert.deepEqual(
-      extractVars(DICT.tr[key]),
-      extractVars(DICT.en[key]),
-      `placeholder mismatch for key: ${key}`,
-    );
+    for (const language of SUPPORTED_LANGUAGES) assert.deepEqual(extractVars(DICT[language][key]), extractVars(DICT.en[key]), `placeholder mismatch for ${language}.${key}`);
   }
 });
 
@@ -76,7 +71,13 @@ test("all static i18n keys referenced in ui/index.html and src/notify.js exist i
 
 test("t(), tp(), and resolveLanguage() work across en, tr, and auto", () => {
   assert.equal(resolveLanguage("en"), "en");
+  assert.equal(tp("teamCard.delegated", 0, {}, "fr"), t("teamCard.delegated.one", { n: 0 }, "fr"));
+  assert.equal(tp("teamCard.delegated", 2, {}, "fr"), t("teamCard.delegated.other", { n: 2 }, "fr"));
   assert.equal(resolveLanguage("tr"), "tr");
+  for (const lang of ["es", "de", "fr"]) {
+    assert.equal(resolveLanguage(lang), lang);
+    assert.equal(resolveLanguage("auto", { navigatorLang: `${lang}-${lang.toUpperCase()}` }), lang);
+  }
   assert.equal(resolveLanguage("auto", { navigatorLang: "tr-TR" }), "tr");
   assert.equal(resolveLanguage("auto", { navigatorLang: "tr" }), "tr");
   assert.equal(resolveLanguage("auto", { navigatorLang: "en-US" }), "en");
@@ -111,7 +112,7 @@ test("translateReason() and translateNotice() localize dynamic backend messages"
 });
 
 test("settings.js validates and persists language setting in temp HOME", () => {
-  assert.deepEqual(LANGUAGES, ["auto", "en", "tr"]);
+  assert.deepEqual(LANGUAGES, ["auto", "en", "tr", "es", "de", "fr"]);
   assert.equal(DEFAULTS.language, "auto");
 
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "tw-i18n-home-"));
@@ -130,8 +131,12 @@ test("settings.js validates and persists language setting in temp HOME", () => {
     const savedAuto = saveSettings({ language: "auto" });
     assert.equal(savedAuto.language, "auto");
 
-    assert.throws(() => saveSettings({ language: "fr" }), /language must be one of auto, en, tr/);
-    assert.throws(() => saveSettings({ language: 123 }), /language must be one of auto, en, tr/);
+    for (const language of ["es", "de", "fr"]) {
+      assert.equal(saveSettings({ language }).language, language);
+      assert.equal(loadSettings().language, language);
+    }
+    assert.throws(() => saveSettings({ language: "it" }), /language must be one of auto, en, tr, es, de, fr/);
+    assert.throws(() => saveSettings({ language: 123 }), /language must be one of auto, en, tr, es, de, fr/);
   } finally {
     process.env.HOME = prevHome;
     fs.rmSync(tmpHome, { recursive: true, force: true });

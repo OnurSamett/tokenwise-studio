@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add Spanish, German and French interface and macOS welcome translations, including locale-aware dates, plural forms and dictation language selection. Translations were machine-generated and should receive native-speaker review.
+
 ## 0.10.1
 
 Security fixes from the v0.10.0 audit.

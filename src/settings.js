@@ -10,7 +10,7 @@ export const PERMISSION_MODES = ["ask", "auto-apply", "plan-only"];
 export const ORCH_MODELS = ["opus", "sonnet", "haiku", "sol", "terra", "luna", "hydrogen", "argon", "free", "local"];
 export const EFFORTS = ["low", "medium", "high", "xhigh"];
 export const ORCH_FALLBACK_MODES = ["auto", "ask", "off"];
-export const LANGUAGES = ["auto", "en", "tr"];
+export const LANGUAGES = ["auto", "en", "tr", "es", "de", "fr"];
 export const AUTO_UPDATE_MODES = ["auto", "notify", "off"];
 export const PLAYTEST_MODELS = ["sonnet", "haiku", "opus", "codex:sol", "codex:terra"];
 

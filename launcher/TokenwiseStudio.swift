@@ -411,8 +411,8 @@ func resolveDictationLocale(_ hint: String?) -> Locale {
         return Locale(identifier: raw)
     }
     if let setting = readStudioLanguageSetting()?.lowercased() {
-        if setting == "tr" { return Locale(identifier: "tr-TR") }
-        if setting == "en" { return Locale(identifier: "en-US") }
+        let locales = ["tr": "tr-TR", "en": "en-US", "es": "es-ES", "de": "de-DE", "fr": "fr-FR"]
+        if let id = locales[setting] { return Locale(identifier: id) }
     }
     if let first = Locale.preferredLanguages.first, !first.isEmpty {
         if first.lowercased().hasPrefix("tr") { return Locale(identifier: "tr-TR") }
@@ -677,14 +677,23 @@ final class DictationController {
 // MARK: - welcome window
 
 func resolveWelcomeLanguage() -> String {
-    if let setting = readStudioLanguageSetting()?.lowercased() {
-        if setting == "tr" { return "tr" }
-        if setting == "en" { return "en" }
-    }
-    if let first = Locale.preferredLanguages.first?.lowercased(), first.hasPrefix("tr") {
-        return "tr"
+    let supported = ["en", "tr", "es", "de", "fr"]
+    if let setting = readStudioLanguageSetting()?.lowercased(), supported.contains(setting) { return setting }
+    if let first = Locale.preferredLanguages.first?.lowercased() {
+        let primary = first.split(separator: "-").first.map(String.init) ?? ""
+        if supported.contains(primary) { return primary }
     }
     return "en"
+}
+
+func welcomeText(_ en: String, _ tr: String, _ es: String, _ de: String, _ fr: String) -> String {
+    switch resolveWelcomeLanguage() {
+    case "tr": return tr
+    case "es": return es
+    case "de": return de
+    case "fr": return fr
+    default: return en
+    }
 }
 
 func defaultNewProjectParent() -> String {
@@ -889,9 +898,8 @@ final class WelcomeWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         p.canChooseDirectories = true
         p.canChooseFiles = false
         p.allowsMultipleSelection = false
-        let isTr = resolveWelcomeLanguage() == "tr"
-        p.prompt = isTr ? "Projeyi Aç" : "Open Project"
-        p.message = isTr ? "tokenwise studio için bir proje klasörü seç" : "Choose a project folder for tokenwise studio"
+        p.prompt = welcomeText("Open Project", "Projeyi Aç", "Abrir proyecto", "Projekt öffnen", "Ouvrir le projet")
+        p.message = welcomeText("Choose a project folder for tokenwise studio", "tokenwise studio için bir proje klasörü seç", "Elige una carpeta de proyecto para tokenwise studio", "Wähle einen Projektordner für tokenwise studio", "Choisissez un dossier de projet pour tokenwise studio")
         p.beginSheetModal(for: window) { [weak self] r in
             if r == .OK, let u = p.url {
                 self?.openValidFolder(u.path)
@@ -908,9 +916,8 @@ final class WelcomeWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         if isExistingDirectory(lastParent) {
             p.directoryURL = URL(fileURLWithPath: lastParent, isDirectory: true)
         }
-        let isTr = resolveWelcomeLanguage() == "tr"
-        p.prompt = isTr ? "Seç" : "Choose"
-        p.message = isTr ? "Yeni proje klasörü için konum seç" : "Choose a parent location for the new project folder"
+        p.prompt = welcomeText("Choose", "Seç", "Elegir", "Auswählen", "Choisir")
+        p.message = welcomeText("Choose a parent location for the new project folder", "Yeni proje klasörü için konum seç", "Elige la ubicación de la nueva carpeta del proyecto", "Wähle einen Speicherort für den neuen Projektordner", "Choisissez l’emplacement du nouveau dossier de projet")
         p.beginSheetModal(for: window) { [weak self] r in
             guard let self = self, r == .OK, let u = p.url else { return }
             let std = (u.path as NSString).standardizingPath
@@ -922,7 +929,6 @@ final class WelcomeWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
     }
 
     private func createProjectFolder(parent rawParent: String, name rawName: String, gitInit: Bool) {
-        let isTr = resolveWelcomeLanguage() == "tr"
         func sendError(_ msg: String) {
             if let arg = encodeJSArg(["message": msg]) {
                 evalJS("window.__newProjectError && window.__newProjectError(\(arg))")
@@ -930,33 +936,33 @@ final class WelcomeWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         if name.isEmpty {
-            sendError(isTr ? "Bir klasör adı gir." : "Enter a folder name.")
+            sendError(welcomeText("Enter a folder name.", "Bir klasör adı gir.", "Introduce un nombre para la carpeta.", "Gib einen Ordnernamen ein.", "Saisissez un nom de dossier."))
             return
         }
         if name.contains("/") || name.contains("\0") || name == "." || name == ".." {
-            sendError(isTr ? "Geçerli bir klasör adı gir (eğik çizgi içeremez)." : "Enter a valid folder name (slashes are not allowed).")
+            sendError(welcomeText("Enter a valid folder name (slashes are not allowed).", "Geçerli bir klasör adı gir (eğik çizgi içeremez).", "Introduce un nombre válido (sin barras).", "Gib einen gültigen Ordnernamen ohne Schrägstriche ein.", "Saisissez un nom valide sans barre oblique."))
             return
         }
         let parent = (rawParent as NSString).standardizingPath
         guard isExistingDirectory(parent) else {
-            sendError(isTr ? "Seçilen konum bulunamadı." : "Selected location does not exist.")
+            sendError(welcomeText("Selected location does not exist.", "Seçilen konum bulunamadı.", "La ubicación elegida no existe.", "Der ausgewählte Speicherort existiert nicht.", "L’emplacement sélectionné n’existe pas."))
             return
         }
         let target = (parent as NSString).appendingPathComponent(name)
         if FileManager.default.fileExists(atPath: target) {
-            sendError(isTr ? "Bu konumda aynı adda bir klasör veya dosya zaten var." : "A folder or file with that name already exists there.")
+            sendError(welcomeText("A folder or file with that name already exists there.", "Bu konumda aynı adda bir klasör veya dosya zaten var.", "Ya existe una carpeta o archivo con ese nombre.", "Dort existiert bereits eine Datei oder ein Ordner mit diesem Namen.", "Un fichier ou dossier portant ce nom existe déjà à cet emplacement."))
             return
         }
         do {
             try FileManager.default.createDirectory(atPath: target, withIntermediateDirectories: false, attributes: nil)
         } catch {
-            sendError((isTr ? "Klasör oluşturulamadı: " : "Could not create folder: ") + error.localizedDescription)
+            sendError(welcomeText("Could not create folder: ", "Klasör oluşturulamadı: ", "No se pudo crear la carpeta: ", "Ordner konnte nicht erstellt werden: ", "Impossible de créer le dossier : ") + error.localizedDescription)
             return
         }
         if gitInit {
             let res = runGitInit(at: target)
             if !res.ok {
-                sendError((isTr ? "Klasör oluşturuldu ama git init başarısız oldu: " : "Folder created, but git init failed: ") + (res.error ?? ""))
+                sendError(welcomeText("Folder created, but git init failed: ", "Klasör oluşturuldu ama git init başarısız oldu: ", "Carpeta creada, pero git init falló: ", "Ordner erstellt, aber git init ist fehlgeschlagen: ", "Dossier créé, mais git init a échoué : ") + (res.error ?? ""))
                 return
             }
         }
@@ -1280,6 +1286,15 @@ final class WelcomeWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
               cancel: "Vazgeç",
               createOpen: "Oluştur ve Aç",
             },
+            es: {
+              subtitle: "Elige una carpeta de proyecto para empezar a trabajar con tu equipo de agentes.", openFolder: "Abrir carpeta…", newFolder: "Nueva carpeta de proyecto…", dropHint: "o arrastra aquí una carpeta de proyecto", dropActive: "Suelta la carpeta para abrir el proyecto", recentHeading: "Proyectos recientes", emptyRecents: "Aún no hay proyectos recientes. Abre una carpeta existente o crea una nueva.", git: "git", nonGit: "sin git", justNow: "ahora", minAgo: "hace {n} min", hrAgo: "hace {n} h", dayAgo: "hace {n} d", modalTitle: "Nueva carpeta de proyecto", nameLabel: "Nombre de carpeta", namePlaceholder: "mi-proyecto", locLabel: "Ubicación", choose: "Elegir…", gitInit: "Inicializar repositorio Git (git init)", cancel: "Cancelar", createOpen: "Crear y abrir",
+            },
+            de: {
+              subtitle: "Wähle einen Projektordner, um mit deinem Agententeam zu arbeiten.", openFolder: "Ordner öffnen…", newFolder: "Neuer Projektordner…", dropHint: "oder ziehe einen Projektordner hierher", dropActive: "Ordner ablegen, um das Projekt zu öffnen", recentHeading: "Zuletzt verwendete Projekte", emptyRecents: "Noch keine Projekte vorhanden. Öffne einen Ordner oder erstelle einen neuen.", git: "git", nonGit: "kein git", justNow: "gerade eben", minAgo: "vor {n} Min.", hrAgo: "vor {n} Std.", dayAgo: "vor {n} Tg.", modalTitle: "Neuer Projektordner", nameLabel: "Ordnername", namePlaceholder: "mein-projekt", locLabel: "Speicherort", choose: "Auswählen…", gitInit: "Git-Repository initialisieren (git init)", cancel: "Abbrechen", createOpen: "Erstellen und öffnen",
+            },
+            fr: {
+              subtitle: "Choisissez un dossier de projet pour travailler avec votre équipe d’agents.", openFolder: "Ouvrir un dossier…", newFolder: "Nouveau dossier de projet…", dropHint: "ou déposez un dossier de projet ici", dropActive: "Déposez le dossier pour ouvrir le projet", recentHeading: "Projets récents", emptyRecents: "Aucun projet récent. Ouvrez un dossier existant ou créez-en un.", git: "git", nonGit: "sans git", justNow: "à l’instant", minAgo: "il y a {n} min", hrAgo: "il y a {n} h", dayAgo: "il y a {n} j", modalTitle: "Nouveau dossier de projet", nameLabel: "Nom du dossier", namePlaceholder: "mon-projet", locLabel: "Emplacement", choose: "Choisir…", gitInit: "Initialiser un dépôt Git (git init)", cancel: "Annuler", createOpen: "Créer et ouvrir",
+            },
           };
 
           let state = \(initJson);
@@ -1287,7 +1302,7 @@ final class WelcomeWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
           let parentShort = state.defaultParentShort || parentPath;
 
           const $ = (id) => document.getElementById(id);
-          const L = () => STRINGS[state.lang === "tr" ? "tr" : "en"];
+          const L = () => STRINGS[state.lang] || STRINGS.en;
           const post = (msg) => window.webkit?.messageHandlers?.twWelcome?.postMessage(msg);
 
           function fmtTime(ts) {
@@ -1302,7 +1317,7 @@ final class WelcomeWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
             const days = Math.floor(hrs / 24);
             if (days < 14) return s.dayAgo.replace("{n}", String(days));
             try {
-              return new Date(ts).toLocaleDateString(state.lang === "tr" ? "tr-TR" : "en-US", { month: "short", day: "numeric" });
+              return new Date(ts).toLocaleDateString(({ tr: "tr-TR", en: "en-US", es: "es-ES", de: "de-DE", fr: "fr-FR" }[state.lang] || "en-US"), { month: "short", day: "numeric" });
             } catch {
               return "";
             }
@@ -2018,9 +2033,8 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         p.canChooseDirectories = true
         p.canChooseFiles = false
         p.allowsMultipleSelection = false
-        let isTr = resolveWelcomeLanguage() == "tr"
-        p.prompt = isTr ? "Değiştir" : "Switch Project"
-        p.message = isTr ? "Bu pencerede açılacak proje klasörünü seç" : "Choose a project folder to open in this window"
+        p.prompt = welcomeText("Switch Project", "Değiştir", "Cambiar proyecto", "Projekt wechseln", "Changer de projet")
+        p.message = welcomeText("Choose a project folder to open in this window", "Bu pencerede açılacak proje klasörünü seç", "Elige una carpeta de proyecto para abrir en esta ventana", "Wähle einen Projektordner für dieses Fenster", "Choisissez un dossier de projet à ouvrir dans cette fenêtre")
         p.beginSheetModal(for: win.window) { [weak self, weak win] r in
             guard let self = self else { return }
             self.panelOpen = false
@@ -2071,9 +2085,8 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         p.canChooseDirectories = true
         p.canChooseFiles = false
         p.allowsMultipleSelection = false
-        let isTr = resolveWelcomeLanguage() == "tr"
-        p.prompt = isTr ? "Projeyi Aç" : "Open Project"
-        p.message = isTr ? "tokenwise studio için bir proje seç" : "Choose a project for tokenwise studio"
+        p.prompt = welcomeText("Open Project", "Projeyi Aç", "Abrir proyecto", "Projekt öffnen", "Ouvrir le projet")
+        p.message = welcomeText("Choose a project for tokenwise studio", "tokenwise studio için bir proje seç", "Elige un proyecto para tokenwise studio", "Wähle ein Projekt für tokenwise studio", "Choisissez un projet pour tokenwise studio")
         let r = p.runModal()
         panelOpen = false
         if r == .OK, let u = p.url { openProject(repo: u.path, url: nil) }
