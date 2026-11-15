@@ -29,6 +29,7 @@ import { currentVersion, installSource, latestVersion, cachedLatest, compareVers
 import { runAutoUpdate, readyFor, readUpdateState, needsAppSetup, runSetup, quitStudioServers, logUpdate } from "./autoupdate.js";
 import { parseStudioErrors, formatStudioPrompt } from "./studiolog.js";
 import { listRepoFiles, readRepoTextFile, resolveRepoImage, worktreeDiff, splitDiff, chatFiles } from "./workspace.js";
+import { projectProblem, assertNotRealHomeInTests } from "./projectpath.js";
 import { prPreconditions, commitAndOpenPr, selectAppliedJobs, formatChangesBy } from "./pr.js";
 import { notify, prNotice } from "./notify.js";
 import { startShootout, listShootouts, getShootout, pickShootout, discardShootout, pruneExpiredShootouts } from "./shootout.js";
@@ -49,9 +50,13 @@ let serverPrOpts = {};
 
 const RECENTS = path.join(os.homedir(), ".tokenwise-studio", "recents.json");
 function recents() {
-  try { const r = JSON.parse(fs.readFileSync(RECENTS, "utf8")); return Array.isArray(r) ? r.filter((x) => typeof x === "string") : []; } catch { return []; }
+  try {
+    const r = JSON.parse(fs.readFileSync(RECENTS, "utf8"));
+    return Array.isArray(r) ? r.filter((x) => typeof x === "string" && !projectProblem(x, { allowTemp: !!process.env.NODE_TEST_CONTEXT })) : [];
+  } catch { return []; }
 }
 function remember(p) {
+  assertNotRealHomeInTests();
   const list = [p, ...recents().filter((x) => x !== p)].slice(0, 8);
   try { fs.mkdirSync(path.dirname(RECENTS), { recursive: true }); fs.writeFileSync(RECENTS, JSON.stringify(list, null, 2)); } catch {}
   return list;
@@ -439,7 +444,8 @@ export const handler = async (req, res) => {
       }
       if (what === "project") {
         const p = path.resolve(String(b.path || "").replace(/^~(?=$|[\\/])/, os.homedir()));
-        if (!fs.existsSync(p) || !fs.statSync(p).isDirectory()) throw new Error(`not a folder: ${p}`);
+        const bad = projectProblem(p, { allowTemp: true });
+        if (bad) throw new Error(bad);
         openProject(p);
         if (serverUrl) registerServer(p, serverUrl);
         return send(res, 200, state());

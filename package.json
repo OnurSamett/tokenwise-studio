@@ -33,7 +33,7 @@
   "scripts": {
     "ui": "node src/ui.js",
     "mcp": "node src/mcp.js",
-    "test": "node --test test/"
+    "test": "node scripts/test.js"
   },
   "engines": {
     "node": ">=20"

@@ -2,6 +2,7 @@
 // tokenwise-studio [path] [--port N] [--no-open] [--browser] [--pick]
 // tokenwise-studio export [--chat <id>] [--out <dir>]
 // tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-app] | uninstall [--dry-run] | update [--check]
+import { projectProblem } from "./projectpath.js";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
@@ -296,9 +297,15 @@ async function startUi() {
   let dir = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--port");
   if (has("--pick")) { dir = pickFolder(); if (!dir) process.exit(0); }
   const repo = path.resolve(dir || process.cwd());
+  const bad = projectProblem(repo, { allowTemp: true });
+  if (bad) { console.error(`tokenwise studio: cannot use this project folder: ${bad}`); process.exit(2); }
   let url = null;
   for (let p = first; p <= first + 10 && !url; p++) {
-    try { url = await startServer({ repo, port: p }); } catch (e) { if (e.code !== "EADDRINUSE") throw e; }
+    try { url = await startServer({ repo, port: p }); } catch (e) {
+      if (e.code === "EADDRINUSE") continue;
+      console.error(`tokenwise studio: could not start in ${repo}: ${e.code === "EACCES" || e.code === "EPERM" || e.code === "EROFS" ? "no permission to write there" : e.message}`);
+      process.exit(2);
+    }
   }
   if (!url) { console.error(`tokenwise studio: ports ${first}-${first + 10} are all busy`); process.exit(1); }
   startAutoUpdater();

@@ -76,6 +76,18 @@ func isExistingDirectory(_ path: String) -> Bool {
     return FileManager.default.fileExists(atPath: path, isDirectory: &d) && d.boolValue
 }
 
+/// Why a folder cannot be a project, or nil when it can: must be a writable directory, not a temp folder, not a system folder.
+func projectProblem(_ path: String) -> String? {
+    let std = (path as NSString).standardizingPath
+    guard isExistingDirectory(std) else { return "The folder does not exist: \(std)" }
+    let tmpRoots = ["/tmp", "/private/tmp", "/var/folders", "/private/var/folders", (NSTemporaryDirectory() as NSString).standardizingPath]
+    for t in tmpRoots where !t.isEmpty && (std == t || std.hasPrefix(t + "/")) { return "Temporary folders are not used as projects: \(std)" }
+    let sys = ["/", "/Library", "/System", "/usr", "/bin", "/sbin", "/etc", "/var", "/private", "/Applications", "/Volumes"]
+    if sys.contains(std) || std.hasPrefix("/Library/") || std.hasPrefix("/System/") { return "This is a system folder, not a project: \(std)" }
+    if !FileManager.default.isWritableFile(atPath: std) { return "tokenwise studio cannot write to this folder: \(std)" }
+    return nil
+}
+
 func shortenHomePath(_ path: String) -> String {
     let std = (path as NSString).standardizingPath
     let home = (homeDirURL.path as NSString).standardizingPath
@@ -193,7 +205,7 @@ func readRecentEntries(appState: AppState? = nil) -> [RecentEntry] {
         }
         guard let p = rawPath, !p.isEmpty else { continue }
         let std = (p as NSString).standardizingPath
-        guard !seen.contains(std), isExistingDirectory(std) else { continue }
+        guard !seen.contains(std), projectProblem(std) == nil else { continue }
         seen.insert(std)
         let ts = explicitTs ?? st.lastOpened?[std] ?? st.lastOpened?[p] ?? inferredLastOpenedMs(std)
         let name = (std as NSString).lastPathComponent
@@ -1847,7 +1859,7 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         var valid: [SavedWindowState] = []
         for entry in state.windows {
             let std = (entry.repo as NSString).standardizingPath
-            guard !seen.contains(std), isExistingDirectory(std) else { continue }
+            guard !seen.contains(std), projectProblem(std) == nil else { continue }
             seen.insert(std)
             valid.append(SavedWindowState(repo: std, frame: entry.frame))
         }
@@ -1884,6 +1896,14 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
     func openProject(repo: String, url: URL?, frame: WindowFrameData? = nil, recordOpened: Bool = true) {
         handledLaunch = true
         let std = (repo as NSString).standardizingPath
+        if let problem = projectProblem(std) {
+            let a = NSAlert()
+            a.messageText = "This folder cannot be opened as a project"
+            a.informativeText = problem
+            a.runModal()
+            if windows.isEmpty { showWelcomeWindow() }
+            return
+        }
         closeWelcomeWindow()
         if recordOpened {
             rememberRecent(std)
