@@ -30,7 +30,10 @@ function codex(e, base) {
       if (it.status === "failed" || it.error) return [{ kind: "error", text: short(`${it.tool}: ${it.error?.message || it.error || it.result?.content?.[0]?.text || "failed"}`, 300) }];
       let a = it.arguments; if (typeof a === "string") { try { a = JSON.parse(a); } catch { a = {}; } }
       a = a || {};
-      if (it.tool === "delegate" || it.tool === "project_map" || String(it.tool).startsWith("job_")) return [toolUse({ name: `mcp__tokenwise-studio__${it.tool}`, input: a }, base)];
+      if (it.tool === "delegate" || it.tool === "project_map" || String(it.tool).startsWith("job_") || it.server === "roblox_playtest") {
+        const prefix = it.server === "roblox_playtest" ? "mcp__roblox-playtest__" : "mcp__tokenwise-studio__";
+        return [toolUse({ name: `${prefix}${it.tool}`, input: a }, base)];
+      }
       return [{ kind: "tool", text: `${it.tool} ${short(JSON.stringify(a), 120)}` }];
     }
   }
@@ -54,6 +57,10 @@ function toolUse(t, base) {
   if (n === "Grep" || n === "Glob") return { kind: "search", text: `${n.toLowerCase()} ${i.pattern || ""}` };
   if (n === "WebSearch") return { kind: "search", text: short(i.query || "web search", 120) };
   if (n === "WebFetch") return { kind: "read", text: short(i.url || "web page", 120) };
+  if (n.startsWith("mcp__roblox-playtest__")) {
+    const tool = n.slice("mcp__roblox-playtest__".length);
+    return { kind: "tool", text: `playtest: ${tool} ${short(JSON.stringify(i), 100)}` };
+  }
   return { kind: "tool", text: `${n} ${short(JSON.stringify(i), 120)}` };
 }
 

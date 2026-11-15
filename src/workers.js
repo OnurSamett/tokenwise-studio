@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { findAgy, agySlug } from "./antigravity.js";
 import { freeProviders } from "./freechat.js";
+import { ALL_PLAYTEST_ALLOWLIST } from "./studioproxy.js";
 
 export const AGENTS = ["codex", "claude", "gemini", "local", "free"];
 const FREEAGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), "freeagent.js");
@@ -103,7 +104,10 @@ export function resolve({ agent, model, effort, hint = null, provider = null, al
 }
 
 /** Build the CLI invocation. `lastFile` receives Codex's final message. */
-export function command({ agent, model, effort, via, hint: specHint, provider: specProvider }, { task, cwd, write, role = null, lastFile, images = [] }) {
+export function command({ agent, model, effort, via, hint: specHint, provider: specProvider }, { task, cwd, write, role = null, lastFile, images = [], playtest = null }) {
+  if (role === "playtest" && agent !== "claude" && agent !== "codex") {
+    throw new Error(`${agent} does not support Roblox playtest; use claude or codex`);
+  }
   if (agent === "gemini" && via === "antigravity") {
     const args = ["-p", task, "--model", model, "--output-format", "stream-json", "--print-timeout", "0s",
       "--mode", write ? "accept-edits" : "plan"];
@@ -144,6 +148,23 @@ export function command({ agent, model, effort, via, hint: specHint, provider: s
     return { cmd: process.execPath, args: [FREEAGENT, ...(write ? ["--write"] : []), task], env };
   }
   if (agent === "codex") {
+    if (role === "playtest" && playtest) {
+      const prompt = playtest.systemPrompt ? `<instructions>\n${playtest.systemPrompt}\n</instructions>\n\n${task}` : task;
+      const mcpFlags = [
+        "-c", `mcp_servers.roblox_playtest.command=${JSON.stringify(process.execPath)}`,
+        "-c", `mcp_servers.roblox_playtest.args=${JSON.stringify(playtest.proxyArgs || [])}`,
+        "-c", 'mcp_servers.roblox_playtest.default_tools_approval_mode="approve"',
+      ];
+      return {
+        cmd: "codex",
+        args: ["exec", "--json", "--skip-git-repo-check", "-C", cwd,
+          "--sandbox", "read-only",
+          "-m", model, "-c", `model_reasoning_effort="${effort}"`,
+          "-c", 'web_search="disabled"',
+          ...mcpFlags,
+          "-o", lastFile, ...images.flatMap((p) => ["-i", p]), "--", prompt],
+      };
+    }
     return {
       cmd: "codex",
       args: ["exec", "--json", "--skip-git-repo-check", "-C", cwd,
@@ -154,6 +175,26 @@ export function command({ agent, model, effort, via, hint: specHint, provider: s
     };
   }
   if (agent === "claude") {
+    if (role === "playtest" && playtest) {
+      const mcpTools = (playtest.allowedTools || ALL_PLAYTEST_ALLOWLIST).map((n) => `mcp__roblox-playtest__${n}`);
+      const allowed = ["Read", "Glob", "Grep", ...mcpTools];
+      const addDirs = [...images.map((p) => path.dirname(p)), ...(playtest.playtestDir ? [playtest.playtestDir] : [])];
+      return {
+        cmd: "claude",
+        args: [
+          "-p", [task, imageNote(images)].filter(Boolean).join("\n\n"),
+          "--model", model, "--effort", effort,
+          "--mcp-config", playtest.mcpConfigFile,
+          "--strict-mcp-config",
+          "--permission-mode", "default",
+          "--disallowedTools", "Edit", "Write", "MultiEdit", "NotebookEdit", "Bash",
+          "--allowedTools", ...allowed,
+          ...(playtest.systemPrompt ? ["--append-system-prompt", playtest.systemPrompt] : []),
+          ...addDirs.flatMap((d) => ["--add-dir", d]),
+          "--output-format", "stream-json", "--verbose",
+        ],
+      };
+    }
     const allowed = [
       ...(images.length ? ["Read"] : []),
       ...(role === "research" ? ["WebSearch", "WebFetch"] : []),

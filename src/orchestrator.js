@@ -20,6 +20,9 @@ import { listJsonCached } from "./jobs.js";
 import { getProjectMapSummary } from "./projectmap.js";
 import { writeShootoutGate, clearShootoutGate } from "./shootout.js";
 import { removeChatFromFolders } from "./folders.js";
+import { scrubBase64Images } from "./studioproxy.js";
+import { findRojoProject } from "./studiolog.js";
+import { locateStudioMcp } from "./studiomcp.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard", "job_test", "project_map"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -30,8 +33,11 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(go test:*)", "Bash(cargo test:*)"];
 
 /** Orchestrator guide for a permission mode, plus (optional) project instructions, turn budget, non-git, project map, and quota pacing rules. */
-export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, projectMap = null, shootout = false, mentions = [] } = {}) {
+export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, projectMap = null, shootout = false, mentions = [], robloxPlaytest = null } = {}) {
   const parts = [baseGuide(permissionMode)];
+  if (robloxPlaytest?.rojo && robloxPlaytest?.studioMcpFound) {
+    parts.push("ROBLOX STUDIO PLAYTEST READY: a Rojo project file and StudioMCP were detected. You may start a read-only delegate(..., write=false, role=\"playtest\") job when the user asks to test the game; do NOT request Studio edit, execute_luau, or upload tools.");
+  }
   if (!isGit) parts.push("NON-GIT PROJECT: this folder is not a git repository. Write jobs (write=true) require git and will be rejected. Only use read-only jobs (write=false) here; if the user asks for file changes, explain that they can set up git from the studio UI (or run git init and make an initial commit) first.");
   if (turnBudget > 0) parts.push(`TURN TOKEN BUDGET: each turn has about ${fmtTokens(turnBudget)} tokens for you plus all workers. Keep tasks tight. When delegate answers that the budget is spent, start no more jobs: wrap up with what is done and what remains.`);
   if (pacing?.active) {
@@ -55,6 +61,7 @@ export function buildGuide(permissionMode = "ask", { instructions = null, turnBu
 
 function baseGuide(permissionMode) {
   const researchRule = "- Web research: for questions that need current web information (latest releases, docs, advisories, prices, news), delegate a read-only job (write=false) with role=\"research\" to a web-capable worker (claude, gemini or codex — not free/local). Instruct the worker to answer with inline numbered citations [1] and end with a \"Sources\" list of the http/https URLs it actually opened (never guessed or unvisited URLs). Keep those inline [1] citations and the Sources list in your reply.";
+  const playtestRule = "- Roblox playtesting: when the user asks to test or playtest the game in Roblox Studio, start a READ-ONLY job (write=false, role=\"playtest\"; omit agent to use the configured playtest model, or pass claude/codex). Specify what to test (start play, move/try actions, inspect console, stop play). Playtest jobs expose only read/play/input tools — NEVER ask for place edit, asset upload, or Luau execution tools.";
   if (permissionMode === "plan-only") {
     return `You are the ORCHESTRATOR in tokenwise studio running in PLAN-ONLY mode. You plan, investigate and answer, without making or delegating any file edits.
 Use the tokenwise-studio tools to hand read-only research pieces to cheaper workers instead of doing everything yourself:
@@ -62,6 +69,7 @@ Use the tokenwise-studio tools to hand read-only research pieces to cheaper work
 - Pick effort from: many interacting parts, ambiguity, prior failure, costly mistake. 0 signals -> low, 1 -> medium, 2+ -> high.
 - PLAN-ONLY MODE IS ACTIVE: do NOT edit files yourself, do NOT pass write=true to delegate (it will be rejected), and do NOT call job_merge. Only read-only (write=false) delegation is permitted.
 ${researchRule}
+${playtestRule}
 - Dispatch independent read-only pieces in parallel, then job_wait each.
 - Forward attached images with delegate images: [repo-relative upload paths] to Codex or Claude workers that need them. Other workers continue without images.
 - Workers cannot see this chat: every task must name files, expected behaviour and the done-condition.
@@ -81,6 +89,7 @@ Use the tokenwise-studio tools to hand self-contained pieces to cheaper workers 
 - write=true for edits: the worker gets its own git worktree from HEAD. Then job_wait and review every job_diff.
 ${mergeRule}
 ${researchRule}
+${playtestRule}
 - Dispatch independent pieces in parallel, then wait for each.
 - Forward attached images with delegate images: [repo-relative upload paths] to Codex or Claude workers that need them. Other workers continue without images.
 - Workers cannot see this chat: every task must name files, expected behaviour and the done-condition.
@@ -295,13 +304,14 @@ export class Chats {
       projectMap: getProjectMapSummary(this.jobs.repo),
       shootout: !!shootout,
       mentions: mentionNames,
+      robloxPlaytest: { rojo: !!findRojoProject(this.jobs.repo), studioMcpFound: !!locateStudioMcp() },
     });
     const tg = [teamGuide(team, { pacing, allowFree }), overrideGuide(roleOverride, { allowFree })].filter(Boolean).join("\n");
     const guide = tg ? baseG + "\n\n" + tg : baseG;
     const allowedTools = settings.permissionMode === "plan-only" ? ALLOWED.filter((t) => t !== "mcp__tokenwise-studio__job_merge") : ALLOWED;
 
     const log = fs.createWriteStream(this.f(id, "jsonl"), { flags: "a" });
-    const w = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line, turn: ti, agent: turn.agent, ...(stream === "user" ? { images: turn.images, ...(turn.mentions ? { mentions: turn.mentions } : {}) } : {}) }) + "\n");
+    const w = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line: scrubBase64Images(line), turn: ti, agent: turn.agent, ...(stream === "user" ? { images: turn.images, ...(turn.mentions ? { mentions: turn.mentions } : {}) } : {}) }) + "\n");
     w("user", message);
     if (turn.handoff) w("handoff", JSON.stringify({ from: "claude", to: "codex", reason: turn.handoff.reason }));
 

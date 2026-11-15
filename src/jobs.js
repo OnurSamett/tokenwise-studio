@@ -3,8 +3,14 @@ import { validateImages } from "./uploads.js";
 import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { command, resolve, textOf } from "./workers.js";
 import { loadTeam, ROLES } from "./team.js";
+import { allowedToolSet, scrubBase64Images, setStopFlag } from "./studioproxy.js";
+import { PLAYTEST_WORKER_SYSTEM_PROMPT, resolvePlaytestWorker, parsePlaytestReport } from "./playtest.js";
+
+export const JOB_ROLES = [...ROLES, "playtest"];
+const STUDIO_PROXY_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "studioproxy.js");
 import { RATE_LIMIT, available, nearLimit, nextAgent, recordProviderCooldown, clearCooldown, getCooldown, formatHHMM } from "./fallback.js";
 import { recordGeminiRun } from "./gemini-usage.js";
 import { notify, jobNotice } from "./notify.js";
@@ -244,6 +250,7 @@ export class Jobs {
       log: ["logs", `${id}.jsonl`],
       diff: ["jobs", `${id}.diff`],
       last: ["jobs", `${id}.last.txt`],
+      mcp: ["jobs", `${id}.mcp.json`],
     }[kind];
     return path.join(this.home, dir, name);
   }
@@ -261,10 +268,17 @@ export class Jobs {
 
   isGit() { return isGitRepo(this.repo); }
 
-  start({ agent, model, effort, hint = null, provider = null, task, write = false, role = null, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
-    tried = [], movedFrom = null, noFallback = false, images = [], fixOf = null, files = null, skipFixDetect = false, shootout = null }) {
-    if (role !== null && role !== undefined && !ROLES.includes(role)) throw new Error(`unknown role '${role}' (roles: ${ROLES.join(", ")})`);
+  start({ agent, model, effort, hint = null, provider = null, task, write = false, role = null, title, timeoutMin = null, parent = process.env.TOKENWISE_PARENT || null,
+    tried = [], movedFrom = null, noFallback = false, images = [], fixOf = null, files = null, skipFixDetect = false, shootout = null, playtestOptions = null }) {
+    if (role !== null && role !== undefined && !JOB_ROLES.includes(role)) throw new Error(`unknown role '${role}' (roles: ${JOB_ROLES.join(", ")})`);
     if (role === "research" && write) throw new Error("research jobs must be read-only (write=false)");
+    if (role === "playtest" && write) throw new Error("playtest jobs must be read-only (write=false)");
+    const settings = loadSettings();
+    if (role === "playtest" && !agent) {
+      const pw = resolvePlaytestWorker(playtestOptions?.model || settings.playtestModel);
+      agent = pw.agent;
+      if (!model) model = pw.model;
+    }
     if (role === "images" && agent !== "codex") throw new Error("image generation needs Codex");
     const attachments = validateImages(this.repo, images);
     const team = loadTeam(this.home);
@@ -284,7 +298,11 @@ export class Jobs {
     if (role === "research" && (agent === "free" || agent === "local")) {
       throw new Error(`${agent} does not support web research; use claude, gemini or codex`);
     }
+    if (role === "playtest" && agent !== "claude" && agent !== "codex") {
+      throw new Error(`${agent} does not support Roblox playtest; use claude or codex`);
+    }
     const spec = resolve({ agent, model, effort, hint, provider, allowAstra: team.allow.astra === true });
+    const effTimeoutMin = timeoutMin ?? (role === "playtest" ? Math.max(1, Number(playtestOptions?.maxMinutes ?? settings.playtestMaxMinutes ?? 10) + 2) : 20);
     const fixCtx = findFixRound(this, { task, write, parent, fixOf, files, skipFixDetect });
     const id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
     let cwd = this.repo, branch = null;
@@ -294,10 +312,47 @@ export class Jobs {
       branch = `tokenwise/${id}`;
       git(this.repo, "worktree", "add", "-q", "-b", branch, cwd, "HEAD");
     }
+    let playtestCfg = null;
+    if (role === "playtest") {
+      const playtestDir = playtestOptions?.playtestDir || path.join(this.home, "playtests", id);
+      fs.mkdirSync(playtestDir, { recursive: true });
+      const maxCalls = Number(playtestOptions?.maxCalls ?? settings.playtestMaxCalls ?? 40);
+      const maxScreenshots = Number(playtestOptions?.maxScreenshots ?? settings.playtestMaxScreenshots ?? 25);
+      const maxMinutes = Number(playtestOptions?.maxMinutes ?? settings.playtestMaxMinutes ?? 10);
+      const allowInput = playtestOptions?.allowInput !== undefined ? !!playtestOptions.allowInput : settings.playtestAllowInput !== false;
+      const proxyScript = playtestOptions?.proxyScript || STUDIO_PROXY_SCRIPT;
+      const proxyArgs = [
+        proxyScript,
+        "--playtest-id", id,
+        "--playtest-dir", playtestDir,
+        "--repo", this.repo,
+        "--max-calls", String(maxCalls),
+        "--max-screenshots", String(maxScreenshots),
+        "--max-minutes", String(maxMinutes),
+        ...(!allowInput ? ["--no-input"] : []),
+      ];
+      const mcpConfigFile = this.file(id, "mcp");
+      if (spec.agent === "claude") {
+        fs.writeFileSync(mcpConfigFile, JSON.stringify({
+          mcpServers: {
+            "roblox-playtest": { command: process.execPath, args: proxyArgs },
+          },
+        }, null, 2));
+      }
+      playtestCfg = {
+        playtestDir,
+        mcpConfigFile,
+        proxyArgs,
+        allowedTools: [...allowedToolSet({ allowInput })],
+        systemPrompt: PLAYTEST_WORKER_SYSTEM_PROMPT,
+        limits: { maxCalls, maxScreenshots, maxMinutes, allowInput },
+      };
+    }
     const job = this.save({
       id, title: title || task.slice(0, 80), task, images: attachments.map((i) => i.rel), ...spec, write, role: role || null, cwd, branch, parent,
       ...(fixCtx ? { fixOf: fixCtx.prev.id } : {}),
       ...(shootout ? { shootout } : {}),
+      ...(playtestCfg ? { playtestLimits: playtestCfg.limits } : {}),
       tried: [...tried, agent], movedFrom, movedTo: null,
       status: "running", created: new Date().toISOString(), finished: null, exitCode: null,
       final: null, diffStat: null, files: [], pid: null,
@@ -312,9 +367,9 @@ export class Jobs {
     const workerTask = fixCtx
       ? buildFixRoundTask({ task, jobs: this, ...fixCtx })
       : withProjectMapSlice(withProjectNotes(task, this.repo), this.repo) + researchNote;
-    const { cmd, args, env: extraEnv } = command(spec, { task: workerTask, cwd, write, role: role || null, lastFile, images: attachments.map((i) => i.abs) });
+    const { cmd, args, env: extraEnv } = command(spec, { task: workerTask, cwd, write, role: role || null, lastFile, images: attachments.map((i) => i.abs), playtest: playtestCfg });
     const log = fs.createWriteStream(this.file(id, "log"), { flags: "a" });
-    const write1 = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line }) + "\n");
+    const write1 = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line: scrubBase64Images(line) }) + "\n");
     write1("meta", `$ ${cmd} ${args.map((a) => (a.length > 60 ? a.slice(0, 57) + "..." : a)).join(" ")}`);
 
     if (attachments.length && !["codex", "claude"].includes(spec.agent)) write1("meta", `${spec.agent}: images are not supported; continuing without images`);
@@ -336,21 +391,25 @@ export class Jobs {
     child.stderr.on("data", onData("err"));
     let killTimer = null;
     const timer = setTimeout(() => {
-      write1("meta", `timeout after ${timeoutMin} min, killing`);
+      write1("meta", `timeout after ${effTimeoutMin} min, killing`);
       killGroup(child, "SIGTERM");
       killTimer = setTimeout(() => killGroup(child, "SIGKILL"), 5000);
       killTimer.unref?.();
-    }, timeoutMin * 60000);
+    }, effTimeoutMin * 60000);
 
     const done = new Promise((res) => child.on("close", (code) => {
       clearTimeout(timer);
       clearTimeout(killTimer);
       const runEntry = this.running.get(id);
       if (runEntry?.discardTimer) clearTimeout(runEntry.discardTimer);
+      if (playtestCfg?.mcpConfigFile) { try { fs.unlinkSync(playtestCfg.mcpConfigFile); } catch {} }
       const j = this.get(id);
       j.exitCode = code; j.finished = new Date().toISOString(); j.pid = null;
       if (j.status === "discarded") {
         Object.assign(j, this.usage(id));
+        if (j.role === "playtest" && playtestCfg) {
+          try { j.playtest = parsePlaytestReport("", { repo: this.repo, playtestDir: playtestCfg.playtestDir, playtestId: id, exitCode: code }); } catch {}
+        }
         write1("meta", `exit ${code} (discarded)`);
         log.end();
         this.save(j);
@@ -369,7 +428,7 @@ export class Jobs {
             const alt = nextAgent({ tried: j.tried, write, role: j.role || null, home: this.home });
             if (alt) {
               try {
-                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" }, fixOf: job.fixOf || null, files, skipFixDetect, shootout: j.shootout || null });
+                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin: effTimeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" }, fixOf: job.fixOf || null, files, skipFixDetect, shootout: j.shootout || null, playtestOptions });
                 j.status = "moved"; j.movedTo = nj.id;
                 write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
               } catch (e) { write1("meta", `fallback failed: ${e.message}`); }
@@ -386,6 +445,13 @@ export class Jobs {
       j.final = (fs.existsSync(lastFile) && fs.readFileSync(lastFile, "utf8").trim()) || lastText;
       // Some CLIs answer with local file:// markdown links; keep just the link text.
       if (j.final) j.final = String(j.final).replace(/\[([^\]]+)\]\(file:\/\/[^)]*\)/g, "$1");
+      if (j.role === "playtest" && playtestCfg && j.status !== "moved") {
+        try {
+          j.playtest = parsePlaytestReport(j.final, { repo: this.repo, playtestDir: playtestCfg.playtestDir, playtestId: id, exitCode: code });
+        } catch (e) {
+          write1("meta", `playtest report parse error: ${e.message}`);
+        }
+      }
       if (write && j.status === "moved") {
         this.cleanup(j); // its replacement job has its own worktree
       } else if (write) {
@@ -569,8 +635,19 @@ export class Jobs {
     return this.save(j);
   }
 
+  stopPlaytest(id, reason = "user") {
+    const j = this.get(id);
+    if (j.role !== "playtest") throw new Error("not a playtest job");
+    const playtestDir = path.join(this.home, "playtests", id);
+    const flag = setStopFlag(playtestDir, reason);
+    return { ok: true, id, stopFlag: flag };
+  }
+
   discard(id) {
     const j = this.get(id);
+    if (j.role === "playtest") {
+      try { setStopFlag(path.join(this.home, "playtests", id), "discarded"); } catch {}
+    }
     const r = this.running.get(id);
     if (r) {
       killGroup(r.child, "SIGTERM");

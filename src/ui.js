@@ -28,7 +28,9 @@ import { runTests, testRunning, testTail, detectTestCommand, loadTestOverride, l
 import { createSnapshot } from "./snapshots.js";
 import { currentVersion, installSource, latestVersion, cachedLatest, compareVersions } from "./version.js";
 import { runAutoUpdate, readyFor, readUpdateState, needsAppSetup, runSetup, quitStudioServers, logUpdate } from "./autoupdate.js";
-import { parseStudioErrors, formatStudioPrompt } from "./studiolog.js";
+import { parseStudioErrors, formatStudioPrompt, findRojoProject } from "./studiolog.js";
+import { getRobloxStudioStatus, locateStudioMcp } from "./studiomcp.js";
+import { resolvePlaytestImage, formatPlaytestFixPrompt } from "./playtest.js";
 import { listRepoFiles, readRepoTextFile, resolveRepoImage, worktreeDiff, splitDiff, chatFiles } from "./workspace.js";
 import { projectProblem, assertNotRealHomeInTests } from "./projectpath.js";
 import { prPreconditions, commitAndOpenPr, selectAppliedJobs, formatChangesBy } from "./pr.js";
@@ -52,6 +54,7 @@ export const hooks = { exit: (code) => process.exit(code) }; // replaced in test
 let repo, jobs, chats; // current project; replaced by POST /api/project
 let serverChatOpts = {};
 let serverPrOpts = {};
+let serverStudioOpts = {};
 
 const RECENTS = path.join(os.homedir(), ".tokenwise-studio", "recents.json");
 function recents() {
@@ -88,6 +91,11 @@ function combinedCheckInfo() {
   const status = c.status === "running" && !running ? "error" : c.status;
   return { ...c, status, tail };
 }
+function robloxInfo() {
+  const rojo = findRojoProject(repo);
+  const bin = serverStudioOpts.studioMcpPath || locateStudioMcp();
+  return { rojo: !!rojo, projectFile: rojo?.file || null, studioMcpFound: !!bin };
+}
 const state = () => {
   maybePruneShootouts(false);
   return {
@@ -96,6 +104,7 @@ const state = () => {
     jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
     shootouts: listShootouts(jobs),
     combinedCheck: combinedCheckInfo(),
+    roblox: robloxInfo(),
     team: (({ mode, preset }) => ({ mode, preset }))(loadTeam(jobs.home)),
   };
 };
@@ -241,9 +250,14 @@ export function startAutoUpdater({ firstDelayMs = 60_000, everyMs = 3600_000 } =
 // Exit after the response has been flushed (graceful: servers.json is cleaned by the exit hook).
 const exitSoon = (res) => { res.on?.("finish", () => setTimeout(() => hooks.exit(0), 100)); setTimeout(() => hooks.exit(0), 1500).unref?.(); };
 
-export function initServer({ repo: start, summarize, spawn, exec } = {}) {
+export function initServer({ repo: start, summarize, spawn, exec, studioStatus, studioMcpPath } = {}) {
   serverChatOpts = { ...(summarize ? { summarize } : {}), ...(spawn ? { spawn } : {}) };
   serverPrOpts = exec ? { exec } : {};
+  serverStudioOpts = {
+    ...(exec ? { exec } : {}),
+    ...(studioStatus ? { studioStatus } : {}),
+    ...(studioMcpPath ? { studioMcpPath } : {}),
+  };
   openProject(path.resolve(start || process.cwd()));
 }
 
@@ -278,6 +292,11 @@ export const handler = async (req, res) => {
       res.writeHead(200, { "content-type": "image/png", "cache-control": "no-cache" });
       const file = url.pathname === "/favicon.png" ? "favicon-64.png" : "logo.png";
       return res.end(fs.readFileSync(path.join(path.dirname(htmlPath), "..", "assets", file)));
+    }
+    const ptStop = url.pathname.match(/^\/api\/playtest\/([\w-]+)\/stop$/);
+    if (ptStop && req.method === "POST") {
+      await readBody(req);
+      return send(res, 200, jobs.stopPlaytest(ptStop[1], "user"));
     }
     if (!m) return send(res, 404, { error: "not found" });
     const [, what, id] = m;
@@ -367,6 +386,35 @@ export const handler = async (req, res) => {
       if (what === "git-setup") return send(res, 200, gitSetupPreview(repo));
       if (what === "shootouts") return send(res, 200, { shootouts: listShootouts(jobs) });
       if (what === "shootout") return send(res, 200, getShootout(jobs, id));
+      if (what === "roblox") {
+        const info = robloxInfo();
+        const st = serverStudioOpts.studioStatus
+          ? await serverStudioOpts.studioStatus()
+          : getRobloxStudioStatus({
+              ...(serverStudioOpts.exec ? { exec: serverStudioOpts.exec } : {}),
+              ...(serverStudioOpts.studioMcpPath ? { paths: [serverStudioOpts.studioMcpPath] } : {}),
+            });
+        return send(res, 200, { ...info, ...st });
+      }
+      if (what === "playtest") {
+        const j = jobs.get(id);
+        let liveState = null;
+        try {
+          const sf = path.join(jobs.home, "playtests", id, "state.json");
+          if (fs.existsSync(sf)) liveState = JSON.parse(fs.readFileSync(sf, "utf8"));
+        } catch {}
+        return send(res, 200, { job: j, playtest: j.playtest || null, live: liveState });
+      }
+      if (what === "playtest-image") {
+        const img = resolvePlaytestImage(jobs, url.searchParams.get("job"), url.searchParams.get("file"));
+        res.writeHead(200, {
+          "content-type": img.type,
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+          "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
+        });
+        return res.end(fs.readFileSync(img.abs));
+      }
     }
     if (req.method === "POST") {
       const b = await readBody(req, what === "upload" ? UPLOAD_BODY_LIMIT : undefined);
@@ -463,6 +511,35 @@ export const handler = async (req, res) => {
         return send(res, 200, state());
       }
       if (what === "delegate") return send(res, 200, jobs.start({ ...b, parent: null }));
+      if (what === "playtest") {
+        const task = String(b?.task || "").trim();
+        if (task.length < 5) throw new Error("playtest instructions are too short");
+        if (!b?.skipCheck) {
+          const st = serverStudioOpts.studioStatus
+            ? await serverStudioOpts.studioStatus()
+            : getRobloxStudioStatus({
+                ...(serverStudioOpts.exec ? { exec: serverStudioOpts.exec } : {}),
+                ...(serverStudioOpts.studioMcpPath ? { paths: [serverStudioOpts.studioMcpPath] } : {}),
+              });
+          if (!st.found) throw new Error("StudioMCP binary not found (install Roblox Studio on macOS)");
+          if (!st.signatureOk) throw new Error(st.signatureReason || "StudioMCP code signature verification failed");
+        }
+        return send(res, 200, jobs.start({
+          agent: b?.agent || undefined,
+          model: b?.model || undefined,
+          effort: b?.effort || "medium",
+          task,
+          write: false,
+          role: "playtest",
+          title: b?.title || `Playtest: ${task.slice(0, 60)}`,
+          parent: null,
+          playtestOptions: b?.playtestOptions || null,
+        }));
+      }
+      if (what === "playtest-prompt") {
+        const rep = b?.report || (b?.jobId ? jobs.get(b.jobId).playtest : null);
+        return send(res, 200, { message: formatPlaytestFixPrompt(rep, { selectedErrorIds: b?.selectedErrorIds }) });
+      }
       if (what === "shootout") return send(res, 200, startShootout(jobs, { ...b, parent: b.parent ?? null }));
       if (what === "shootout-pick") return send(res, 200, pickShootout(jobs, id, b.jobId, { files: b.files, autoCheck: b.autoCheck !== false }));
       if (what === "shootout-discard") return send(res, 200, discardShootout(jobs, id));

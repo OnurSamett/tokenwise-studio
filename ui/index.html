@@ -410,6 +410,18 @@
   .chip.pass { color: var(--ok); border-color: rgba(92,201,138,.45); } .chip.fail, .chip.error, .chip.timeout { color: var(--bad); border-color: rgba(240,113,120,.45); }
   .chip.overlap { color: var(--accent); background: var(--accent-soft); border-color: rgba(139,143,255,.45); }
   .chip.running { color: var(--accent); }
+  .chip.inconclusive { color: var(--accent); background: var(--accent-soft); border-color: rgba(139,143,255,.45); }
+  .pt-card { border: 1px solid var(--line2); border-radius: 10px; background: var(--s2); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+  .pt-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .pt-stats { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-left: auto; font-size: 12px; color: var(--muted); }
+  .pt-list { display: flex; flex-direction: column; gap: 6px; }
+  .pt-item { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 8px 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+  .pt-item-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pt-loc { font: 12px var(--mono); color: var(--accent); }
+  .pt-status-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+  .rblx-limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+  .rblx-limits label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); }
+  .rblx-limits input { width: 100%; }
   .review-summary { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--line2); border-radius: 10px; background: var(--s2); padding: 10px 12px; margin-bottom: 14px; font-size: 13px; color: var(--text); line-height: 1.45; }
   .review-summary .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--ok); }
   .review-summary.overlap { border-color: rgba(139,143,255,.45); background: var(--accent-soft); }
@@ -1355,6 +1367,87 @@ function lightbox(src, caption) {
 const jobThumbs = (j, cls = "") => (j.images || []).length ? h("div", { class: "thumbs " + cls }, j.images.map((i) =>
   h("button", { class: "thumb", title: i.path, "aria-label": t("image.openAria", { path: i.path }), onclick: (e) => { e.stopPropagation(); lightbox(jobImageUrl(j, i.path), i.path); } },
     h("img", { src: jobImageUrl(j, i.path), alt: i.path, loading: "lazy" })))) : null;
+const playtestImageUrl = (jobId, file) => `/api/playtest-image?job=${encodeURIComponent(jobId)}&file=${encodeURIComponent(file)}`;
+const playtestThumbs = (jobId, files, cls = "") => {
+  const list = (files || []).map((item) => typeof item === "string" ? item : item?.file).filter(Boolean);
+  return list.length ? h("div", { class: "thumbs " + cls }, list.map((file) =>
+    h("button", { class: "thumb", title: file, "aria-label": t("image.openAria", { path: file }), onclick: (e) => { e.stopPropagation(); lightbox(playtestImageUrl(jobId, file), file); } },
+      h("img", { src: playtestImageUrl(jobId, file), alt: file, loading: "lazy" })))) : null;
+};
+const playtestVerdictLabel = (v) => v === "pass" ? t("playtest.verdict.pass") : v === "fail" ? t("playtest.verdict.fail") : t("playtest.verdict.inconclusive");
+const playtestChip = (j) => {
+  if (j.role !== "playtest") return null;
+  if (j.status === "running") return h("span", { class: "chip running" }, h("span", { class: "spin", style: "width:9px;height:9px" }), stateLabel("running"));
+  const v = j.playtest?.verdict;
+  return v ? h("span", { class: "chip " + v }, playtestVerdictLabel(v)) : null;
+};
+function renderPlaytestReport(j, ptResp) {
+  const pt = ptResp?.playtest || j.playtest || null;
+  const live = ptResp?.live || null;
+  const stats = pt?.stats || live || j.playtestLimits || { callsUsed: 0, maxCalls: 40, screenshotsUsed: 0, maxScreenshots: 25, deniedCount: 0 };
+  const callsUsed = stats.callsUsed ?? 0;
+  const maxCalls = stats.maxCalls ?? j.playtestLimits?.maxCalls ?? 40;
+  const shotsUsed = stats.screenshotsUsed ?? 0;
+  const maxShots = stats.maxScreenshots ?? j.playtestLimits?.maxScreenshots ?? 25;
+  const denied = stats.deniedCount ?? 0;
+  const shots = pt?.screenshots || live?.screenshots || [];
+  const steps = pt?.steps || live?.steps || [];
+  const findings = pt?.findings || [];
+  const consoleErrors = pt?.consoleErrors || [];
+  const verdict = pt?.verdict || (j.status === "running" ? null : "inconclusive");
+  const stoppedByUser = !!(pt?.stoppedByUser || live?.stoppedByUser);
+  const limitReached = pt?.limitReached || live?.limitReached;
+
+  return [
+    h("div", { class: "pt-card" },
+      h("div", { class: "pt-head" },
+        h("strong", {}, t("playtest.summary")),
+        verdict ? h("span", { class: "chip " + verdict }, playtestVerdictLabel(verdict)) : h("span", { class: "chip running" }, h("span", { class: "spin", style: "width:9px;height:9px" }), stateLabel("running")),
+        stoppedByUser ? h("span", { class: "chip overlap" }, t("playtest.stoppedBanner")) : null,
+        limitReached ? h("span", { class: "chip fail" }, t("playtest.limitBanner", { reason: limitReached })) : null,
+        h("div", { class: "pt-stats" },
+          h("span", { class: "chip" }, t("playtest.callsStat", { used: callsUsed, max: maxCalls })),
+          h("span", { class: "chip" }, t("playtest.shotsStat", { used: shotsUsed, max: maxShots })),
+          denied > 0 ? h("span", { class: "chip fail" }, t("playtest.deniedStat", { n: denied })) : null)),
+      j.status === "running"
+        ? h("div", { class: "muted", style: "font-size:13px" }, t("playtest.liveRunning", { calls: callsUsed, shots: shotsUsed }))
+        : pt?.summary ? h("div", { style: "font-size:13.5px;line-height:1.5" }, pt.summary) : null),
+    shots.length ? h("div", { class: "section" },
+      h("h4", {}, t("playtest.screenshots", { n: shots.length })),
+      playtestThumbs(j.id, shots, "flat big")) : null,
+    steps.length ? h("div", { class: "section" },
+      h("h4", {}, t("playtest.steps", { n: steps.length })),
+      h("div", { class: "pt-list" }, steps.map((st, idx) => {
+        const sLabel = st.status || (st.ok === false ? "fail" : "pass");
+        const chipCls = sLabel === "ok" || sLabel === "pass" ? "pass" : sLabel === "fail" ? "fail" : "overlap";
+        return h("div", { class: "pt-item" },
+          h("div", { class: "pt-item-row" },
+            h("span", { class: "muted", style: "font:12px var(--mono)" }, `#${st.seq || idx + 1}`),
+            h("b", { style: "font-weight:550" }, st.action || st.tool || ""),
+            h("span", { class: "chip " + chipCls }, sLabel),
+            st.screenshot ? h("span", { class: "chip" }, st.screenshot) : null),
+          st.result ? h("div", { class: "muted", style: "font-size:12.5px" }, st.result) : st.argsSummary ? h("div", { class: "muted", style: "font:12px var(--mono)" }, st.argsSummary) : null);
+      }))) : null,
+    findings.length ? h("div", { class: "section" },
+      h("h4", {}, t("playtest.findings", { n: findings.length })),
+      h("div", { class: "pt-list" }, findings.map((f) =>
+        h("div", { class: "pt-item" },
+          h("div", { class: "pt-item-row" },
+            h("span", { class: "chip " + (f.severity === "error" ? "fail" : "overlap") }, f.severity || "info"),
+            h("b", {}, f.title || ""),
+            f.location ? h("span", { class: "pt-loc" }, f.location) : null),
+          f.detail ? h("div", { class: "muted", style: "font-size:13px;line-height:1.45" }, f.detail) : null)))) : null,
+    consoleErrors.length ? h("div", { class: "section" },
+      h("h4", {}, t("playtest.consoleErrors", { n: consoleErrors.length })),
+      h("div", { class: "pt-list" }, consoleErrors.map((ce) =>
+        h("div", { class: "pt-item" },
+          h("div", { class: "pt-item-row" },
+            h("span", { class: "chip fail" }, ce.kind || "error"),
+            h("span", { class: "pt-loc" }, ce.location || ce.file || ce.rawPath || "?"),
+            ce.count > 1 ? h("span", { class: "chip" }, `${ce.count}×`) : null),
+          h("div", { style: "font-size:13px;color:var(--text)" }, ce.message || ""))))) : null,
+  ];
+}
 const testWord = (s) => (hasKey(`test.status.${s}`, lang) ? t(`test.status.${s}`) : s);
 const testChip = (j) => j.test ? h("span", { class: "chip " + j.test.status, title: j.test.command }, j.test.status === "running" ? h("span", { class: "spin", style: "width:9px;height:9px" }) : null, testWord(j.test.status)) : null;
 
@@ -1869,7 +1962,9 @@ function renderWorkerRow(j) {
       j.movedFrom ? h("div", { class: "moved", title: movedWhy }, t("teamCard.tookOver", { agent: AGENT[j.movedFrom.agent] || j.movedFrom.agent, reason: movedWhy })) : null),
     h("span", { class: "bar " + j.status }, h("i")),
     h("span", { class: "w-time" }, clock(j.created, j.finished))),
-    j.test ? h("div", { class: "wk-extra" }, testChip(j)) : null, jobThumbs(j));
+    (j.test || j.role === "playtest") ? h("div", { class: "wk-extra" }, testChip(j), playtestChip(j)) : null,
+    jobThumbs(j),
+    j.role === "playtest" && j.playtest?.screenshots?.length ? playtestThumbs(j.id, j.playtest.screenshots) : null);
 }
 
 function teamCard(jobs) {
@@ -2340,31 +2435,57 @@ async function renderDrawer(full) {
   const d = $("#drawer");
   if (drawer.kind === "job") {
     const j = S.jobs.find((x) => x.id === drawer.id); if (!j) return;
-    if (!full && drawer.lastStatus === j.status) { const tm = d.querySelector(".w-time"); if (tm) tm.textContent = clock(j.created, j.finished); return; }
-    drawer.lastStatus = j.status;
+    let ptResp = null;
+    if (j.role === "playtest") {
+      try { ptResp = await api(`playtest/${j.id}`); } catch {}
+    }
+    const ptKey = j.role === "playtest" ? `${j.status}:${ptResp?.live?.callsUsed ?? ""}:${ptResp?.live?.screenshotsUsed ?? ""}:${!!ptResp?.live?.stoppedByUser}` : j.status;
+    if (!full && drawer.lastStatus === ptKey) { const tm = d.querySelector(".w-time"); if (tm) tm.textContent = clock(j.created, j.finished); return; }
+    drawer.lastStatus = ptKey;
     const log = await api(`log/${j.id}`);
     const steps = log.items.filter((i) => !["meta", "usage"].includes(i.kind));
     const diffData = j.write && j.status !== "running" ? await api(`diff/${j.id}`) : { files: [], conflicts: null };
     const files = diffData.files || [];
     const jobConflicts = j.status === "done" ? diffData.conflicts : null;
     const allBlocked = !!(jobConflicts && !jobConflicts.clean && files.length && jobConflicts.applyConflicts.length >= files.length);
+    const pt = ptResp?.playtest || j.playtest || null;
+    const canAskFix = j.role === "playtest" && j.status !== "running" && pt && ((pt.findings || []).length || (pt.consoleErrors || []).length || (pt.steps || []).some((s) => s.status === "fail") || pt.verdict !== "pass");
+    const footEl = j.write && j.status === "done" && files.length ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.stagedFoot")),
+        h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.discard")), h("button", { class: "btn primary", disabled: allBlocked, onclick: () => act("merge", j.id) }, t("job.apply"))) :
+      j.write && j.status === "merged" && j.applySnapshot ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.stagedFoot")),
+        h("button", { class: "btn", onclick: () => undoApplyJobs([j.id]) }, t("job.undoApply"))) :
+      j.role === "playtest" && j.status === "running" ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("playtest.footNote")),
+        h("button", { class: "btn", disabled: !!(ptResp?.live?.stoppedByUser), onclick: async (e) => {
+          e.currentTarget.disabled = true;
+          try { await api(`playtest/${j.id}/stop`, {}); toast(t("playtest.stopRequested")); renderDrawer(true); } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
+        } }, t("playtest.stopBtn")),
+        h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.stop"))) :
+      canAskFix ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("playtest.footNote")),
+        h("button", { class: "btn primary", onclick: async (e) => {
+          if (sending || curChat()?.status === "running") { toast(t("playtest.busy"), true); return; }
+          const btn = e.currentTarget; btn.disabled = true;
+          try {
+            const { message } = await api("playtest-prompt", { jobId: j.id, report: pt });
+            const ok = await sendChatMessage(message);
+            if (ok) { toast(t("playtest.fixSent")); closeDrawer(); }
+            else btn.disabled = false;
+          } catch (err) { toast(err.message, true); btn.disabled = false; }
+        } }, t("playtest.askToFix"))) :
+      j.status === "running" ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.worktreeFoot")), h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.stop"))) : null;
     set(d,
       h("div", { class: "d-head" }, h("span", { class: "badge " + j.agent }, BADGE[j.agent]),
         h("div", {}, h("h3", {}, j.title), h("div", { class: "meta" }, `${AGENT[j.agent]} · ${modelName(j.model)} · ${t("effort.ofJob", { effort: effortLabel(j.effort) })} · `, h("span", { class: "w-state " + j.status }, stateLabel(j.status)), " · ", h("span", { class: "w-time" }, clock(j.created, j.finished)))),
         h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
       h("div", { class: "d-body" },
-        j.final ? h("div", { class: "section" }, h("h4", {}, t("job.result")), h("div", { class: "answer" }, richReply(j.final))) : j.status === "running" ? h("div", { class: "section muted" }, h("span", { class: "spin" }), "  ", t("job.workingOnIt")) : null,
+        j.role === "playtest" ? renderPlaytestReport(j, ptResp) : null,
+        j.final ? h("div", { class: "section" }, h("h4", {}, t("job.result")), h("div", { class: "answer" }, richReply(j.final))) : j.status === "running" && j.role !== "playtest" ? h("div", { class: "section muted" }, h("span", { class: "spin" }), "  ", t("job.workingOnIt")) : null,
         (j.images || []).length ? h("div", { class: "section" }, h("h4", {}, t("job.generatedImages")), jobThumbs(j, "flat big")) : null,
         j.write && j.status === "done" && files.length ? testPanel(j) : null,
         conflictActionBar(j, jobConflicts),
         files.length ? h("div", { class: "section" }, h("h4", {}, t(j.status === "merged" ? "job.appliedChanges" : "job.changes")), files.map((f) => fileBlock(f, null, null, j, jobConflicts?.files?.[f.path] || null))) : null,
         h("div", { class: "section" }, h("h4", {}, t("job.task")), h("div", { class: "muted", style: "white-space:pre-wrap;font-size:14px" }, j.task)),
         h("details", { class: "tech" }, h("summary", {}, tp("job.techLog", steps.length)), h("div", { class: "steps", style: "margin-top:10px" }, steps.map((s) => s.kind === "think" ? thinkingRow(s.text) : h("div", { class: "step" + (s.kind === "error" ? " err" : "") }, s.text))))),
-      j.write && j.status === "done" && files.length ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.stagedFoot")),
-        h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.discard")), h("button", { class: "btn primary", disabled: allBlocked, onclick: () => act("merge", j.id) }, t("job.apply"))) :
-      j.write && j.status === "merged" && j.applySnapshot ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.stagedFoot")),
-        h("button", { class: "btn", onclick: () => undoApplyJobs([j.id]) }, t("job.undoApply"))) :
-      j.status === "running" ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.worktreeFoot")), h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.stop"))) : null);
+      footEl);
     if (drawer.focusPath) {
       const targetPath = drawer.focusPath;
       drawer.focusPath = null;
@@ -2900,6 +3021,8 @@ async function renderDrawer(full) {
     let data; try { data = await api("settings"); syncFromSettings(data); } catch (e) { toast(e.message, true); return closeDrawer(); }
     let inst = null; try { inst = await api("instructions"); } catch {}
     let tcmd = null; try { tcmd = await api("testcmd"); } catch {}
+    let robloxSt = null;
+    api("roblox").then((r) => { robloxSt = r; if (drawer?.kind === "settings") draw(); }).catch(() => {});
     const tin = h("input", { type: "text", value: tcmd?.override || "", placeholder: tcmd?.detected?.label || t("settings.testCmdPlaceholder"), spellcheck: "false", style: "flex:1;min-width:0" });
     const lin = h("input", { type: "text", value: tcmd?.lint || "", placeholder: t("settings.lintCmdPlaceholder"), spellcheck: "false", style: "flex:1;min-width:0" });
     let backupInfo = null, backing = false;
@@ -3106,7 +3229,34 @@ async function renderDrawer(full) {
           h("p", { class: "shelp" }, t("settings.updatesHelp")),
           h("div", { class: "seg three" }, [["auto", "settings.upd.auto", "settings.upd.autoDesc"], ["notify", "settings.upd.notify", "settings.upd.notifyDesc"], ["off", "settings.upd.off", "settings.upd.offDesc"]].map(([val, tk, dk]) =>
             h("button", { class: (s.autoUpdate || "auto") === val ? "on" : "", onclick: () => applyPatch({ autoUpdate: val }) },
-              h("b", {}, t(tk)), h("span", {}, t(dk)))))));
+              h("b", {}, t(tk)), h("span", {}, t(dk)))))),
+        h("div", { class: "section" },
+          secHead(t("settings.robloxTitle"), "playtestModel"),
+          h("p", { class: "shelp" }, t("settings.robloxHelp")),
+          h("div", { class: "pt-status-row" },
+            robloxSt ? [
+              h("span", { class: "chip " + (robloxSt.found ? "pass" : "fail") }, robloxSt.found ? t("settings.robloxMcpFound") : t("settings.robloxMcpMissing")),
+              robloxSt.found ? h("span", { class: "chip " + (robloxSt.signatureOk ? "pass" : "fail"), title: robloxSt.signatureReason || "" }, robloxSt.signatureOk ? t("settings.robloxSigOk") : t("settings.robloxSigFail")) : null,
+              h("span", { class: "chip " + (robloxSt.studioRunning ? "overlap" : "") }, robloxSt.studioRunning ? t("settings.robloxStudioOn") : t("settings.robloxStudioOff")),
+            ] : h("span", { class: "chip" }, t("settings.robloxChecking"))),
+          h("div", { class: "sfield" },
+            h("label", {}, t("settings.robloxModel")),
+            h("select", { value: s.playtestModel || "sonnet", disabled: !!lock.playtestModel, onchange: (e) => applyPatch({ playtestModel: e.target.value }) },
+              [["sonnet", "Claude Sonnet"], ["haiku", "Claude Haiku"], ["opus", "Claude Opus"], ["codex:sol", "Codex Sol"], ["codex:terra", "Codex Terra"]].map(([val, label]) =>
+                h("option", { value: val, selected: (s.playtestModel || "sonnet") === val ? true : null }, label)))),
+          h("div", { class: "rblx-limits" },
+            h("label", {}, t("settings.robloxMaxCalls"),
+              h("input", { type: "number", min: 1, max: 200, step: 1, value: s.playtestMaxCalls ?? 40, disabled: !!lock.playtestMaxCalls,
+                onchange: (e) => applyPatch({ playtestMaxCalls: Number(e.target.value) }) })),
+            h("label", {}, t("settings.robloxMaxShots"),
+              h("input", { type: "number", min: 1, max: 100, step: 1, value: s.playtestMaxScreenshots ?? 25, disabled: !!lock.playtestMaxScreenshots,
+                onchange: (e) => applyPatch({ playtestMaxScreenshots: Number(e.target.value) }) })),
+            h("label", {}, t("settings.robloxMaxMins"),
+              h("input", { type: "number", min: 1, max: 60, step: 1, value: s.playtestMaxMinutes ?? 10, disabled: !!lock.playtestMaxMinutes,
+                onchange: (e) => applyPatch({ playtestMaxMinutes: Number(e.target.value) }) }))),
+          h("label", { class: "toggle" + (lock.playtestAllowInput ? " disabled" : ""), style: "margin-top:12px" },
+            h("input", { type: "checkbox", checked: s.playtestAllowInput !== false ? true : null, disabled: !!lock.playtestAllowInput, onchange: (e) => applyPatch({ playtestAllowInput: e.target.checked }) }),
+            h("span", {}, [t("settings.robloxAllowInput"), envBadge("playtestAllowInput")], h("small", {}, t("settings.robloxAllowInputDesc"))))));
     };
     draw();
     set(d,
@@ -3600,6 +3750,47 @@ async function renderDrawer(full) {
         barEl,
         listEl),
       h("div", { class: "d-foot" }, footNote, clearBtn, h("button", { class: "btn", onclick: closeDrawer }, t("drawer.cancel")), fixBtn));
+    setTimeout(() => ta.focus(), 50);
+    return;
+  }
+  if (drawer.kind === "playtest") {
+    if (!full) return;
+    let sData = null; try { sData = await api("settings"); } catch {}
+    const s = sData?.settings || {};
+    const statusBox = h("div", { class: "pt-status-row" }, h("span", { class: "chip" }, t("settings.robloxChecking")));
+    api("roblox").then((st) => {
+      if (drawer?.kind !== "playtest") return;
+      set(statusBox,
+        h("span", { class: "chip " + (st.found ? "pass" : "fail") }, st.found ? t("settings.robloxMcpFound") : t("settings.robloxMcpMissing")),
+        st.found ? h("span", { class: "chip " + (st.signatureOk ? "pass" : "fail"), title: st.signatureReason || "" }, st.signatureOk ? t("settings.robloxSigOk") : t("settings.robloxSigFail")) : null,
+        h("span", { class: "chip " + (st.studioRunning ? "overlap" : "") }, st.studioRunning ? t("settings.robloxStudioOn") : t("settings.robloxStudioOff")));
+    }).catch(() => {});
+    const ta = h("textarea", { rows: 5, placeholder: t("playtest.taskPlaceholder") });
+    const goBtn = h("button", { class: "btn primary", disabled: true, onclick: async () => {
+      const task = ta.value.trim();
+      if (task.length < 5) return;
+      goBtn.disabled = true;
+      goBtn.textContent = t("playtest.starting");
+      try {
+        const job = await api("playtest", { task });
+        await refresh();
+        toast(t("playtest.startedToast"));
+        openJob(job.id);
+      } catch (e) {
+        toast(e.message, true);
+        goBtn.disabled = false;
+        goBtn.textContent = t("playtest.startBtn");
+      }
+    } }, t("playtest.startBtn"));
+    ta.addEventListener("input", () => { goBtn.disabled = ta.value.trim().length < 5; });
+    set(d,
+      h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("playtest.launchTitle")), h("div", { class: "meta" }, t("playtest.launchMeta", { calls: s.playtestMaxCalls ?? 40, shots: s.playtestMaxScreenshots ?? 25, mins: s.playtestMaxMinutes ?? 10 }))),
+        h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
+      h("div", { class: "d-body" },
+        statusBox,
+        h("div", { class: "field" }, h("label", {}, t("playtest.taskLabel")), ta),
+        h("p", { class: "shelp" }, t("playtest.safetyNote"))),
+      h("div", { class: "d-foot" }, h("button", { class: "btn", onclick: closeDrawer }, t("drawer.cancel")), goBtn));
     setTimeout(() => ta.focus(), 50);
   }
 }
@@ -4756,7 +4947,18 @@ $("#input").addEventListener("keydown", (e) => {
 $("#input").addEventListener("input", updateSend);
 $("#input").addEventListener("input", mentionInput);
 $("#input").addEventListener("click", () => { if (mOpen) renderMentionMenu(); });
-$("#attach").onclick = () => { if (!sending) $("#imagefiles").click(); };
+$("#attach").onclick = (e) => {
+  if (sending) return;
+  if (S.roblox?.rojo && S.roblox?.studioMcpFound) {
+    e.stopPropagation();
+    popover($("#attach"),
+      h("button", { onclick: () => { closePop(); $("#imagefiles").click(); } }, t("composer.attachImages")),
+      h("div", { class: "sep" }),
+      h("button", { onclick: () => { closePop(); openDrawer("playtest"); } }, t("composer.playtestRoblox")));
+    return;
+  }
+  $("#imagefiles").click();
+};
 dictation = createDictationController({
   win: window,
   input: $("#input"),

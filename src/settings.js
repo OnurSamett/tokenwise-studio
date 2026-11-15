@@ -11,6 +11,7 @@ export const EFFORTS = ["low", "medium", "high", "xhigh"];
 export const ORCH_FALLBACK_MODES = ["auto", "ask", "off"];
 export const LANGUAGES = ["auto", "en", "tr"];
 export const AUTO_UPDATE_MODES = ["auto", "notify", "off"];
+export const PLAYTEST_MODELS = ["sonnet", "haiku", "opus", "codex:sol", "codex:terra"];
 
 export const DEFAULTS = Object.freeze({
   language: "auto",
@@ -33,6 +34,11 @@ export const DEFAULTS = Object.freeze({
   compactChats: true, // summarize long chats and start a fresh session when context grows past threshold
   compactThreshold: 120_000, // orchestrator context token threshold (60k–400k)
   animations: true, // effort-aware working indicator and worker progress motion
+  playtestModel: "sonnet", // Claude Sonnet by default; Gemini cannot use per-session MCP
+  playtestMaxCalls: 40, // max MCP tool calls per playtest
+  playtestMaxScreenshots: 25, // max viewport captures per playtest
+  playtestMaxMinutes: 10, // max playtest duration in minutes
+  playtestAllowInput: true, // allow keyboard/mouse input simulation in Roblox Studio playtests
 });
 
 const cloneDefaults = () => ({ ...DEFAULTS, fallbackOrder: [...DEFAULTS.fallbackOrder] });
@@ -62,6 +68,11 @@ const VALIDATORS = {
   compactChats: (v) => typeof v === "boolean" || "compactChats must be true or false",
   compactThreshold: (v) => (Number.isInteger(v) && v >= 60_000 && v <= 400_000) || "compactThreshold must be a token count between 60000 and 400000",
   animations: (v) => typeof v === "boolean" || "animations must be true or false",
+  playtestModel: (v) => PLAYTEST_MODELS.includes(v) || `playtestModel must be one of ${PLAYTEST_MODELS.join(", ")}`,
+  playtestMaxCalls: (v) => (Number.isInteger(v) && v >= 1 && v <= 200) || "playtestMaxCalls must be an integer between 1 and 200",
+  playtestMaxScreenshots: (v) => (Number.isInteger(v) && v >= 1 && v <= 100) || "playtestMaxScreenshots must be an integer between 1 and 100",
+  playtestMaxMinutes: (v) => (Number.isInteger(v) && v >= 1 && v <= 30) || "playtestMaxMinutes must be an integer between 1 and 30",
+  playtestAllowInput: (v) => typeof v === "boolean" || "playtestAllowInput must be true or false",
 };
 
 /** Load raw file settings merged with defaults (no env overrides). Never throws. */

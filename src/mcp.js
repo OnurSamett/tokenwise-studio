@@ -6,8 +6,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { Jobs } from "./jobs.js";
-import { loadTeam, teamGuide, ROLES } from "./team.js";
+import { Jobs, JOB_ROLES } from "./jobs.js";
+import { loadTeam, teamGuide } from "./team.js";
 import { loadSettings } from "./settings.js";
 import { claudePacing } from "./fallback.js";
 import { budgetGate } from "./budget.js";
@@ -39,6 +39,16 @@ const brief = (j, { includeConflicts = false } = {}) => ({
   shootout: j.shootout || null,
   title: j.title, diffStat: j.diffStat, files: j.files, movedFrom: j.movedFrom || null, movedTo: j.movedTo || null, final: j.final ? String(j.final).slice(0, 4000) : null,
   images: (j.images || []).map((i) => i.path), tests: j.test ? j.test.status : null,
+  ...(j.playtest ? {
+    playtest: {
+      verdict: j.playtest.verdict,
+      summary: j.playtest.summary,
+      consoleErrorCount: (j.playtest.consoleErrors || []).length,
+      screenshotCount: (j.playtest.screenshots || []).length,
+      findingsCount: (j.playtest.findings || []).length,
+      stats: j.playtest.stats || null,
+    },
+  } : {}),
   ...(includeConflicts ? { conflicts: j.write && j.status === "done" ? getJobs().conflicts(j.id) : null } : {}),
 });
 const ok = (obj) => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }] });
@@ -53,7 +63,7 @@ server.registerTool("delegate", {
     "'claude' (haiku [default], sonnet, opus) or 'gemini' (via Google Antigravity: hydrogen [default, fast], argon [frontier, strongest]). effort: low|medium|high|xhigh.",
     "write=false: read-only answer. write=true: the worker edits files in its own git worktree branched from HEAD",
     "(uncommitted changes in the main tree are NOT visible to it); review with job_diff, then job_merge or job_discard.",
-    "role: optional ('code', 'quick', 'review', 'research', 'images'). Use role='research' with write=false for questions needing current web information (enables web search on claude/codex; free/local are not supported for web research).",
+    "role: optional ('code', 'quick', 'review', 'research', 'images', 'playtest'). Use role='research' with write=false for questions needing current web information (enables web search on claude/codex; free/local are not supported for web research). Use role='playtest' with write=false to run a read-only, rate-limited Roblox Studio playtest via StudioMCP (agent optional, defaults to Settings playtest model; claude/codex only; mutating/edit/upload tools are blocked).",
     "The worker cannot see this conversation: put every detail it needs in `task` (files, constraints, done-condition).",
     "Dispatch independent tasks in parallel, then job_wait each.",
     "shootout: optional (true or short group name) to group 2-3 parallel write=true jobs into one side-by-side model shootout; multiplies token use and is ONLY allowed when the user explicitly asked for it in the current turn.",
@@ -69,13 +79,13 @@ server.registerTool("delegate", {
     return tg ? "\n\n" + tg : "";
   })(),
   inputSchema: {
-    agent: z.enum(["codex", "claude", "gemini", "local", "free"]),
+    agent: z.enum(["codex", "claude", "gemini", "local", "free"]).optional().describe("Worker agent (optional for role='playtest', defaults to Settings playtest model)"),
     task: z.string().min(10),
     images: z.array(z.string()).max(6).optional().describe("Repo-relative paths inside .tokenwise-studio/uploads; forwarded to Codex and Claude"),
     model: z.string().optional().describe("Optional model; for agent='free', pass 'auto' or a full 'nvidia:<id>' (or '<provider>:<id>') from team options"),
     effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
     write: z.boolean().optional(),
-    role: z.enum(ROLES).optional().describe("Optional job role; pass 'research' (with write=false) for current web research"),
+    role: z.enum(JOB_ROLES).optional().describe("Optional job role; pass 'research' (with write=false) for current web research, or 'playtest' (with write=false) for read-only Roblox Studio playtesting"),
     title: z.string().optional(),
     fix_of: z.string().optional().describe("Optional previous job id for a fix round on the same files (passes only previous diff and failing check output)"),
     shootout: z.union([z.boolean(), z.string().min(1).max(80)]).optional().describe("Group parallel write jobs as a model shootout; allowed ONLY when the user asked for a shootout in this turn"),
@@ -84,8 +94,14 @@ server.registerTool("delegate", {
 }, async (a) => {
   try {
     const jobs = getJobs();
+    if (a.role !== "playtest" && !a.agent) {
+      return fail(new Error("agent is required"));
+    }
     if (a.role === "research" && a.write) {
       return fail(new Error("research jobs must be read-only (write=false)"));
+    }
+    if (a.role === "playtest" && a.write) {
+      return fail(new Error("playtest jobs must be read-only (write=false)"));
     }
     if (a.write && loadSettings().permissionMode === "plan-only") {
       return fail(new Error("write jobs are disabled in plan-only mode"));
