@@ -23,7 +23,7 @@ done
 xcrun --find swiftc >/dev/null
 VERSION="$(node -p 'require("./package.json").version')"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || fail 'Invalid package version'
-IDENTITY='Developer ID Application: [redacted] ([redacted])'
+IDENTITY="${CODESIGN_IDENTITY:-Developer ID Application: [redacted] ([redacted])}"
 DIST="$ROOT/dist"
 CACHE="${TOKENWISE_NODE_CACHE:-$ROOT/.cache/node}"
 mkdir -p "$DIST" "$CACHE"
@@ -101,8 +101,7 @@ printf '%s\n' "$NODE_RELEASE" > "$RES/app/.bundled"
 printf '%s\n' "$NODE_RELEASE" > "$RES/node/version.txt"
 # Check relative config resolution and the bundled JS without launching the GUI or a server.
 "$RES/node/bin/node" "$RES/app/src/cli.js" --version
-lipo -verify_arch arm64 x86_64 "$RES/node/bin/node"
-lipo -verify_arch arm64 x86_64 "$APP/Contents/MacOS/tokenwise-studio"
+for f in "$RES/node/bin/node" "$APP/Contents/MacOS/tokenwise-studio"; do a="$(lipo -archs "$f")"; [[ " $a " == *" arm64 "* && " $a " == *" x86_64 "* ]] || { echo "Not universal: $f ($a)" >&2; exit 1; }; done
 if (( DRY_RUN )); then
   log 'DRY RUN: reached the signing/keychain boundary; nothing was signed, notarized or uploaded.'
   rm -rf "$DIST/unsigned"
