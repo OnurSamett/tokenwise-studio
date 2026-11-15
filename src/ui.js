@@ -56,6 +56,7 @@ let repo, jobs, chats; // current project; replaced by POST /api/project
 let serverChatOpts = {};
 let serverPrOpts = {};
 let serverStudioOpts = {};
+let serverJobsOpts = {};
 
 const RECENTS = path.join(os.homedir(), ".tokenwise-studio", "recents.json");
 function recents() {
@@ -79,7 +80,7 @@ function maybePruneShootouts(force = false) {
   try { pruneExpiredShootouts(jobs, { now }); } catch {}
 }
 function openProject(p) {
-  repo = p; jobs = new Jobs(repo); chats = new Chats(jobs, serverChatOpts);
+  repo = p; jobs = new Jobs(repo, serverJobsOpts); chats = new Chats(jobs, serverChatOpts);
   lastPrunedAt = 0;
   maybePruneShootouts(true);
   remember(repo);
@@ -94,8 +95,8 @@ function combinedCheckInfo() {
 }
 function robloxInfo() {
   const rojo = findRojoProject(repo);
-  const bin = serverStudioOpts.studioMcpPath || locateStudioMcp();
-  return { rojo: !!rojo, projectFile: rojo?.file || null, studioMcpFound: !!bin };
+  const bin = serverStudioOpts.studioMcpPath || locateStudioMcp().found;
+  return { enabled: !!loadSettings().playtestEnabled, rojo: !!rojo, projectFile: rojo?.file || null, studioMcpFound: !!bin };
 }
 const state = () => {
   maybePruneShootouts(false);
@@ -274,7 +275,7 @@ export function startAutoUpdater({ firstDelayMs = 60_000, everyMs = 3600_000 } =
 // Exit after the response has been flushed (graceful: servers.json is cleaned by the exit hook).
 const exitSoon = (res) => { res.on?.("finish", () => setTimeout(() => hooks.exit(0), 100)); setTimeout(() => hooks.exit(0), 1500).unref?.(); };
 
-export function initServer({ repo: start, summarize, spawn, chatFn, freeRunner, exec, studioStatus, studioMcpPath } = {}) {
+export function initServer({ repo: start, summarize, spawn, chatFn, freeRunner, exec, studioStatus, studioMcpPath, proxyScript, playtestDir, playtestDiscardGraceMs } = {}) {
   serverChatOpts = {
     ...(summarize ? { summarize } : {}),
     ...(spawn ? { spawn } : {}),
@@ -286,6 +287,11 @@ export function initServer({ repo: start, summarize, spawn, chatFn, freeRunner, 
     ...(exec ? { exec } : {}),
     ...(studioStatus ? { studioStatus } : {}),
     ...(studioMcpPath ? { studioMcpPath } : {}),
+  };
+  serverJobsOpts = {
+    ...(proxyScript ? { proxyScript } : {}),
+    ...(playtestDir ? { playtestDir } : {}),
+    ...(playtestDiscardGraceMs !== undefined ? { playtestDiscardGraceMs } : {}),
   };
   openProject(path.resolve(start || process.cwd()));
 }
@@ -543,11 +549,27 @@ export const handler = async (req, res) => {
         if (serverUrl) registerServer(p, serverUrl);
         return send(res, 200, state());
       }
-      if (what === "delegate") return send(res, 200, jobs.start({ ...b, parent: null }));
-      if (what === "playtest") {
-        const task = String(b?.task || "").trim();
-        if (task.length < 5) throw new Error("playtest instructions are too short");
-        if (!b?.skipCheck) {
+      if (what === "delegate") {
+        const safe = {
+          ...(b?.role === "playtest" ? {} : {
+            ...(b?.agent !== undefined ? { agent: b.agent } : {}),
+            ...(b?.model !== undefined ? { model: b.model } : {}),
+            ...(b?.effort !== undefined ? { effort: b.effort } : {}),
+          }),
+          ...(b?.task !== undefined ? { task: b.task } : {}),
+          ...(b?.write !== undefined ? { write: b.write } : {}),
+          ...(b?.role !== undefined ? { role: b.role } : {}),
+          ...(b?.title !== undefined ? { title: b.title } : {}),
+          ...(b?.images !== undefined ? { images: b.images } : {}),
+          ...(b?.timeoutMin !== undefined ? { timeoutMin: b.timeoutMin } : {}),
+          ...(b?.fixOf !== undefined ? { fixOf: b.fixOf } : {}),
+          ...(b?.files !== undefined ? { files: b.files } : {}),
+          parent: null,
+        };
+        if (safe.role === "playtest") {
+          if (!loadSettings().playtestEnabled) {
+            throw new Error("Roblox playtest is disabled in Settings (enable it under Settings → Roblox)");
+          }
           const st = serverStudioOpts.studioStatus
             ? await serverStudioOpts.studioStatus()
             : getRobloxStudioStatus({
@@ -557,16 +579,29 @@ export const handler = async (req, res) => {
           if (!st.found) throw new Error("StudioMCP binary not found (install Roblox Studio on macOS)");
           if (!st.signatureOk) throw new Error(st.signatureReason || "StudioMCP code signature verification failed");
         }
+        return send(res, 200, jobs.start(safe));
+      }
+      if (what === "playtest") {
+        if (!loadSettings().playtestEnabled) {
+          throw new Error("Roblox playtest is disabled in Settings (enable it under Settings → Roblox)");
+        }
+        const task = String(b?.task || "").trim();
+        if (task.length < 5) throw new Error("playtest instructions are too short");
+        const title = typeof b?.title === "string" && b.title.trim() ? b.title.trim() : `Playtest: ${task.slice(0, 60)}`;
+        const st = serverStudioOpts.studioStatus
+          ? await serverStudioOpts.studioStatus()
+          : getRobloxStudioStatus({
+              ...(serverStudioOpts.exec ? { exec: serverStudioOpts.exec } : {}),
+              ...(serverStudioOpts.studioMcpPath ? { paths: [serverStudioOpts.studioMcpPath] } : {}),
+            });
+        if (!st.found) throw new Error("StudioMCP binary not found (install Roblox Studio on macOS)");
+        if (!st.signatureOk) throw new Error(st.signatureReason || "StudioMCP code signature verification failed");
         return send(res, 200, jobs.start({
-          agent: b?.agent || undefined,
-          model: b?.model || undefined,
-          effort: b?.effort || "medium",
           task,
           write: false,
           role: "playtest",
-          title: b?.title || `Playtest: ${task.slice(0, 60)}`,
+          title,
           parent: null,
-          playtestOptions: b?.playtestOptions || null,
         }));
       }
       if (what === "playtest-prompt") {

@@ -38,11 +38,12 @@ export const DEFAULTS = Object.freeze({
   compactChats: true, // summarize long chats and start a fresh session when context grows past threshold
   compactThreshold: 120_000, // orchestrator context token threshold (60k–400k)
   animations: true, // effort-aware working indicator and worker progress motion
+  playtestEnabled: false, // default-off gate for Roblox Studio MCP playtesting
   playtestModel: "sonnet", // Claude Sonnet by default; Gemini cannot use per-session MCP
   playtestMaxCalls: 40, // max MCP tool calls per playtest
   playtestMaxScreenshots: 25, // max viewport captures per playtest
   playtestMaxMinutes: 10, // max playtest duration in minutes
-  playtestAllowInput: true, // allow keyboard/mouse input simulation in Roblox Studio playtests
+  playtestAllowInput: false, // allow keyboard/mouse/navigation input simulation in Roblox Studio playtests (default off)
 });
 
 const cloneDefaults = () => ({
@@ -53,7 +54,7 @@ const cloneDefaults = () => ({
 const isObj = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
 const settingsFile = () => path.join(os.homedir(), ".tokenwise-studio", "settings.json");
 
-const VALIDATORS = {
+export const VALIDATORS = {
   language: (v) => LANGUAGES.includes(v) || `language must be one of ${LANGUAGES.join(", ")}`,
   permissionMode: (v) => PERMISSION_MODES.includes(v) || `permissionMode must be one of ${PERMISSION_MODES.join(", ")}`,
   defaultModel: (v) => ORCH_MODELS.includes(v) || `defaultModel must be one of ${ORCH_MODELS.join(", ")}`,
@@ -81,12 +82,28 @@ const VALIDATORS = {
   compactChats: (v) => typeof v === "boolean" || "compactChats must be true or false",
   compactThreshold: (v) => (Number.isInteger(v) && v >= 60_000 && v <= 400_000) || "compactThreshold must be a token count between 60000 and 400000",
   animations: (v) => typeof v === "boolean" || "animations must be true or false",
+  playtestEnabled: (v) => typeof v === "boolean" || "playtestEnabled must be true or false",
   playtestModel: (v) => PLAYTEST_MODELS.includes(v) || `playtestModel must be one of ${PLAYTEST_MODELS.join(", ")}`,
   playtestMaxCalls: (v) => (Number.isInteger(v) && v >= 1 && v <= 200) || "playtestMaxCalls must be an integer between 1 and 200",
   playtestMaxScreenshots: (v) => (Number.isInteger(v) && v >= 1 && v <= 100) || "playtestMaxScreenshots must be an integer between 1 and 100",
   playtestMaxMinutes: (v) => (Number.isInteger(v) && v >= 1 && v <= 30) || "playtestMaxMinutes must be an integer between 1 and 30",
   playtestAllowInput: (v) => typeof v === "boolean" || "playtestAllowInput must be true or false",
 };
+
+/** Clamp playtest maxCalls/maxScreenshots/maxMinutes to valid integers verified by VALIDATORS. */
+export function clampPlaytestLimits({ maxCalls, maxScreenshots, maxMinutes } = {}, fallback = DEFAULTS) {
+  const clampOne = (raw, def, min, max, validate) => {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return def;
+    const clamped = Math.max(min, Math.min(max, Math.trunc(n)));
+    return validate(clamped) === true ? clamped : def;
+  };
+  return {
+    maxCalls: clampOne(maxCalls, fallback.playtestMaxCalls ?? DEFAULTS.playtestMaxCalls, 1, 200, VALIDATORS.playtestMaxCalls),
+    maxScreenshots: clampOne(maxScreenshots, fallback.playtestMaxScreenshots ?? DEFAULTS.playtestMaxScreenshots, 1, 100, VALIDATORS.playtestMaxScreenshots),
+    maxMinutes: clampOne(maxMinutes, fallback.playtestMaxMinutes ?? DEFAULTS.playtestMaxMinutes, 1, 30, VALIDATORS.playtestMaxMinutes),
+  };
+}
 
 /** Load raw file settings merged with defaults (no env overrides). Never throws. */
 function loadStored() {

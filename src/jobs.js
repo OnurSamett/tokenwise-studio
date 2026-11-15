@@ -2,6 +2,7 @@
 import { validateImages } from "./uploads.js";
 import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { command, resolve, textOf } from "./workers.js";
@@ -17,7 +18,7 @@ import { notify, jobNotice } from "./notify.js";
 import { withProjectNotes } from "./instructions.js";
 import { captureImages } from "./jobimages.js";
 import { runTests, stopTests, runCombinedCheck, combinedCheckRunning, testTail, loadCombinedCheck, combinedTail } from "./testrun.js";
-import { loadSettings } from "./settings.js";
+import { loadSettings, clampPlaytestLimits } from "./settings.js";
 import { createSnapshot, captureFileStates, restoreSnapshot } from "./snapshots.js";
 import { checkJobConflicts, rebaseJob, resolveJobConflicts, extractFilePatches } from "./conflicts.js";
 import { extractMentionedProjectFiles, withProjectMapSlice } from "./projectmap.js";
@@ -231,7 +232,7 @@ function buildFixRoundTask({ task, jobs, prev, matchedFiles, failingOutput }) {
 }
 
 export class Jobs {
-  constructor(repo) {
+  constructor(repo, { proxyScript = null, playtestDir = null, playtestDiscardGraceMs = 3000 } = {}) {
     this.repo = path.resolve(repo);
     this.home = path.join(this.repo, ".tokenwise-studio");
     for (const d of ["jobs", "logs", "worktrees"]) fs.mkdirSync(path.join(this.home, d), { recursive: true });
@@ -240,6 +241,9 @@ export class Jobs {
     this.combinedChecking = null; // { active, child } for main-tree combined check
     this._listCache = new Map(); // filename -> { mtimeMs, size, data }
     this._usageCache = new Map(); // id -> { offset, sum, found, claude, cost, model }
+    this._testProxyScript = proxyScript || null;
+    this._testPlaytestDir = playtestDir || null;
+    this._playtestDiscardGraceMs = playtestDiscardGraceMs;
     // Keep our state folder out of the user's git status.
     if (this.isGit()) ensureGitExclude(this.repo);
   }
@@ -274,10 +278,17 @@ export class Jobs {
     if (role === "research" && write) throw new Error("research jobs must be read-only (write=false)");
     if (role === "playtest" && write) throw new Error("playtest jobs must be read-only (write=false)");
     const settings = loadSettings();
-    if (role === "playtest" && !agent) {
-      const pw = resolvePlaytestWorker(playtestOptions?.model || settings.playtestModel);
-      agent = pw.agent;
+    if (role === "playtest") {
+      if (!settings.playtestEnabled) {
+        throw new Error("Roblox playtest is disabled in Settings (enable it under Settings → Roblox)");
+      }
+      noFallback = true;
+      const pw = resolvePlaytestWorker(settings.playtestModel);
+      if (!agent) agent = pw.agent;
       if (!model) model = pw.model;
+      if (agent === "codex" && !String(settings.playtestModel || "").startsWith("codex:")) {
+        throw new Error("Codex playtest requires playtestModel to be explicitly set to codex:* in Settings (screenshots go to OpenAI)");
+      }
     }
     if (settings.freeMode && (agent === "codex" || agent === "claude" || agent === "gemini")) {
       throw new Error(`Free mode is on (no plan usage): paid worker '${agent}' is disabled. Use agent='free' or agent='local' instead.`);
@@ -287,7 +298,7 @@ export class Jobs {
     const team = loadTeam(this.home);
     if (agent === "free" && team.allow.free === false && !settings.freeMode) throw new Error("free workers are disabled in the team settings");
     // Before starting: if this plan is near its limit, cooling down, or not usable, pick the next one in the chain.
-    if (!noFallback) {
+    if (!noFallback && role !== "playtest") {
       const cd = getCooldown(agent);
       const cdWhy = cd ? `cooling down until ${formatHHMM(cd.until)}` : null;
       const why = nearLimit(agent, this.home) || cdWhy || (!available(agent, { write, role }, this.home)
@@ -305,7 +316,16 @@ export class Jobs {
       throw new Error(`${agent} does not support Roblox playtest; use claude or codex`);
     }
     const spec = resolve({ agent, model, effort, hint, provider, allowAstra: team.allow.astra === true });
-    const effTimeoutMin = timeoutMin ?? (role === "playtest" ? Math.max(1, Number(playtestOptions?.maxMinutes ?? settings.playtestMaxMinutes ?? 10) + 2) : 20);
+    const playtestLimits = role === "playtest"
+      ? clampPlaytestLimits({
+          maxCalls: playtestOptions?.maxCalls ?? settings.playtestMaxCalls,
+          maxScreenshots: playtestOptions?.maxScreenshots ?? settings.playtestMaxScreenshots,
+          maxMinutes: playtestOptions?.maxMinutes ?? settings.playtestMaxMinutes,
+        }, settings)
+      : null;
+    const effTimeoutMin = role === "playtest"
+      ? Math.min(timeoutMin ?? Infinity, playtestLimits.maxMinutes + 2)
+      : (timeoutMin ?? 20);
     const fixCtx = findFixRound(this, { task, write, parent, fixOf, files, skipFixDetect });
     const id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
     let cwd = this.repo, branch = null;
@@ -317,13 +337,15 @@ export class Jobs {
     }
     let playtestCfg = null;
     if (role === "playtest") {
-      const playtestDir = playtestOptions?.playtestDir || path.join(this.home, "playtests", id);
+      const playtestDir = typeof this._testPlaytestDir === "function"
+        ? this._testPlaytestDir(id)
+        : (this._testPlaytestDir || path.join(this.home, "playtests", id));
       fs.mkdirSync(playtestDir, { recursive: true });
-      const maxCalls = Number(playtestOptions?.maxCalls ?? settings.playtestMaxCalls ?? 40);
-      const maxScreenshots = Number(playtestOptions?.maxScreenshots ?? settings.playtestMaxScreenshots ?? 25);
-      const maxMinutes = Number(playtestOptions?.maxMinutes ?? settings.playtestMaxMinutes ?? 10);
-      const allowInput = playtestOptions?.allowInput !== undefined ? !!playtestOptions.allowInput : settings.playtestAllowInput !== false;
-      const proxyScript = playtestOptions?.proxyScript || STUDIO_PROXY_SCRIPT;
+      const { maxCalls, maxScreenshots, maxMinutes } = playtestLimits;
+      const allowInput = typeof playtestOptions?.allowInput === "boolean"
+        ? playtestOptions.allowInput
+        : Boolean(settings.playtestAllowInput);
+      const proxyScript = this._testProxyScript || STUDIO_PROXY_SCRIPT;
       const proxyArgs = [
         proxyScript,
         "--playtest-id", id,
@@ -332,7 +354,7 @@ export class Jobs {
         "--max-calls", String(maxCalls),
         "--max-screenshots", String(maxScreenshots),
         "--max-minutes", String(maxMinutes),
-        ...(!allowInput ? ["--no-input"] : []),
+        ...(allowInput ? ["--allow-input"] : ["--no-input"]),
       ];
       const mcpConfigFile = this.file(id, "mcp");
       if (spec.agent === "claude") {
@@ -342,10 +364,14 @@ export class Jobs {
           },
         }, null, 2));
       }
+      const codexHome = spec.agent === "codex" ? fs.mkdtempSync(path.join(os.tmpdir(), "tw-codex-playtest-")) : null;
       playtestCfg = {
+        repo: this.repo,
         playtestDir,
         mcpConfigFile,
+        codexHome,
         proxyArgs,
+        maxCalls,
         allowedTools: [...allowedToolSet({ allowInput })],
         systemPrompt: PLAYTEST_WORKER_SYSTEM_PROMPT,
         limits: { maxCalls, maxScreenshots, maxMinutes, allowInput },
@@ -406,6 +432,7 @@ export class Jobs {
       const runEntry = this.running.get(id);
       if (runEntry?.discardTimer) clearTimeout(runEntry.discardTimer);
       if (playtestCfg?.mcpConfigFile) { try { fs.unlinkSync(playtestCfg.mcpConfigFile); } catch {} }
+      if (playtestCfg?.codexHome) { try { fs.rmSync(playtestCfg.codexHome, { recursive: true, force: true }); } catch {} }
       const j = this.get(id);
       j.exitCode = code; j.finished = new Date().toISOString(); j.pid = null;
       if (j.status === "discarded") {
@@ -427,11 +454,11 @@ export class Jobs {
         if (RATE_LIMIT.test(tail)) {
           rateLimited = true;
           recordProviderCooldown(j.agent, { text: tail, home: this.home, reason: "hit a rate limit" });
-          if (!noFallback) {
+          if (!noFallback && j.role !== "playtest") {
             const alt = nextAgent({ tried: j.tried, write, role: j.role || null, home: this.home });
             if (alt) {
               try {
-                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin: effTimeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" }, fixOf: job.fixOf || null, files, skipFixDetect, shootout: j.shootout || null, playtestOptions });
+                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin: effTimeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" }, fixOf: job.fixOf || null, files, skipFixDetect, shootout: j.shootout || null });
                 j.status = "moved"; j.movedTo = nj.id;
                 write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
               } catch (e) { write1("meta", `fallback failed: ${e.message}`); }
@@ -641,24 +668,44 @@ export class Jobs {
   stopPlaytest(id, reason = "user") {
     const j = this.get(id);
     if (j.role !== "playtest") throw new Error("not a playtest job");
-    const playtestDir = path.join(this.home, "playtests", id);
+    const playtestDir = typeof this._testPlaytestDir === "function"
+      ? this._testPlaytestDir(id)
+      : (this._testPlaytestDir || path.join(this.home, "playtests", id));
     const flag = setStopFlag(playtestDir, reason);
     return { ok: true, id, stopFlag: flag };
   }
 
   discard(id) {
     const j = this.get(id);
-    if (j.role === "playtest") {
-      try { setStopFlag(path.join(this.home, "playtests", id), "discarded"); } catch {}
-    }
     const r = this.running.get(id);
-    if (r) {
-      killGroup(r.child, "SIGTERM");
-      if (r.discardTimer) clearTimeout(r.discardTimer);
-      r.discardTimer = setTimeout(() => killGroup(r.child, "SIGKILL"), 5000);
-      r.discardTimer.unref?.();
-    } else if (j.status === "running" && j.pid) {
-      killGroup(j.pid, "SIGTERM");
+    const signalGroup = () => {
+      if (r) {
+        if (r.child.exitCode === null) killGroup(r.child, "SIGTERM");
+        if (r.discardTimer) clearTimeout(r.discardTimer);
+        r.discardTimer = setTimeout(() => {
+          if (r.child.exitCode === null) killGroup(r.child, "SIGKILL");
+        }, 5000);
+        r.discardTimer.unref?.();
+      } else if (j.pid) {
+        killGroup(j.pid, "SIGTERM");
+      }
+    };
+    if (j.role === "playtest") {
+      const playtestDir = typeof this._testPlaytestDir === "function"
+        ? this._testPlaytestDir(id)
+        : (this._testPlaytestDir || path.join(this.home, "playtests", id));
+      try { setStopFlag(playtestDir, "discarded"); } catch {}
+      const graceMs = this._playtestDiscardGraceMs ?? 3000;
+      if (r) {
+        if (r.discardTimer) clearTimeout(r.discardTimer);
+        r.discardTimer = setTimeout(signalGroup, graceMs);
+        r.discardTimer.unref?.();
+      } else if (j.status === "running" && j.pid) {
+        const t = setTimeout(signalGroup, graceMs);
+        t.unref?.();
+      }
+    } else if (r || (j.status === "running" && j.pid)) {
+      signalGroup();
     }
     if (j.write) this.cleanup(j);
     j.status = "discarded"; return this.save(j);

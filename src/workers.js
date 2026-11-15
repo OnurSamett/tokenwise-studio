@@ -1,11 +1,56 @@
 // Worker adapters: turn {agent, model, effort, write} into a headless CLI command.
 import { imageNote } from "./uploads.js";
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { findAgy, agySlug } from "./antigravity.js";
 import { freeProviders } from "./freechat.js";
 import { ALL_PLAYTEST_ALLOWLIST } from "./studioproxy.js";
+
+/**
+ * Create an isolated temporary CODEX_HOME for a Codex playtest worker containing ONLY
+ * the `roblox_playtest` MCP server config and (when present as a regular file) `auth.json`.
+ * Never copies unrelated config or other MCP servers from the user's ~/.codex.
+ */
+export function prepareCodexPlaytestHome({
+  codexHome = null,
+  proxyArgs = [],
+  allowedTools = ALL_PLAYTEST_ALLOWLIST,
+  sourceCodexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex"),
+} = {}) {
+  const targetHome = codexHome || fs.mkdtempSync(path.join(os.tmpdir(), "tw-codex-pt-"));
+  fs.mkdirSync(targetHome, { recursive: true, mode: 0o700 });
+  try { fs.chmodSync(targetHome, 0o700); } catch {}
+
+  if (sourceCodexHome && path.resolve(sourceCodexHome) !== path.resolve(targetHome)) {
+    const srcAuth = path.join(sourceCodexHome, "auth.json");
+    try {
+      const st = fs.lstatSync(srcAuth);
+      if (st.isFile() && !st.isSymbolicLink()) {
+        const dstAuth = path.join(targetHome, "auth.json");
+        fs.writeFileSync(dstAuth, fs.readFileSync(srcAuth), { mode: 0o600 });
+      }
+    } catch {}
+  }
+
+  const enabledList = [...(allowedTools || ALL_PLAYTEST_ALLOWLIST)];
+  const toml = [
+    // File-backed auth can be copied without importing user MCPs or hooks.
+    // OS keyring/ephemeral credentials are not portable to a fresh CODEX_HOME.
+    // https://learn.chatgpt.com/docs/auth#credential-storage
+    'cli_auth_credentials_store = "file"',
+    "[mcp_servers.roblox_playtest]",
+    `command = ${JSON.stringify(process.execPath)}`,
+    `args = ${JSON.stringify(proxyArgs || [])}`,
+    `enabled_tools = ${JSON.stringify(enabledList)}`,
+    'default_tools_approval_mode = "approve"',
+    "",
+  ].join("\n");
+  fs.writeFileSync(path.join(targetHome, "config.toml"), toml, { mode: 0o600 });
+  return targetHome;
+}
 
 export const AGENTS = ["codex", "claude", "gemini", "local", "free"];
 const FREEAGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), "freeagent.js");
@@ -150,9 +195,21 @@ export function command({ agent, model, effort, via, hint: specHint, provider: s
   if (agent === "codex") {
     if (role === "playtest" && playtest) {
       const prompt = playtest.systemPrompt ? `<instructions>\n${playtest.systemPrompt}\n</instructions>\n\n${task}` : task;
+      const enabledTools = [...(playtest.allowedTools || ALL_PLAYTEST_ALLOWLIST)];
+      const codexHome = prepareCodexPlaytestHome({
+        codexHome: playtest.codexHome || null,
+        proxyArgs: playtest.proxyArgs || [],
+        allowedTools: enabledTools,
+        ...(playtest.sourceCodexHome
+          ? { sourceCodexHome: playtest.sourceCodexHome }
+          : playtest.userHomeDir
+            ? { sourceCodexHome: path.join(playtest.userHomeDir, ".codex") }
+            : {}),
+      });
       const mcpFlags = [
         "-c", `mcp_servers.roblox_playtest.command=${JSON.stringify(process.execPath)}`,
         "-c", `mcp_servers.roblox_playtest.args=${JSON.stringify(playtest.proxyArgs || [])}`,
+        "-c", `mcp_servers.roblox_playtest.enabled_tools=${JSON.stringify(enabledTools)}`,
         "-c", 'mcp_servers.roblox_playtest.default_tools_approval_mode="approve"',
       ];
       return {
@@ -163,6 +220,7 @@ export function command({ agent, model, effort, via, hint: specHint, provider: s
           "-c", 'web_search="disabled"',
           ...mcpFlags,
           "-o", lastFile, ...images.flatMap((p) => ["-i", p]), "--", prompt],
+        env: { CODEX_HOME: codexHome },
       };
     }
     return {
@@ -177,17 +235,25 @@ export function command({ agent, model, effort, via, hint: specHint, provider: s
   if (agent === "claude") {
     if (role === "playtest" && playtest) {
       const mcpTools = (playtest.allowedTools || ALL_PLAYTEST_ALLOWLIST).map((n) => `mcp__roblox-playtest__${n}`);
-      const allowed = ["Read", "Glob", "Grep", ...mcpTools];
+      const repoRoot = cwd || playtest.repo || process.cwd();
+      const readScopes = [
+        `Read(${repoRoot}/**)`,
+        ...(playtest.playtestDir ? [`Read(${playtest.playtestDir}/**)`] : []),
+      ];
+      const allowed = [...readScopes, "Glob", "Grep", ...mcpTools];
+      const maxCalls = Number(playtest.maxCalls ?? playtest.limits?.maxCalls ?? 40) || 40;
+      const maxTurns = String(maxCalls + 10);
       const addDirs = [...images.map((p) => path.dirname(p)), ...(playtest.playtestDir ? [playtest.playtestDir] : [])];
       return {
         cmd: "claude",
         args: [
           "-p", [task, imageNote(images)].filter(Boolean).join("\n\n"),
           "--model", model, "--effort", effort,
+          "--max-turns", maxTurns,
           "--mcp-config", playtest.mcpConfigFile,
           "--strict-mcp-config",
           "--permission-mode", "default",
-          "--disallowedTools", "Edit", "Write", "MultiEdit", "NotebookEdit", "Bash",
+          "--disallowedTools", "Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "WebFetch", "WebSearch", "Task", "Agent",
           "--allowedTools", ...allowed,
           ...(playtest.systemPrompt ? ["--append-system-prompt", playtest.systemPrompt] : []),
           ...addDirs.flatMap((d) => ["--add-dir", d]),

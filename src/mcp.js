@@ -16,6 +16,7 @@ import { runTests, testRunning, testTail } from "./testrun.js";
 import { normalizeFreeModelArg } from "./workers.js";
 import { queryProjectMap } from "./projectmap.js";
 import { resolveTurnShootoutId } from "./shootout.js";
+import { resolvePlaytestWorker } from "./playtest.js";
 
 const repo = process.env.TOKENWISE_REPO || process.cwd();
 let jobsInstance = null;
@@ -53,16 +54,24 @@ export function resolveChatId(argChatId, envParent = process.env.TOKENWISE_PAREN
 /** Validate delegate arguments and convert bare free model aliases into ranking hints. */
 export function prepareDelegateArgs(a, opts = {}) {
   if (!a || typeof a !== "object") throw new Error("delegate arguments must be an object");
-  const freeMode = opts.freeMode !== undefined ? opts.freeMode : loadSettings().freeMode;
-  if (freeMode && PAID_AGENTS.has(a.agent)) {
+  const { playtestOptions: _po, proxyScript: _ps, playtestDir: _pd, skipCheck: _sc, ...clean } = a;
+  let next = clean;
+  if (next.role === "playtest") {
+    const s = opts.settings || loadSettings();
+    const pm = opts.playtestModel !== undefined ? opts.playtestModel : s.playtestModel;
+    const pw = resolvePlaytestWorker(pm);
+    next = { ...next, agent: pw.agent, model: pw.model };
+  }
+  const freeMode = opts.freeMode !== undefined ? opts.freeMode : (opts.settings || loadSettings()).freeMode;
+  if (freeMode && PAID_AGENTS.has(next.agent)) {
     throw new Error(
-      `Free mode is on (no plan usage): paid worker '${a.agent}' is disabled. Delegate with agent="free" (model="auto") or agent="local" instead.`,
+      `Free mode is on (no plan usage): paid worker '${next.agent}' is disabled. Delegate with agent="free" (model="auto") or agent="local" instead.`,
     );
   }
-  if (a.agent !== "free") return a;
-  const { model, hint, provider } = normalizeFreeModelArg(a.model);
+  if (next.agent !== "free") return next;
+  const { model, hint, provider } = normalizeFreeModelArg(next.model);
   return {
-    ...a,
+    ...next,
     ...(model !== undefined ? { model } : {}),
     ...(hint ? { hint } : {}),
     ...(provider ? { provider } : {}),
@@ -108,13 +117,11 @@ export function createOrchestratorTools({ jobs: jobsOpt = null, parent: parentOp
         const jobs = resolveJobs();
         const s = loadSettings();
         const perm = resolvePerm();
+        if (a.role === "playtest" && !s.playtestEnabled) {
+          return fail(new Error("Roblox playtest is disabled in Settings (enable it under Settings → Roblox)"));
+        }
         if (a.role !== "playtest" && !a.agent) {
           return fail(new Error("agent is required"));
-        }
-        if (s.freeMode && PAID_AGENTS.has(a.agent)) {
-          return fail(new Error(
-            `Free mode is on (no plan usage): paid worker '${a.agent}' is disabled. Delegate with agent="free" (model="auto") or agent="local" instead.`,
-          ));
         }
         if (a.role === "research" && a.write) {
           return fail(new Error("research jobs must be read-only (write=false)"));
@@ -125,6 +132,7 @@ export function createOrchestratorTools({ jobs: jobsOpt = null, parent: parentOp
         if (a.write && perm === "plan-only") {
           return fail(new Error("write jobs are disabled in plan-only mode"));
         }
+        const prepared = prepareDelegateArgs(a, { freeMode: s.freeMode, playtestModel: s.playtestModel, settings: s });
         const chatId = resolveParent(a.chat_id, jobs);
         const over = budgetGate(jobs, chatId, s.turnBudget);
         if (over) return fail(new Error(over));
@@ -133,7 +141,6 @@ export function createOrchestratorTools({ jobs: jobsOpt = null, parent: parentOp
           if (!a.write) return fail(new Error("shootout jobs must be write jobs (write=true)"));
           shootoutId = resolveTurnShootoutId(jobs.home, chatId, a.shootout, { title: a.title || "", task: a.task });
         }
-        const prepared = prepareDelegateArgs(a, { freeMode: s.freeMode });
         return ok(briefFor(jobs, jobs.start({
           ...prepared,
           ...(chatId ? { parent: chatId } : {}),

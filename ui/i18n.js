@@ -1098,7 +1098,10 @@ export const DICT = {
 
     "settings.robloxTitle": "Roblox",
     "settings.robloxHelp": "Read-only StudioMCP playtesting for Rojo projects. Verifies Roblox code signature before every launch.",
+    "settings.robloxEnabled": "Enable Roblox playtest ",
+    "settings.robloxEnabledDesc": "Allow starting read-only StudioMCP playtests from the composer and orchestrator. Off by default.",
     "settings.robloxModel": "Playtest model",
+    "settings.robloxCodexNote": "Note: when a Codex model is selected, playtest screenshots and console output are sent to OpenAI.",
     "settings.robloxMaxCalls": "Max tool calls",
     "settings.robloxMaxShots": "Max screenshots",
     "settings.robloxMaxMins": "Max minutes",
@@ -2209,7 +2212,10 @@ export const DICT = {
 
     "settings.robloxTitle": "Roblox",
     "settings.robloxHelp": "Rojo projeleri için salt okunur StudioMCP oyun testi. Her başlatma öncesi Roblox kod imzası doğrulanır.",
+    "settings.robloxEnabled": "Roblox oyun testini etkinleştir ",
+    "settings.robloxEnabledDesc": "Mesaj alanından ve yöneticiden salt okunur StudioMCP oyun testleri başlatmana izin verir. Varsayılan olarak kapalıdır.",
     "settings.robloxModel": "Test modeli",
+    "settings.robloxCodexNote": "Not: Bir Codex modeli seçtiğinde oyun testi ekran görüntüleri ve konsol çıktısı OpenAI'a gönderilir.",
     "settings.robloxMaxCalls": "En fazla araç çağrısı",
     "settings.robloxMaxShots": "En fazla ekran görüntüsü",
     "settings.robloxMaxMins": "En fazla dakika",

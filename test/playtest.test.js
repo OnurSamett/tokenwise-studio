@@ -10,6 +10,10 @@ import { fileURLToPath } from "node:url";
 import {
   ROBLOX_TEAM_ID,
   ROBLOX_IDENTIFIER,
+  CODESIGN_BIN,
+  PGREP_BIN,
+  CODESIGN_REQUIREMENT,
+  locateStudioMcp,
   parseCodesignInfo,
   verifyStudioMcpSignature,
   minimalStudioEnv,
@@ -20,7 +24,13 @@ import {
   PLAYTEST_READ_TOOLS,
   PLAYTEST_INPUT_TOOLS,
   ALL_PLAYTEST_ALLOWLIST,
+  MAX_TOOL_TEXT_BLOCK_BYTES,
+  MAX_TOOL_TOTAL_TEXT_BYTES,
+  MAX_DENIED_CALLS,
+  IMAGE_MAX_BYTES,
   allowedToolSet,
+  hasForbiddenModifier,
+  truncateToolContent,
   scrubBase64Images,
   setStopFlag,
   isStopFlagSet,
@@ -33,12 +43,13 @@ import {
   resolvePlaytestImage,
   formatPlaytestFixPrompt,
 } from "../src/playtest.js";
-import { loadSettings, saveSettings } from "../src/settings.js";
+import { loadSettings, saveSettings, clampPlaytestLimits } from "../src/settings.js";
 import { clearDoctorCache } from "../src/doctor.js";
 import { command } from "../src/workers.js";
-import { available } from "../src/fallback.js";
+import { available, recordProviderCooldown, clearCooldown } from "../src/fallback.js";
 import { Jobs } from "../src/jobs.js";
 import { buildGuide } from "../src/orchestrator.js";
+import { createOrchestratorTools, prepareDelegateArgs } from "../src/mcp.js";
 import { initServer, handler } from "../src/ui.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -57,6 +68,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from ${JSON.stringify(t
 
 const CALL_LOG = ${JSON.stringify(callLogPath)};
 const PNG_B64 = ${JSON.stringify(TINY_PNG_B64)};
+let currentStudioState = "edit";
 
 const TOOLS = [
   { name: "start_stop_play", description: "Start or stop Play mode", inputSchema: { type: "object", properties: { mode: { type: "string", enum: ["start_play", "stop"] } } } },
@@ -85,11 +97,32 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const args = req.params?.arguments || {};
   fs.appendFileSync(CALL_LOG, JSON.stringify({ name, args }) + "\\n");
 
+  if (name === "start_stop_play") {
+    currentStudioState = (args.mode === "start_play" || args.mode === "start") ? "playing" : "edit";
+  }
   if (name === "screen_capture") {
+    const count = Number(args.count || 1);
+    const oversize = Boolean(args.oversize);
+    const imgData = oversize ? "A".repeat(Math.ceil((${IMAGE_MAX_BYTES} + 1024) * 4 / 3)) : PNG_B64;
+    const images = Array.from({ length: count }, () => ({ type: "image", mimeType: "image/png", data: imgData }));
     return {
       content: [
         { type: "text", text: "Captured viewport (1280x720)" },
-        { type: "image", mimeType: "image/png", data: PNG_B64 },
+        ...images,
+      ],
+    };
+  }
+  if (name === "get_studio_state") {
+    const mode = args.mode || currentStudioState;
+    return { content: [{ type: "text", text: JSON.stringify({ state: mode, isPlaying: mode === "start_play" || mode === "playing" }) }] };
+  }
+  if (name === "search_game_tree" && args.query === "HUGE_OUTPUT") {
+    const bigBlock = "X".repeat(24 * 1024);
+    return {
+      content: [
+        { type: "text", text: bigBlock },
+        { type: "text", text: bigBlock },
+        { type: "text", text: bigBlock },
       ],
     };
   }
@@ -169,12 +202,18 @@ async function callHandler({ method = "GET", url, body = null }) {
   };
 }
 
-test("studiomcp: signature verification rejects missing/invalid/wrong-team binaries and scrubs env", () => {
+test("studiomcp: signature verification, TOCTOU copy-then-verify, symlink refusal, and minimal env", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tw-smcp-"));
   const fakeBin = path.join(tmp, "StudioMCP");
+  const cacheHome = path.join(tmp, "home");
   fs.writeFileSync(fakeBin, "#!/bin/sh\necho hi\n", { mode: 0o755 });
 
   try {
+    assert.equal(CODESIGN_BIN, "/usr/bin/codesign");
+    assert.equal(PGREP_BIN, "/usr/bin/pgrep");
+    assert.match(CODESIGN_REQUIREMENT, /subject\.OU.*2CFABCH843/);
+    assert.match(CODESIGN_REQUIREMENT, /identifier "StudioMCP"/);
+
     // 1. Non-macOS rejected
     const nonMac = verifyStudioMcpSignature(fakeBin, { platform: "linux" });
     assert.equal(nonMac.ok, false);
@@ -185,21 +224,44 @@ test("studiomcp: signature verification rejects missing/invalid/wrong-team binar
     assert.equal(missing.ok, false);
     assert.match(missing.reason, /not found|no such file/i);
 
-    // 3. codesign --verify fails
+    // 2b. Symlinked binary refused in locateStudioMcp, verifyStudioMcpSignature, and spawnStudioMcp
+    const symlinkBin = path.join(tmp, "StudioMCP-link");
+    fs.symlinkSync(fakeBin, symlinkBin);
+    const locSym = locateStudioMcp([symlinkBin]);
+    assert.equal(locSym.found, false);
+    assert.match(locSym.reason, /symlink/i);
+    const verSym = verifyStudioMcpSignature(symlinkBin, { platform: "darwin" });
+    assert.equal(verSym.ok, false);
+    assert.match(verSym.reason, /symlink/i);
+    assert.throws(() => {
+      spawnStudioMcp({
+        binPath: symlinkBin,
+        cacheDir: path.join(cacheHome, ".tokenwise-studio", "bin"),
+        platform: "darwin",
+        exec: () => "",
+        spawn: () => ({}),
+      });
+    }, /symlink/i);
+
+    // 3. codesign --verify with strict -R requirement fails
+    const seenCmds = [];
     const verifyFail = verifyStudioMcpSignature(fakeBin, {
       platform: "darwin",
-      exec: (_cmd, args) => {
+      exec: (cmd, args) => {
+        seenCmds.push({ cmd, args });
         if (args[0] === "--verify") throw new Error("code object is not signed at all");
         return "";
       },
     });
     assert.equal(verifyFail.ok, false);
     assert.match(verifyFail.reason, /not signed/i);
+    assert.equal(seenCmds[0].cmd, "/usr/bin/codesign");
+    assert.deepEqual(seenCmds[0].args.slice(0, 4), ["--verify", "--strict", `-R=${CODESIGN_REQUIREMENT}`, fakeBin]);
 
     // 4. Wrong TeamIdentifier
     const badTeam = verifyStudioMcpSignature(fakeBin, {
       platform: "darwin",
-      exec: (_cmd, args) => args[0] === "--verify" ? "" : `Identifier=${ROBLOX_IDENTIFIER}\nTeamIdentifier=EVIL999999\n`,
+      exec: () => `Identifier=${ROBLOX_IDENTIFIER}\nTeamIdentifier=EVIL999999\n`,
     });
     assert.equal(badTeam.ok, false);
     assert.match(badTeam.reason, /TeamIdentifier/);
@@ -207,24 +269,27 @@ test("studiomcp: signature verification rejects missing/invalid/wrong-team binar
     // 5. Wrong Identifier
     const badIdent = verifyStudioMcpSignature(fakeBin, {
       platform: "darwin",
-      exec: (_cmd, args) => args[0] === "--verify" ? "" : `Identifier=com.evil.Tool\nTeamIdentifier=${ROBLOX_TEAM_ID}\n`,
+      exec: () => `Identifier=com.evil.Tool\nTeamIdentifier=${ROBLOX_TEAM_ID}\n`,
     });
     assert.equal(badIdent.ok, false);
     assert.match(badIdent.reason, /Identifier/);
 
-    // 6. spawnStudioMcp refuses when verification fails
+    // 6. spawnStudioMcp refuses when verification of the copy fails and removes the unverified copy
     let spawned = false;
     assert.throws(() => {
       spawnStudioMcp({
         binPath: fakeBin,
+        cacheDir: path.join(cacheHome, ".tokenwise-studio", "bin"),
         platform: "darwin",
         exec: () => `Identifier=fake\nTeamIdentifier=WRONG\n`,
         spawn: () => { spawned = true; return {}; },
       });
     }, /Signature check failed|Identifier/);
     assert.equal(spawned, false);
+    const binCacheDir = path.join(cacheHome, ".tokenwise-studio", "bin");
+    assert.deepEqual(fs.readdirSync(binCacheDir), []);
 
-    // 7. Valid signature spawns with minimal env (secrets stripped)
+    // 7. Valid signature copies to ~/.tokenwise-studio/bin/StudioMCP-<sha256> (dir 0700, file 0500), verifies the COPY, and execs the COPY
     const info = parseCodesignInfo(`Executable=${fakeBin}\nIdentifier=${ROBLOX_IDENTIFIER}\nTeamIdentifier=${ROBLOX_TEAM_ID}\nAuthority=Developer ID Application: Roblox Corporation (${ROBLOX_TEAM_ID})\n`);
     assert.equal(info.identifier, ROBLOX_IDENTIFIER);
     assert.equal(info.teamId, ROBLOX_TEAM_ID);
@@ -242,23 +307,64 @@ test("studiomcp: signature verification rejects missing/invalid/wrong-team binar
     assert.equal(minEnv.GITHUB_TOKEN, undefined);
 
     let capturedSpawn = null;
+    const verifiedPaths = [];
     const validSpawn = spawnStudioMcp({
       binPath: fakeBin,
+      cacheDir: path.join(cacheHome, ".tokenwise-studio", "bin"),
       platform: "darwin",
-      exec: () => `Identifier=${ROBLOX_IDENTIFIER}\nTeamIdentifier=${ROBLOX_TEAM_ID}\n`,
-      env: { PATH: "/usr/bin", HOME: "/tmp/h", ANTHROPIC_API_KEY: "do-not-pass" },
+      exec: (cmd, args) => {
+        if (args[0] === "--verify") verifiedPaths.push({ cmd, target: args.at(-1), req: args[2] });
+        return `Identifier=${ROBLOX_IDENTIFIER}\nTeamIdentifier=${ROBLOX_TEAM_ID}\n`;
+      },
+      env: { PATH: "/usr/bin", HOME: cacheHome, ANTHROPIC_API_KEY: "do-not-pass" },
       spawn: (cmd, args, opts) => { capturedSpawn = { cmd, args, opts }; return { pid: 99999 }; },
     });
     assert.equal(validSpawn.child.pid, 99999);
-    assert.equal(capturedSpawn.cmd, fakeBin);
+    assert.notEqual(capturedSpawn.cmd, fakeBin, "must exec the verified copy, not the mutable source path");
+    assert.match(path.basename(capturedSpawn.cmd), /^StudioMCP-[0-9a-f]{64}$/);
+    assert.equal(verifiedPaths.length, 1);
+    assert.equal(verifiedPaths[0].cmd, "/usr/bin/codesign");
+    assert.equal(verifiedPaths[0].target, capturedSpawn.cmd, "codesign --verify must verify the COPY");
+    assert.equal(verifiedPaths[0].req, `-R=${CODESIGN_REQUIREMENT}`);
+    assert.equal(fs.statSync(binCacheDir).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(capturedSpawn.cmd).mode & 0o777, 0o500);
     assert.equal(capturedSpawn.opts.env.ANTHROPIC_API_KEY, undefined);
 
-    // 8. Status helper
+    // 7b. Swapped/tampered cached copy whose sha256 does not match is replaced before verification & exec
+    fs.chmodSync(capturedSpawn.cmd, 0o700);
+    fs.writeFileSync(capturedSpawn.cmd, "#!/bin/sh\necho tampered\n");
+    fs.chmodSync(capturedSpawn.cmd, 0o500);
+    const secondSpawn = spawnStudioMcp({
+      binPath: fakeBin,
+      cacheDir: path.join(cacheHome, ".tokenwise-studio", "bin"),
+      platform: "darwin",
+      exec: () => `Identifier=${ROBLOX_IDENTIFIER}\nTeamIdentifier=${ROBLOX_TEAM_ID}\n`,
+      spawn: (cmd) => ({ pid: 88888, cmd }),
+    });
+    assert.equal(fs.readFileSync(secondSpawn.path, "utf8"), "#!/bin/sh\necho hi\n");
+
+    // A copy swapped while codesign runs must never be spawned.
+    let swappedSpawned = false;
+    assert.throws(() => spawnStudioMcp({
+      binPath: fakeBin, cacheDir: binCacheDir, platform: "darwin",
+      exec: (_cmd, args) => {
+        const copy = args.at(-1);
+        fs.chmodSync(copy, 0o700);
+        fs.writeFileSync(copy, "tampered during signature verification");
+        return { code: 0 };
+      },
+      spawn: () => { swappedSpawned = true; return {}; },
+    }), /hash mismatch/);
+    assert.equal(swappedSpawned, false);
+
+    // 8. Status helper uses /usr/bin/pgrep and /usr/bin/codesign
+    const statusCmds = [];
     const st = getRobloxStudioStatus({
       paths: [fakeBin],
       platform: "darwin",
       exec: (cmd, args) => {
-        if (cmd === "pgrep") return { code: 0, stdout: "1234\n", stderr: "" };
+        statusCmds.push(cmd);
+        if (cmd === "/usr/bin/pgrep") return { code: 0, stdout: "1234\n", stderr: "" };
         if (args[0] === "--verify") return { code: 0, stdout: "", stderr: "" };
         return { code: 0, stdout: "", stderr: `Identifier=${ROBLOX_IDENTIFIER}\nTeamIdentifier=${ROBLOX_TEAM_ID}\n` };
       },
@@ -266,6 +372,8 @@ test("studiomcp: signature verification rejects missing/invalid/wrong-team binar
     assert.equal(st.found, true);
     assert.equal(st.signatureOk, true);
     assert.equal(st.studioRunning, true);
+    assert.ok(statusCmds.includes("/usr/bin/codesign"));
+    assert.ok(statusCmds.includes("/usr/bin/pgrep"));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -472,37 +580,53 @@ test("scrubBase64Images scrubs data URIs and large JSON base64 fields while pres
 });
 
 test("playtest.js, settings.js, workers.js, fallback.js, and orchestrator guide enforce read-only & data rules", () => {
-  // Settings defaults & validation
+  // Settings defaults & validation (default-off gate & input default false)
   const def = loadSettings();
+  assert.equal(def.playtestEnabled, false);
   assert.equal(def.playtestModel, "sonnet");
   assert.equal(def.playtestMaxCalls, 40);
   assert.equal(def.playtestMaxScreenshots, 25);
   assert.equal(def.playtestMaxMinutes, 10);
-  assert.equal(def.playtestAllowInput, true);
+  assert.equal(def.playtestAllowInput, false);
+
+  // clampPlaytestLimits clamps with settings.js VALIDATORS
+  assert.deepEqual(clampPlaytestLimits({ maxCalls: 9999, maxScreenshots: -5, maxMinutes: 120 }), {
+    maxCalls: 200,
+    maxScreenshots: 1,
+    maxMinutes: 30,
+  });
 
   const updated = saveSettings({
+    playtestEnabled: true,
     playtestModel: "codex:sol",
     playtestMaxCalls: 30,
     playtestMaxScreenshots: 12,
     playtestMaxMinutes: 5,
-    playtestAllowInput: false,
+    playtestAllowInput: true,
   });
+  assert.equal(updated.playtestEnabled, true);
   assert.equal(updated.playtestModel, "codex:sol");
-  assert.equal(updated.playtestAllowInput, false);
+  assert.equal(updated.playtestAllowInput, true);
+  assert.throws(() => saveSettings({ playtestEnabled: "yes" }));
   assert.throws(() => saveSettings({ playtestModel: "gemini" }));
+  assert.throws(() => saveSettings({ playtestModel: "sol" }));
   assert.throws(() => saveSettings({ playtestMaxCalls: 999 }));
   saveSettings({
+    playtestEnabled: false,
     playtestModel: "sonnet",
     playtestMaxCalls: 40,
     playtestMaxScreenshots: 25,
     playtestMaxMinutes: 10,
-    playtestAllowInput: true,
+    playtestAllowInput: false,
   });
 
-  // Worker resolution & fallback gating
+  // Worker resolution & fallback gating (fallback.available() always false for playtest)
   assert.deepEqual(resolvePlaytestWorker("sonnet"), { agent: "claude", model: "sonnet" });
   assert.deepEqual(resolvePlaytestWorker("codex:terra"), { agent: "codex", model: "terra" });
+  assert.throws(() => resolvePlaytestWorker("sol"), /explicit codex:sol|unsupported playtest model/);
   assert.throws(() => resolvePlaytestWorker("gemini"));
+  assert.equal(available("claude", { write: false, role: "playtest" }), false);
+  assert.equal(available("codex", { write: false, role: "playtest" }), false);
   assert.equal(available("gemini", { write: false, role: "playtest" }), false);
   assert.equal(available("free", { write: false, role: "playtest" }), false);
   assert.equal(available("local", { write: false, role: "playtest" }), false);
@@ -520,6 +644,7 @@ test("playtest.js, settings.js, workers.js, fallback.js, and orchestrator guide 
       playtest: {
         mcpConfigFile: "/tmp/mcp.json",
         playtestDir: "/tmp/pt",
+        maxCalls: 40,
         systemPrompt: PLAYTEST_WORKER_SYSTEM_PROMPT,
       },
     },
@@ -528,35 +653,69 @@ test("playtest.js, settings.js, workers.js, fallback.js, and orchestrator guide 
   assert.ok(claudeCmd.args.includes("--mcp-config"));
   assert.ok(claudeCmd.args.includes("--strict-mcp-config"));
   assert.ok(claudeCmd.args.includes("--disallowedTools"));
-  assert.ok(claudeCmd.args.includes("Edit"));
-  assert.ok(claudeCmd.args.includes("Bash"));
+  for (const tool of ["Edit", "Bash", "WebFetch", "WebSearch", "Task", "Agent"]) {
+    assert.ok(claudeCmd.args.includes(tool), `expected ${tool} in --disallowedTools`);
+  }
+  assert.ok(claudeCmd.args.includes(`Read(${REPO_ROOT}/**)`));
+  assert.ok(claudeCmd.args.includes("Read(/tmp/pt/**)"));
+  assert.ok(!claudeCmd.args.includes("Read"), "unscoped Read must not be in --allowedTools");
+  const maxTurnsIdx = claudeCmd.args.indexOf("--max-turns");
+  assert.ok(maxTurnsIdx !== -1);
+  assert.equal(claudeCmd.args[maxTurnsIdx + 1], "50");
   assert.ok(claudeCmd.args.includes(PLAYTEST_WORKER_SYSTEM_PROMPT));
   assert.match(PLAYTEST_WORKER_SYSTEM_PROMPT, /UNTRUSTED DATA/i);
 
-  const codexCmd = command(
-    { agent: "codex", model: "sol", effort: "medium" },
-    {
-      task: "Walk to shop",
-      cwd: REPO_ROOT,
-      write: false,
-      role: "playtest",
-      lastFile: "/tmp/last.txt",
-      playtest: {
-        proxyArgs: ["/path/to/studioproxy.js"],
-        systemPrompt: PLAYTEST_WORKER_SYSTEM_PROMPT,
+  const tmpCodexDir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-codex-pt-"));
+  try {
+    const fakeUserHome = path.join(tmpCodexDir, "userhome");
+    fs.mkdirSync(path.join(fakeUserHome, ".codex"), { recursive: true });
+    fs.writeFileSync(path.join(fakeUserHome, ".codex", "auth.json"), '{"token":"test-auth"}');
+    fs.writeFileSync(path.join(fakeUserHome, ".codex", "config.toml"), '[mcp_servers.evil_other]\ncommand = "evil"\n');
+    const ptDir = path.join(tmpCodexDir, "pt");
+    const codexCmd = command(
+      { agent: "codex", model: "sol", effort: "medium" },
+      {
+        task: "Walk to shop",
+        cwd: REPO_ROOT,
+        write: false,
+        role: "playtest",
+        lastFile: "/tmp/last.txt",
+        playtest: {
+          playtestDir: ptDir,
+          allowInput: false,
+          userHomeDir: fakeUserHome,
+          proxyArgs: ["/path/to/studioproxy.js"],
+          systemPrompt: PLAYTEST_WORKER_SYSTEM_PROMPT,
+        },
       },
-    },
-  );
-  assert.equal(codexCmd.cmd, "codex");
-  assert.ok(codexCmd.args.includes("read-only"));
-  assert.ok(codexCmd.args.some((a) => a.includes("mcp_servers.roblox_playtest")));
+    );
+    assert.equal(codexCmd.cmd, "codex");
+    assert.ok(codexCmd.args.includes("read-only"));
+    assert.ok(codexCmd.args.some((a) => a.includes("mcp_servers.roblox_playtest.enabled_tools=")));
+    const isolatedHome = codexCmd.env?.CODEX_HOME;
+    assert.ok(isolatedHome);
+    assert.ok(!isolatedHome.startsWith(ptDir));
+    const isolatedCfg = fs.readFileSync(path.join(isolatedHome, "config.toml"), "utf8");
+    assert.match(isolatedCfg, /\[mcp_servers\.roblox_playtest\]/);
+    assert.match(isolatedCfg, /enabled_tools = \[/);
+    assert.doesNotMatch(isolatedCfg, /evil_other/);
+    assert.equal(fs.readFileSync(path.join(isolatedHome, "auth.json"), "utf8"), '{"token":"test-auth"}');
+    fs.rmSync(isolatedHome, { recursive: true, force: true });
+  } finally {
+    fs.rmSync(tmpCodexDir, { recursive: true, force: true });
+  }
 
-  // Orchestrator guide
+  // Orchestrator guide: omitted when disabled, included when enabled
   for (const mode of ["ask", "auto-apply", "plan-only"]) {
-    const g = buildGuide(mode, { robloxPlaytest: { rojo: true, studioMcpFound: true } });
-    assert.match(g, /role="playtest"/);
-    assert.match(g, /write=false/);
-    assert.match(g, /NEVER ask for place edit|do NOT request Studio edit/i);
+    const gDisabled = buildGuide(mode, { robloxPlaytest: { enabled: false, rojo: true, studioMcpFound: true } });
+    assert.doesNotMatch(gDisabled, /role="playtest"/);
+    assert.doesNotMatch(gDisabled, /ROBLOX STUDIO PLAYTEST READY/);
+
+    const gEnabled = buildGuide(mode, { robloxPlaytest: { enabled: true, rojo: true, studioMcpFound: true } });
+    assert.match(gEnabled, /role="playtest"/);
+    assert.match(gEnabled, /ROBLOX STUDIO PLAYTEST READY/);
+    assert.match(gEnabled, /write=false/);
+    assert.match(gEnabled, /NEVER ask for place edit|do NOT request Studio edit/i);
   }
 });
 
@@ -601,6 +760,8 @@ test("playtest report parsing maps console errors via Rojo and builds fix prompt
 
     const prompt = formatPlaytestFixPrompt(rep);
     assert.match(prompt, /data only/i);
+    assert.match(prompt, /<untrusted-playtest-data>/);
+    assert.match(prompt, /<\/untrusted-playtest-data>/);
     assert.match(prompt, /src\/server\/ShopServer\.server\.luau:14/);
     assert.match(prompt, /ShopServer nil Coins/);
   } finally {
@@ -642,7 +803,25 @@ console.log(JSON.stringify({ type: "result", result: "Playtest done.\\n\\n\`\`\`
   clearDoctorCache();
 
   try {
-    // 1. Refuse playtest when signature check fails
+    // 0. Default-off gate: playtest is refused when playtestEnabled is false
+    saveSettings({ playtestEnabled: false, playtestModel: "sonnet" });
+    initServer({
+      repo,
+      studioMcpPath: stubClaude,
+      studioStatus: () => ({ found: true, path: stubClaude, signatureOk: true, teamId: ROBLOX_TEAM_ID, identifier: ROBLOX_IDENTIFIER, studioRunning: true }),
+    });
+    const offRes = await callHandler({ method: "POST", url: "/api/playtest", body: { task: "Start play and test shop" } });
+    assert.equal(offRes.status, 400);
+    assert.match(offRes.json.error, /disabled in Settings/i);
+    const offDelRes = await callHandler({ method: "POST", url: "/api/delegate", body: { role: "playtest", task: "Start play and test shop", write: false } });
+    assert.equal(offDelRes.status, 400);
+    assert.match(offDelRes.json.error, /disabled in Settings/i);
+    assert.throws(() => new Jobs(repo).start({ role: "playtest", task: "Test the shop" }), /disabled in Settings/i);
+
+    // Enable playtest for subsequent checks
+    saveSettings({ playtestEnabled: true, playtestModel: "sonnet" });
+
+    // 1. Refuse playtest when signature check fails (even if caller passes skipCheck: true!)
     initServer({
       repo,
       studioMcpPath: stubClaude,
@@ -651,14 +830,21 @@ console.log(JSON.stringify({ type: "result", result: "Playtest done.\\n\\n\`\`\`
 
     const stRes = await callHandler({ url: "/api/state" });
     assert.equal(stRes.status, 200);
+    assert.equal(stRes.json.roblox.enabled, true);
     assert.equal(stRes.json.roblox.rojo, true);
     assert.equal(stRes.json.roblox.studioMcpFound, true);
 
-    const blockedRes = await callHandler({ method: "POST", url: "/api/playtest", body: { task: "Start play and test shop" } });
+    const blockedRes = await callHandler({
+      method: "POST",
+      url: "/api/playtest",
+      body: { task: "Start play and test shop", skipCheck: true },
+    });
     assert.equal(blockedRes.status, 400);
     assert.match(blockedRes.json.error, /bad team|signature/i);
 
-    // 2. Allow playtest when signature OK
+    // 2. Allow playtest when signature OK, and strip playtestOptions/proxyScript/playtestDir/agent/model from HTTP
+    const evilProxy = path.join(tmp, "evil-proxy.js");
+    const evilDir = path.join(tmp, "evil-dir");
     initServer({
       repo,
       studioMcpPath: stubClaude,
@@ -670,13 +856,50 @@ console.log(JSON.stringify({ type: "result", result: "Playtest done.\\n\\n\`\`\`
     assert.equal(rblxRes.json.signatureOk, true);
     assert.equal(rblxRes.json.studioRunning, true);
 
-    const startRes = await callHandler({ method: "POST", url: "/api/playtest", body: { task: "Start play and test shop" } });
+    const startRes = await callHandler({
+      method: "POST",
+      url: "/api/playtest",
+      body: {
+        task: "Start play and test shop",
+        agent: "codex",
+        model: "sol",
+        proxyScript: evilProxy,
+        playtestDir: evilDir,
+        playtestOptions: {
+          proxyScript: evilProxy,
+          playtestDir: evilDir,
+          maxCalls: 99999,
+        },
+      },
+    });
     assert.equal(startRes.status, 200);
     const jobId = startRes.json.id;
     assert.equal(startRes.json.role, "playtest");
     assert.equal(startRes.json.write, false);
-    assert.equal(startRes.json.agent, "claude");
+    assert.equal(startRes.json.agent, "claude", "HTTP /api/playtest must ignore caller agent and use Settings.playtestModel");
     assert.equal(startRes.json.model, "sonnet");
+    assert.equal(fs.existsSync(evilDir), false, "HTTP playtestDir must be ignored");
+    assert.equal(fs.existsSync(path.join(repo, ".tokenwise-studio", "playtests", jobId)), true);
+    assert.equal(startRes.json.playtestLimits.maxCalls, loadSettings().playtestMaxCalls);
+
+    const delegateRes = await callHandler({ method: "POST", url: "/api/delegate", body: {
+      task: "Test the shop through delegate", title: "Shop test", role: "playtest", write: false,
+      agent: "codex", model: "sol", proxyScript: evilProxy, playtestDir: evilDir, skipCheck: true,
+      playtestOptions: { proxyScript: evilProxy, playtestDir: evilDir, allowInput: true, maxCalls: 99999 },
+    } });
+    assert.equal(delegateRes.status, 200);
+    assert.equal(delegateRes.json.agent, "claude");
+    assert.equal(delegateRes.json.model, "sonnet");
+    assert.equal(delegateRes.json.playtestLimits.maxCalls, loadSettings().playtestMaxCalls);
+    assert.equal(delegateRes.json.playtestLimits.allowInput, false);
+    assert.equal(fs.existsSync(evilDir), false);
+    let delegateDone;
+    for (let i = 0; i < 100; i++) {
+      delegateDone = await callHandler({ url: `/api/playtest/${delegateRes.json.id}` });
+      if (delegateDone.json.job.status !== "running") break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.equal(delegateDone.json.job.status, "done");
 
     // 3. Stop flag via HTTP route POST /api/playtest/<id>/stop
     const stopRes = await callHandler({ method: "POST", url: `/api/playtest/${jobId}/stop`, body: {} });
@@ -729,9 +952,403 @@ console.log(JSON.stringify({ type: "result", result: "Playtest done.\\n\\n\`\`\`
     assert.doesNotMatch(htmlRes.text, /id="studiobtn"/);
     assert.match(htmlRes.text, /composer\.playtestRoblox/);
     assert.match(htmlRes.text, /settings\.robloxTitle/);
+    assert.match(htmlRes.text, /settings\.robloxEnabled/);
+    assert.match(htmlRes.text, /settings\.robloxCodexNote/);
   } finally {
+    saveSettings({ playtestEnabled: false, playtestModel: "sonnet", playtestAllowInput: false });
     process.env.PATH = prevPath;
     clearDoctorCache();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("studioproxy production path reaches spawnStudioMcp with injected spawn and verified copy", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tw-prod-smcp-"));
+  const repo = path.join(tmp, "game");
+  const cacheHome = path.join(tmp, "home");
+  const fakeMcp = path.join(tmp, "fake-mcp.mjs");
+  const callLog = path.join(tmp, "calls.jsonl");
+  const fakeStudioBin = path.join(tmp, "StudioMCP");
+  makeRojoRepo(repo);
+  writeFakeMcpServer(fakeMcp, callLog);
+  fs.writeFileSync(fakeStudioBin, `#!/bin/sh\nexec "${process.execPath}" "${fakeMcp}"\n`, { mode: 0o755 });
+
+  let spawnedCmd = null;
+  let proxy = null;
+  try {
+    proxy = createStudioProxy({
+      playtestId: "pt-prod",
+      playtestDir: path.join(repo, ".tokenwise-studio", "playtests", "pt-prod"),
+      repo,
+      studioMcpOptions: {
+        binPath: fakeStudioBin,
+        cacheDir: path.join(cacheHome, ".tokenwise-studio", "bin"),
+        platform: "darwin",
+        exec: () => `Identifier=${ROBLOX_IDENTIFIER}\nTeamIdentifier=${ROBLOX_TEAM_ID}\n`,
+        spawn: (cmd, _args, opts) => {
+          spawnedCmd = cmd;
+          return spawn(process.execPath, [fakeMcp], opts);
+        },
+      },
+    });
+    const res = await proxy.callTool({ name: "get_studio_state", arguments: {} });
+    assert.ok(!res.isError);
+    assert.ok(spawnedCmd, "createStudioProxy must reach spawnStudioMcp when spawnUpstream is not supplied");
+    assert.notEqual(spawnedCmd, fakeStudioBin);
+    assert.match(path.basename(spawnedCmd), /^StudioMCP-[0-9a-f]{64}$/);
+  } finally {
+    await proxy?.close().catch(() => {});
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("studioproxy: input tools denied in edit mode, allowed in play mode, and reject cmd/ctrl/meta/alt modifiers", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tw-input-gate-"));
+  const repo = path.join(tmp, "game");
+  const fakeMcp = path.join(tmp, "fake-mcp.mjs");
+  const callLog = path.join(tmp, "calls.jsonl");
+  makeRojoRepo(repo);
+  writeFakeMcpServer(fakeMcp, callLog);
+
+  let studioMode = "edit";
+  const proxy = createStudioProxy({
+    playtestId: "pt-input",
+    playtestDir: path.join(repo, ".tokenwise-studio", "playtests", "pt-input"),
+    repo,
+    maxCalls: 50,
+    allowInput: true,
+    spawnUpstream: () => spawn(process.execPath, [fakeMcp], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, get FAKE_STUDIO_MODE() { return studioMode; } },
+    }),
+  });
+
+  try {
+    // 1. Input tools denied before play starts (edit mode)
+    for (const tool of ["user_keyboard_input", "user_mouse_input", "character_navigation"]) {
+      const denied = await proxy.callTool({ name: tool, arguments: { key: "W", x: 1, y: 2, z: 3 } });
+      assert.equal(denied.isError, true, `${tool} must be denied in edit mode`);
+      assert.match(denied.content[0].text, /Play mode is not active|edit mode/i);
+    }
+
+    // 2. Start play -> input tools allowed when get_studio_state confirms play mode
+    await proxy.callTool({ name: "start_stop_play", arguments: { mode: "start_play" } });
+    const navOk = await proxy.callTool({ name: "character_navigation", arguments: { x: 10, y: 0, z: 5 } });
+    assert.ok(!navOk.isError);
+    const keyOk = await proxy.callTool({ name: "user_keyboard_input", arguments: { key: "E" } });
+    assert.ok(!keyOk.isError);
+
+    // 3. Modifier keys (cmd/ctrl/meta/alt) rejected even when play is active
+    assert.equal(hasForbiddenModifier({ key: "cmd+q" }), true);
+    assert.equal(hasForbiddenModifier({ modifiers: ["ctrl"] }), true);
+    assert.equal(hasForbiddenModifier({ altKey: true }), true);
+    assert.equal(hasForbiddenModifier({ meta: true }), true);
+    assert.equal(hasForbiddenModifier({ key: "Space", shift: true }), false);
+
+    for (const badArgs of [
+      { key: "cmd+q" },
+      { key: "w", modifiers: ["ctrl"] },
+      { key: "e", altKey: true },
+      { key: "r", meta: "true" },
+    ]) {
+      const modDenied = await proxy.callTool({ name: "user_keyboard_input", arguments: badArgs });
+      assert.equal(modDenied.isError, true);
+      assert.match(modDenied.content[0].text, /modifier/i);
+    }
+
+    // 4. Stop play -> input tools denied again
+    await proxy.callTool({ name: "start_stop_play", arguments: { mode: "stop" } });
+    const afterStopDenied = await proxy.callTool({ name: "user_mouse_input", arguments: { x: 10, y: 20 } });
+    assert.equal(afterStopDenied.isError, true);
+    assert.match(afterStopDenied.content[0].text, /Play mode is not active|edit mode/i);
+  } finally {
+    await proxy.close().catch(() => {});
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("studioproxy: output truncation, IMAGE_MAX_BYTES refusal, multi-image maxShots counting, 8-denied abort, and watched stop.flag", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tw-trunc-"));
+  const repo = path.join(tmp, "game");
+  const fakeMcp = path.join(tmp, "fake-mcp.mjs");
+  const callLog = path.join(tmp, "calls.jsonl");
+  makeRojoRepo(repo);
+  writeFakeMcpServer(fakeMcp, callLog);
+
+  const openProxies = [];
+  try {
+    // 1. Output truncation (~16 KB per block, ~32 KB total)
+    const dirTrunc = path.join(repo, ".tokenwise-studio", "playtests", "pt-trunc");
+    const pTrunc = createStudioProxy({
+      playtestId: "pt-trunc",
+      playtestDir: dirTrunc,
+      repo,
+      spawnUpstream: () => spawn(process.execPath, [fakeMcp], { stdio: ["pipe", "pipe", "pipe"] }),
+    });
+    openProxies.push(pTrunc);
+    const hugeRes = await pTrunc.callTool({ name: "search_game_tree", arguments: { query: "HUGE_OUTPUT" } });
+    assert.ok(!hugeRes.isError);
+    // Skip index 0 (the untrusted-data preamble) and check tool output blocks
+    const toolTextBlocks = hugeRes.content.slice(1).filter((b) => b.type === "text");
+    for (const b of toolTextBlocks) {
+      assert.ok(Buffer.byteLength(b.text, "utf8") <= MAX_TOOL_TEXT_BLOCK_BYTES + 64);
+    }
+    const totalToolBytes = toolTextBlocks.reduce((acc, b) => acc + Buffer.byteLength(b.text, "utf8"), 0);
+    assert.ok(totalToolBytes <= MAX_TOOL_TOTAL_TEXT_BYTES + 128);
+    await pTrunc.close();
+
+    // 2. Refuse images larger than IMAGE_MAX_BYTES & count every saved image toward maxShots
+    const dirImg = path.join(repo, ".tokenwise-studio", "playtests", "pt-img");
+    const pImg = createStudioProxy({
+      playtestId: "pt-img",
+      playtestDir: dirImg,
+      repo,
+      maxScreenshots: 2,
+      spawnUpstream: () => spawn(process.execPath, [fakeMcp], { stdio: ["pipe", "pipe", "pipe"] }),
+    });
+    openProxies.push(pImg);
+    const oversizeRes = await pImg.callTool({ name: "screen_capture", arguments: { oversize: true } });
+    assert.equal(oversizeRes.isError, true);
+    assert.match(oversizeRes.content[0].text, /exceeds maximum allowed/i);
+    assert.equal(pImg.stats().screenshotsUsed, 0);
+
+    // Returning 2 images in one call counts both toward maxScreenshots=2
+    const twoShots = await pImg.callTool({ name: "screen_capture", arguments: { count: 2 } });
+    assert.ok(!twoShots.isError);
+    assert.equal(pImg.stats().screenshotsUsed, 2);
+    assert.equal(fs.existsSync(path.join(dirImg, "shot-001.png")), true);
+    assert.equal(fs.existsSync(path.join(dirImg, "shot-002.png")), true);
+
+    // Next screenshot is over limit (deniedCount is 2: 1 from oversized image refusal + 1 from over-limit screenshot)
+    const overShot = await pImg.callTool({ name: "screen_capture", arguments: { count: 1 } });
+    assert.equal(overShot.isError, true);
+    assert.equal(pImg.stats().overLimitCount, 1);
+    assert.equal(pImg.stats().deniedCount, 2);
+    await pImg.close();
+
+    // 3. Abort after MAX_DENIED_CALLS (8) denied calls
+    const dirAbort = path.join(repo, ".tokenwise-studio", "playtests", "pt-abort");
+    const pAbort = createStudioProxy({
+      playtestId: "pt-abort",
+      playtestDir: dirAbort,
+      repo,
+      spawnUpstream: () => spawn(process.execPath, [fakeMcp], { stdio: ["pipe", "pipe", "pipe"] }),
+    });
+    openProxies.push(pAbort);
+    for (let i = 1; i < MAX_DENIED_CALLS; i++) {
+      const r = await pAbort.callTool({ name: "execute_luau", arguments: {} });
+      assert.equal(r.isError, true);
+      assert.doesNotMatch(r.content[0].text, /aborted after/i);
+    }
+    const eighth = await pAbort.callTool({ name: "execute_luau", arguments: {} });
+    assert.equal(eighth.isError, true);
+    assert.match(eighth.content[0].text, /aborted after 8 denied/i);
+    assert.equal(pAbort.stats().limitReached, "denied");
+    const afterAbort = await pAbort.callTool({ name: "get_studio_state", arguments: {} });
+    assert.equal(afterAbort.isError, true);
+    assert.match(afterAbort.content[0].text, /aborted after/i);
+
+    // 4. Watched stop.flag immediately stops play and closes upstream without waiting for next call
+    const dirWatch = path.join(repo, ".tokenwise-studio", "playtests", "pt-watch");
+    const watchCallLog = path.join(tmp, "watch-calls.jsonl");
+    const watchMcp = path.join(tmp, "watch-mcp.mjs");
+    writeFakeMcpServer(watchMcp, watchCallLog);
+    const pWatch = createStudioProxy({
+      playtestId: "pt-watch",
+      playtestDir: dirWatch,
+      repo,
+      spawnUpstream: () => spawn(process.execPath, [watchMcp], { stdio: ["pipe", "pipe", "pipe"] }),
+    });
+    openProxies.push(pWatch);
+    await pWatch.callTool({ name: "start_stop_play", arguments: { mode: "start_play" } });
+    setStopFlag(dirWatch, "user");
+    for (let i = 0; i < 30; i++) {
+      if (pWatch.stats().stoppedByUser) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(pWatch.stats().stoppedByUser, true);
+    await pWatch.close();
+    const watchCalls = fs.readFileSync(watchCallLog, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    assert.equal(watchCalls.at(-1).name, "start_stop_play");
+    assert.equal(watchCalls.at(-1).args.mode, "stop");
+  } finally {
+    await Promise.all(openProxies.map((p) => p.close().catch(() => {})));
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("Codex fallback is blocked for playtests, delegate ignores agent/model for playtests, and discard waits after setting stop flag", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tw-nofb-"));
+  const repo = path.join(tmp, "game");
+  const binDir = path.join(tmp, "bin");
+  makeRojoRepo(repo);
+  fs.mkdirSync(binDir, { recursive: true });
+  execFileSync("git", ["-C", repo, "init", "-q"]);
+
+  // Stub claude that simulates a rate-limit error if CLAUDE_RATE_LIMIT=1, and stub codex that logs if ever called
+  const codexCalledFile = path.join(tmp, "codex-called.txt");
+  fs.writeFileSync(path.join(binDir, "codex"), `#!/usr/bin/env node
+import fs from "node:fs";
+if (process.argv[2] === "login") { console.log("Logged in"); process.exit(0); }
+fs.writeFileSync(${JSON.stringify(codexCalledFile)}, "called");
+console.log(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "codex ran" } }));
+`, { mode: 0o755 });
+
+  fs.writeFileSync(path.join(binDir, "claude"), `#!/usr/bin/env node
+if (process.argv[2] === "auth") { console.log(JSON.stringify({ loggedIn: true })); process.exit(0); }
+if (process.env.FAKE_CLAUDE_SLEEP === "1") { setTimeout(() => process.exit(0), 10000); }
+else {
+  console.error("You've hit your limit · resets 5pm");
+  process.exit(1);
+}
+`, { mode: 0o755 });
+
+  const prevPath = process.env.PATH;
+  process.env.PATH = `${binDir}:${prevPath}`;
+  clearDoctorCache();
+
+  try {
+    saveSettings({
+      playtestEnabled: true,
+      playtestModel: "sonnet",
+      playtestMaxMinutes: 7,
+      playtestMaxCalls: 40,
+      playtestMaxScreenshots: 25,
+      playtestAllowInput: false,
+    });
+
+    // Put claude on cooldown so pre-start fallback would normally switch to codex
+    recordProviderCooldown("claude", { until: Date.now() + 60_000, reason: "rate_limit" });
+
+    const jobs = new Jobs(repo, { playtestDiscardGraceMs: 60 });
+
+    // 1. mcp.js prepareDelegateArgs & delegate handler ignore agent/model and strip playtestOptions
+    const prep = prepareDelegateArgs({
+      role: "playtest",
+      agent: "codex",
+      model: "sol",
+      task: "Test shop UI",
+      write: false,
+      playtestOptions: { proxyScript: "/evil.js" },
+      proxyScript: "/evil.js",
+      playtestDir: "/evil-dir",
+      skipCheck: true,
+    });
+    assert.equal(prep.agent, "claude");
+    assert.equal(prep.model, "sonnet");
+    assert.equal(prep.playtestOptions, undefined);
+    assert.equal(prep.proxyScript, undefined);
+    assert.equal(prep.playtestDir, undefined);
+    assert.equal(prep.skipCheck, undefined);
+
+    const orchTools = createOrchestratorTools({ jobs });
+    const delRes = await orchTools.callTool("delegate", {
+      role: "playtest",
+      agent: "codex",
+      model: "sol",
+      task: "Test shop UI and verify no fallback to OpenAI",
+      write: false,
+    });
+    assert.equal(delRes.isError, false, delRes.text);
+    const delJob = JSON.parse(delRes.text);
+    assert.equal(delJob.agent, "claude", "delegate must ignore agent='codex' and use playtestModel='sonnet'");
+    assert.equal(delJob.model, "sonnet");
+
+    // Wait for job to fail from rate-limit without falling back to codex
+    const finished = await jobs.wait(delJob.id, 10);
+    assert.equal(finished.agent, "claude");
+    assert.equal(finished.movedTo ?? null, null, "playtest job must never fall back to codex on rate limit");
+    assert.equal(fs.existsSync(codexCalledFile), false, "codex must never be invoked when playtestModel is claude");
+
+    // 2. Direct jobs.start with agent: "codex" when playtestModel is "sonnet" is refused
+    assert.throws(() => jobs.start({
+      agent: "codex",
+      model: "sol",
+      task: "Another playtest task",
+      write: false,
+      role: "playtest",
+    }), /Codex playtest requires playtestModel/);
+    assert.equal(fs.existsSync(codexCalledFile), false);
+
+    // 3. Discard sets stop.flag and waits grace period before signaling process group
+    process.env.FAKE_CLAUDE_SLEEP = "1";
+    const sleepJob = jobs.start({
+      task: "Long running playtest to discard",
+      write: false,
+      role: "playtest",
+    });
+    const discarded = jobs.discard(sleepJob.id);
+    assert.equal(discarded.status, "discarded");
+    const stopFlagPath = path.join(repo, ".tokenwise-studio", "playtests", sleepJob.id, "stop.flag");
+    assert.equal(fs.existsSync(stopFlagPath), true, "discard must set stop.flag immediately");
+    await jobs.wait(sleepJob.id, 10);
+  } finally {
+    delete process.env.FAKE_CLAUDE_SLEEP;
+    clearCooldown("claude");
+    saveSettings({ playtestEnabled: false, playtestModel: "sonnet", playtestMaxMinutes: 10 });
+    process.env.PATH = prevPath;
+    clearDoctorCache();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("proxy bounds many text/resource blocks and drops unbounded structured output", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tw-output-bounds-"));
+  const content = Array.from({ length: 1000 }, () => ({ type: "text", text: "ş".repeat(2000) }));
+  content.push({ type: "resource", resource: { uri: "test://output", text: "X".repeat(100_000) } });
+  const truncated = truncateToolContent(content);
+  assert.ok(truncated.every((b) => Buffer.byteLength(b.text) <= MAX_TOOL_TEXT_BLOCK_BYTES));
+  assert.ok(truncated.reduce((sum, b) => sum + Buffer.byteLength(b.text), 0) <= MAX_TOOL_TOTAL_TEXT_BYTES);
+  assert.ok(truncated.length < content.length);
+  const proxy = createStudioProxy({
+    playtestDir: tmp,
+    upstreamClient: {
+      callTool: async () => ({ content, structuredContent: { enormous: "X".repeat(100_000) }, _meta: { enormous: "X".repeat(100_000) } }),
+      close: async () => {},
+    },
+  });
+  try {
+    const result = await proxy.callTool({ name: "inspect_instance" });
+    assert.equal(result.structuredContent, undefined);
+    assert.equal(result._meta, undefined);
+    assert.ok(result.content.reduce((sum, b) => sum + Buffer.byteLength(b.text || ""), 0) <= MAX_TOOL_TOTAL_TEXT_BYTES);
+  } finally {
+    await proxy.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("input requires positive Studio state confirmation when the state tool is available", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tw-input-confirm-"));
+  let stateResponse = { content: [{ type: "text", text: "unknown" }] };
+  const received = [];
+  const proxy = createStudioProxy({
+    playtestDir: tmp, allowInput: true,
+    upstreamClient: {
+      listTools: async () => ({ tools: [{ name: "get_studio_state" }, { name: "start_stop_play" }] }),
+      callTool: async ({ name }) => {
+        received.push(name);
+        if (name === "get_studio_state") {
+          if (stateResponse instanceof Error) throw stateResponse;
+          return stateResponse;
+        }
+        return { content: [{ type: "text", text: "ok" }] };
+      },
+      close: async () => {},
+    },
+  });
+  try {
+    await proxy.listTools();
+    await proxy.callTool({ name: "start_stop_play", arguments: { mode: "start_play" } });
+    for (const response of [stateResponse, { isError: true, content: [{ type: "text", text: "playing" }] }, new Error("state unavailable")]) {
+      stateResponse = response;
+      const result = await proxy.callTool({ name: "user_keyboard_input", arguments: { key: "W" } });
+      assert.equal(result.isError, true);
+      assert.match(result.content[0].text, /confirm/i);
+    }
+    assert.equal(received.includes("user_keyboard_input"), false);
+  } finally {
+    await proxy.close();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

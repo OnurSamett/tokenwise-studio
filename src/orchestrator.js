@@ -39,12 +39,13 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
 
 /** Orchestrator guide for a permission mode, plus (optional) project instructions, turn budget, non-git, project map, and quota pacing rules. */
 export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, freeMode = null, projectMap = null, shootout = false, mentions = [], robloxPlaytest = null } = {}) {
-  const parts = [baseGuide(permissionMode)];
+  const playtestEnabled = robloxPlaytest?.enabled !== undefined ? Boolean(robloxPlaytest.enabled) : Boolean(loadSettings().playtestEnabled);
+  const parts = [baseGuide(permissionMode, { playtestEnabled })];
   const isFreeMode = freeMode === null ? Boolean(loadSettings().freeMode) : Boolean(freeMode);
   if (isFreeMode) {
     parts.push("FREE MODE IS ON (no plan usage): only free and local workers are allowed. Do NOT delegate to claude, codex, or gemini — those delegations will be refused. Always pass agent=\"free\" (or agent=\"local\") to delegate.");
   }
-  if (robloxPlaytest?.rojo && robloxPlaytest?.studioMcpFound) {
+  if (playtestEnabled && robloxPlaytest?.rojo && robloxPlaytest?.studioMcpFound) {
     parts.push("ROBLOX STUDIO PLAYTEST READY: a Rojo project file and StudioMCP were detected. You may start a read-only delegate(..., write=false, role=\"playtest\") job when the user asks to test the game; do NOT request Studio edit, execute_luau, or upload tools.");
   }
   if (!isGit) parts.push("NON-GIT PROJECT: this folder is not a git repository. Write jobs (write=true) require git and will be rejected. Only use read-only jobs (write=false) here; if the user asks for file changes, explain that they can set up git from the studio UI (or run git init and make an initial commit) first.");
@@ -68,17 +69,18 @@ export function buildGuide(permissionMode = "ask", { instructions = null, turnBu
   return parts.join("\n\n");
 }
 
-function baseGuide(permissionMode) {
+function baseGuide(permissionMode, { playtestEnabled = false } = {}) {
   const researchRule = "- Web research: for questions that need current web information (latest releases, docs, advisories, prices, news), delegate a read-only job (write=false) with role=\"research\" to a web-capable worker (claude, gemini or codex — not free/local). Instruct the worker to answer with inline numbered citations [1] and end with a \"Sources\" list of the http/https URLs it actually opened (never guessed or unvisited URLs). Keep those inline [1] citations and the Sources list in your reply.";
-  const playtestRule = "- Roblox playtesting: when the user asks to test or playtest the game in Roblox Studio, start a READ-ONLY job (write=false, role=\"playtest\"; omit agent to use the configured playtest model, or pass claude/codex). Specify what to test (start play, move/try actions, inspect console, stop play). Playtest jobs expose only read/play/input tools — NEVER ask for place edit, asset upload, or Luau execution tools.";
+  const playtestRule = playtestEnabled
+    ? "\n- Roblox playtesting: when the user asks to test or playtest the game in Roblox Studio, start a READ-ONLY job (write=false, role=\"playtest\"); the model is always selected from Settings. Specify what to test (start play, move/try actions, inspect console, stop play). Playtest jobs expose only read/play/input tools — NEVER ask for place edit, asset upload, or Luau execution tools."
+    : "";
   if (permissionMode === "plan-only") {
     return `You are the ORCHESTRATOR in tokenwise studio running in PLAN-ONLY mode. You plan, investigate and answer, without making or delegating any file edits.
 Use the tokenwise-studio tools to hand read-only research pieces to cheaper workers instead of doing everything yourself:
 - delegate(agent, model, effort, task, write=false, role): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for analysis), gemini (hydrogen for quick and routine work, argon (frontier) for hard problems), free (opt-in hosted APIs: pass model="auto" or a full "nvidia:<id>" from the team options, never a bare alias). Spread work across providers to spare each plan's limits. When plans run low, jobs move automatically to the next worker (ending with 'local', a free Ollama model); mention such moves in your summary.
 - Pick effort from: many interacting parts, ambiguity, prior failure, costly mistake. 0 signals -> low, 1 -> medium, 2+ -> high.
 - PLAN-ONLY MODE IS ACTIVE: do NOT edit files yourself, do NOT pass write=true to delegate (it will be rejected), and do NOT call job_merge. Only read-only (write=false) delegation is permitted.
-${researchRule}
-${playtestRule}
+${researchRule}${playtestRule}
 - Dispatch independent read-only pieces in parallel, then job_wait each.
 - Forward attached images with delegate images: [repo-relative upload paths] to Codex or Claude workers that need them. Other workers continue without images.
 - Workers cannot see this chat: every task must name files, expected behaviour and the done-condition.
@@ -97,8 +99,7 @@ Use the tokenwise-studio tools to hand self-contained pieces to cheaper workers 
 - Pick effort from: many interacting parts, ambiguity, prior failure, costly mistake. 0 signals -> low, 1 -> medium, 2+ -> high.
 - write=true for edits: the worker gets its own git worktree from HEAD. Then job_wait and review every job_diff.
 ${mergeRule}
-${researchRule}
-${playtestRule}
+${researchRule}${playtestRule}
 - Dispatch independent pieces in parallel, then wait for each.
 - Forward attached images with delegate images: [repo-relative upload paths] to Codex or Claude workers that need them. Other workers continue without images.
 - Workers cannot see this chat: every task must name files, expected behaviour and the done-condition.
@@ -507,7 +508,7 @@ export class Chats {
       projectMap: getProjectMapSummary(this.jobs.repo),
       shootout: !!shootout,
       mentions: mentionNames,
-      robloxPlaytest: { rojo: !!findRojoProject(this.jobs.repo), studioMcpFound: !!locateStudioMcp() },
+      robloxPlaytest: { enabled: !!settings.playtestEnabled, rojo: !!findRojoProject(this.jobs.repo), studioMcpFound: !!locateStudioMcp().found },
     });
     const tg = [teamGuide(team, { pacing, allowFree, freeMode: settings.freeMode }), overrideGuide(roleOverride, { allowFree })].filter(Boolean).join("\n");
     const guide = tg ? baseG + "\n\n" + tg : baseG;

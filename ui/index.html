@@ -1223,6 +1223,7 @@ function applyLanguage(nextSetting) {
 function syncFromSettings(data, { applyComposer = false } = {}) {
   appSettings = data;
   const s = data?.settings || {};
+  if (typeof S !== "undefined" && S?.roblox) S.roblox.enabled = !!s.playtestEnabled;
   notifOn = s.notifications !== false;
   applyNotif();
   document.body.classList.toggle("no-anim", s.animations === false);
@@ -3261,19 +3262,23 @@ async function renderDrawer(full) {
             h("button", { class: (s.autoUpdate || "auto") === val ? "on" : "", onclick: () => applyPatch({ autoUpdate: val }) },
               h("b", {}, t(tk)), h("span", {}, t(dk)))))),
         h("div", { class: "section" },
-          secHead(t("settings.robloxTitle"), "playtestModel"),
+          secHead(t("settings.robloxTitle"), "playtestEnabled"),
           h("p", { class: "shelp" }, t("settings.robloxHelp")),
-          h("div", { class: "pt-status-row" },
+          h("label", { class: "toggle" + (lock.playtestEnabled ? " disabled" : "") },
+            h("input", { type: "checkbox", checked: s.playtestEnabled ? true : null, disabled: !!lock.playtestEnabled, onchange: (e) => applyPatch({ playtestEnabled: e.target.checked }) }),
+            h("span", {}, [t("settings.robloxEnabled"), envBadge("playtestEnabled")], h("small", {}, t("settings.robloxEnabledDesc")))),
+          h("div", { class: "pt-status-row", style: "margin-top:10px" },
             robloxSt ? [
               h("span", { class: "chip " + (robloxSt.found ? "pass" : "fail") }, robloxSt.found ? t("settings.robloxMcpFound") : t("settings.robloxMcpMissing")),
               robloxSt.found ? h("span", { class: "chip " + (robloxSt.signatureOk ? "pass" : "fail"), title: robloxSt.signatureReason || "" }, robloxSt.signatureOk ? t("settings.robloxSigOk") : t("settings.robloxSigFail")) : null,
               h("span", { class: "chip " + (robloxSt.studioRunning ? "overlap" : "") }, robloxSt.studioRunning ? t("settings.robloxStudioOn") : t("settings.robloxStudioOff")),
             ] : h("span", { class: "chip" }, t("settings.robloxChecking"))),
           h("div", { class: "sfield" },
-            h("label", {}, t("settings.robloxModel")),
+            h("label", {}, t("settings.robloxModel"), " ", envBadge("playtestModel")),
             h("select", { value: s.playtestModel || "sonnet", disabled: !!lock.playtestModel, onchange: (e) => applyPatch({ playtestModel: e.target.value }) },
               [["sonnet", "Claude Sonnet"], ["haiku", "Claude Haiku"], ["opus", "Claude Opus"], ["codex:sol", "Codex Sol"], ["codex:terra", "Codex Terra"]].map(([val, label]) =>
-                h("option", { value: val, selected: (s.playtestModel || "sonnet") === val ? true : null }, label)))),
+                h("option", { value: val, selected: (s.playtestModel || "sonnet") === val ? true : null }, label))),
+            h("p", { class: "shelp", style: "margin:6px 0 0" }, t("settings.robloxCodexNote"))),
           h("div", { class: "rblx-limits" },
             h("label", {}, t("settings.robloxMaxCalls"),
               h("input", { type: "number", min: 1, max: 200, step: 1, value: s.playtestMaxCalls ?? 40, disabled: !!lock.playtestMaxCalls,
@@ -3282,10 +3287,10 @@ async function renderDrawer(full) {
               h("input", { type: "number", min: 1, max: 100, step: 1, value: s.playtestMaxScreenshots ?? 25, disabled: !!lock.playtestMaxScreenshots,
                 onchange: (e) => applyPatch({ playtestMaxScreenshots: Number(e.target.value) }) })),
             h("label", {}, t("settings.robloxMaxMins"),
-              h("input", { type: "number", min: 1, max: 60, step: 1, value: s.playtestMaxMinutes ?? 10, disabled: !!lock.playtestMaxMinutes,
+              h("input", { type: "number", min: 1, max: 30, step: 1, value: s.playtestMaxMinutes ?? 10, disabled: !!lock.playtestMaxMinutes,
                 onchange: (e) => applyPatch({ playtestMaxMinutes: Number(e.target.value) }) }))),
           h("label", { class: "toggle" + (lock.playtestAllowInput ? " disabled" : ""), style: "margin-top:12px" },
-            h("input", { type: "checkbox", checked: s.playtestAllowInput !== false ? true : null, disabled: !!lock.playtestAllowInput, onchange: (e) => applyPatch({ playtestAllowInput: e.target.checked }) }),
+            h("input", { type: "checkbox", checked: s.playtestAllowInput ? true : null, disabled: !!lock.playtestAllowInput, onchange: (e) => applyPatch({ playtestAllowInput: e.target.checked }) }),
             h("span", {}, [t("settings.robloxAllowInput"), envBadge("playtestAllowInput")], h("small", {}, t("settings.robloxAllowInputDesc"))))));
     };
     draw();
@@ -5015,7 +5020,9 @@ $("#input").addEventListener("input", mentionInput);
 $("#input").addEventListener("click", () => { if (mOpen) renderMentionMenu(); });
 $("#attach").onclick = (e) => {
   if (sending) return;
-  if (S.roblox?.rojo && S.roblox?.studioMcpFound) {
+  const playtestOn = (appSettings?.settings ? !!appSettings.settings.playtestEnabled : !!S.roblox?.enabled)
+    && S.roblox?.rojo && S.roblox?.studioMcpFound;
+  if (playtestOn) {
     e.stopPropagation();
     popover($("#attach"),
       h("button", { onclick: () => { closePop(); $("#imagefiles").click(); } }, t("composer.attachImages")),
