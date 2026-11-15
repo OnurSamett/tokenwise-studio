@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { ensureModelReady, forcedModelFor, freeProviders, isDownError, isTimeoutError, pickModels, recordModelHealth } from "./freechat.js";
+import { chatCompletion, normalizeMessage, forcedModelFor, freeProviders, isDownError, isTimeoutError, pickModels, recordModelHealth, selectReady } from "./freechat.js";
 import { createOrchestratorTools, getOrchToolSpecs } from "./mcp.js";
 import { loadSettings } from "./settings.js";
 import { parseFreeModel } from "./workers.js";
@@ -184,18 +184,35 @@ const toolEvent = (name, a) => {
 };
 
 // ---------- the loop ----------
-async function chat(p, model, messages, tools, timeoutMs = 180_000) {
-  const res = await fetch(`${p.base}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${p.key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages, tools, tool_choice: "auto", stream: false }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!res.ok) {
-    const t = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 200);
-    throw Object.assign(new Error(res.status === 429 ? `rate limit reached on ${p.name}` : `HTTP ${res.status} from ${p.name}: ${t}`), { status: res.status });
+// Streamed (see chatCompletion): a stalled model is dropped after firstTokenMs without a token, a long answer is never cut by the total cap.
+async function chat(p, model, messages, tools, timeoutMs = 180_000, firstTokenMs = 30_000) {
+  return chatCompletion(p, { model, messages, tools }, { totalMs: timeoutMs, firstTokenMs });
+}
+
+const skipMsg = (p, e, what = "request") => {
+  if (!isTimeoutError(e)) return String(e?.message || e).slice(0, 200);
+  const why = String(e?.message || "").match(/\(([^)]*)\)/)?.[1];
+  return `${what} to ${p.name} timed out${why ? ` (${why})` : ""}`;
+};
+
+/** Candidate [provider, model, isForced] list; each provider's top models are probed in parallel (max 3) and ordered by measured latency. */
+async function buildFreePairs({ providers, emit, probeTimeout, pick }) {
+  const pairs = [], latency = new Map();
+  let fellFrom = null;
+  for (const [i, p] of providers.entries()) {
+    try {
+      const { list, forced } = await pick(p, i);
+      const sel = await selectReady(p, list, { forced: forced && list.includes(forced) ? forced : null, timeoutMs: probeTimeout });
+      for (const sk of sel.skipped) {
+        fellFrom ||= { from: `${p.name}:${sk.model}`, reason: sk.message };
+        emit({ type: "free.skip", provider: p.name, model: sk.model, status: sk.status, message: sk.message });
+      }
+      for (const m of sel.models) { pairs.push([p, m, forced === m]); if (sel.latency[m] != null) latency.set(`${p.name}:${m}`, sel.latency[m]); }
+    } catch (e) {
+      emit({ type: "free.skip", provider: p.name, status: Number(e?.status) || 0, message: String(e?.message || e).slice(0, 200) });
+    }
   }
-  return res.json();
+  return { pairs, latency, fellFrom };
 }
 
 export async function runFreeAgent({ task, write = false, emit = out, probeTimeout } = {}) {
@@ -217,15 +234,13 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
   ];
   // Candidate (provider, model, isForced) tuples in order; the conversation is portable, so a rate limit
   // or unavailable model mid-task just continues on the next candidate.
-  const pairs = [];
-  for (const [i, p] of providers.entries()) {
-    try {
-      const forced = forcedModelFor(p, i === 0);
-      for (const m of await pickModels(p, i === 0)) pairs.push([p, m, forced === m]);
-    } catch (e) {
-      emit({ type: "free.skip", provider: p.name, status: Number(e?.status) || 0, message: String(e?.message || e).slice(0, 200) });
-    }
-  }
+  const built = await buildFreePairs({
+    providers, emit, probeTimeout,
+    pick: async (p, i) => ({ list: await pickModels(p, i === 0), forced: forcedModelFor(p, i === 0) }),
+  });
+  const { pairs, latency } = built;
+  let fellFrom = built.fellFrom;
+  const firstOk = new Set();
   if (!pairs.length) {
     emit({ type: "free.error", status: 0, message: "no usable free model" });
     return { ok: false, exitCode: 1, status: 0, message: "no usable free model" };
@@ -246,31 +261,21 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
     if (k >= pairs.length) break;
     const [p, model, isForced] = pairs[k];
     if (announced !== k) {
-      if (!isForced) {
-        try {
-          await ensureModelReady(p, model, { forced: false, timeoutMs: probeTimeout });
-        } catch (e) {
-          const status = Number(e?.status) || 0;
-          const message = isTimeoutError(e) ? `probe to ${p.name} timed out` : String(e?.message || e).slice(0, 200);
-          last = { status, message };
-          emit({ type: "free.skip", provider: p.name, model, status, message });
-          if (status === 401 || status === 403 || status === 429) { const name = p.name; while (k < pairs.length && pairs[k][0].name === name) k++; } else k++;
-          step--; continue;
-        }
-      }
-      emit({ type: "free.init", provider: p.name, model, agent: true, write });
+      emit({ type: "free.init", provider: p.name, model, agent: true, write, ...(latency.has(`${p.name}:${model}`) ? { latencyMs: latency.get(`${p.name}:${model}`) } : {}), ...(fellFrom ? { fellBackFrom: fellFrom.from, fellBackReason: fellFrom.reason } : {}) });
       announced = k;
     }
-    const perCallCap = k + 1 < pairs.length ? 60_000 : 180_000;
+    const hasNext = k + 1 < pairs.length;
     let data;
     try {
-      data = await chat(p, model, messages, tools, Math.max(1000, Math.min(perCallCap, deadline - Date.now())));
+      data = await chat(p, model, messages, tools, Math.max(1000, Math.min(hasNext ? 90_000 : 180_000, deadline - Date.now())), hasNext ? 20_000 : 60_000);
       recordModelHealth(p.name, model, true, "ok");
+      if (!firstOk.has(k)) { firstOk.add(k); if (data?._latency) emit({ type: "free.latency", provider: p.name, model, ms: data._latency.firstMs }); }
     } catch (e) {
       const status = Number(e?.status) || 0;
-      const message = isTimeoutError(e) ? `request to ${p.name} timed out` : String(e?.message || e).slice(0, 200);
+      const message = skipMsg(p, e);
       if (isDownError(e)) recordModelHealth(p.name, model, false, message);
       last = { status, message };
+      fellFrom ||= { from: `${p.name}:${model}`, reason: message };
       emit({ type: "free.skip", provider: p.name, model, status, message });
       // Bad key or rate limit: skip this provider's other models too.
       if (status === 401 || status === 403 || status === 429) { const name = p.name; while (k < pairs.length && pairs[k][0].name === name) k++; } else k++;
@@ -278,7 +283,8 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
     }
     usage.prompt_tokens += data?.usage?.prompt_tokens || 0;
     usage.completion_tokens += data?.usage?.completion_tokens || 0;
-    const msg = data?.choices?.[0]?.message || {};
+    const msg = normalizeMessage(data?.choices?.[0]?.message || {});
+    if (typeof msg.reasoning_content === "string" && msg.reasoning_content.trim()) emit({ type: "free.think", text: msg.reasoning_content.trim() });
     const calls = msg.tool_calls || [];
     if (!calls.length) {
       const text = msg.content || "";
@@ -345,7 +351,9 @@ export async function runFreeOrchestrator({
   ];
 
   const isLocal = agent === "local";
-  const pairs = [];
+  const pairs = [], latency = new Map();
+  let fellFrom = null;
+  const firstOk = new Set();
   if (isLocal) {
     const baseRaw = (process.env.TOKENWISE_OLLAMA_BASE || process.env.OLLAMA_HOST || "http://127.0.0.1:11434").replace(/\/+$/, "");
     const base = baseRaw.endsWith("/v1") ? baseRaw : `${baseRaw}/v1`;
@@ -367,16 +375,16 @@ export async function runFreeOrchestrator({
       emit({ type: "free.error", status: 0, message });
       return { ok: false, exitCode: 2, status: 0, message };
     } else {
-      for (const [i, p] of providers.entries()) {
-        try {
+      const built = await buildFreePairs({
+        providers, emit, probeTimeout,
+        pick: async (p, i) => {
           const explicitForced = i === 0 ? forcedModel : null;
-          const effForced = forcedModelFor(p, i === 0, explicitForced);
-          const list = await pickModels(p, i === 0, { hint, forcedModel: explicitForced });
-          for (const m of list) pairs.push([p, m, effForced === m]);
-        } catch (e) {
-          emit({ type: "free.skip", provider: p.name, status: Number(e?.status) || 0, message: String(e?.message || e).slice(0, 200) });
-        }
-      }
+          return { list: await pickModels(p, i === 0, { hint, forcedModel: explicitForced }), forced: forcedModelFor(p, i === 0, explicitForced) };
+        },
+      });
+      pairs.push(...built.pairs);
+      for (const [key, v] of built.latency) latency.set(key, v);
+      fellFrom = built.fellFrom;
     }
   }
 
@@ -386,12 +394,12 @@ export async function runFreeOrchestrator({
     return { ok: false, exitCode: 1, status: 0, message };
   }
 
-  const callChat = async (p, m, msgs, tls, timeoutMs, step) => {
+  const callChat = async (p, m, msgs, tls, timeoutMs, step, firstTokenMs) => {
     if (chatFn) {
       if (chatFn.length >= 3) return await chatFn(p, m, msgs, tls, timeoutMs, step);
       return await chatFn({ provider: p, model: m, messages: msgs, tools: tls, timeoutMs, step, signal });
     }
-    return await chat(p, m, msgs, tls, timeoutMs);
+    return await chat(p, m, msgs, tls, timeoutMs, firstTokenMs);
   };
 
   let k = 0, usage = { prompt_tokens: 0, completion_tokens: 0 }, announced = -1, last = null;
@@ -413,32 +421,22 @@ export async function runFreeOrchestrator({
     if (k >= pairs.length) break;
     const [p, curModel, isForced] = pairs[k];
     if (announced !== k) {
-      if (!isForced && !isLocal && !chatFn) {
-        try {
-          await ensureModelReady(p, curModel, { forced: false, timeoutMs: probeTimeout });
-        } catch (e) {
-          const status = Number(e?.status) || 0;
-          const message = isTimeoutError(e) ? `probe to ${p.name} timed out` : String(e?.message || e).slice(0, 200);
-          last = { status, message };
-          emit({ type: "free.skip", provider: p.name, model: curModel, status, message });
-          if (status === 401 || status === 403 || status === 429) { const name = p.name; while (k < pairs.length && pairs[k][0].name === name) k++; } else k++;
-          step--; continue;
-        }
-      }
-      emit({ type: "free.init", provider: p.name, model: curModel, agent: true, orchestrator: true, write: false });
+      emit({ type: "free.init", provider: p.name, model: curModel, agent: true, orchestrator: true, write: false, ...(latency.has(`${p.name}:${curModel}`) ? { latencyMs: latency.get(`${p.name}:${curModel}`) } : {}), ...(fellFrom ? { fellBackFrom: fellFrom.from, fellBackReason: fellFrom.reason } : {}) });
       announced = k;
     }
 
-    const perCallCap = k + 1 < pairs.length ? 60_000 : 180_000;
+    const hasNext = k + 1 < pairs.length;
     let data;
     try {
-      data = await callChat(p, curModel, messages, tools, Math.max(1000, Math.min(perCallCap, deadline - Date.now())), step);
+      data = await callChat(p, curModel, messages, tools, Math.max(1000, Math.min(hasNext ? 90_000 : 180_000, deadline - Date.now())), step, hasNext ? 20_000 : 60_000);
       if (!isLocal && !chatFn) recordModelHealth(p.name, curModel, true, "ok");
+      if (!firstOk.has(k)) { firstOk.add(k); if (data?._latency) emit({ type: "free.latency", provider: p.name, model: curModel, ms: data._latency.firstMs }); }
     } catch (e) {
       const status = Number(e?.status) || 0;
-      const message = isTimeoutError(e) ? `request to ${p.name} timed out` : String(e?.message || e).slice(0, 200);
+      const message = skipMsg(p, e);
       if (!isLocal && !chatFn && isDownError(e)) recordModelHealth(p.name, curModel, false, message);
       last = { status, message };
+      fellFrom ||= { from: `${p.name}:${curModel}`, reason: message };
       emit({ type: "free.skip", provider: p.name, model: curModel, status, message });
       if (status === 401 || status === 403 || status === 429) { const name = p.name; while (k < pairs.length && pairs[k][0].name === name) k++; } else k++;
       step--; continue;
@@ -452,8 +450,8 @@ export async function runFreeOrchestrator({
       if (onUsage) { try { onUsage({ ...usage }); } catch {} }
     }
 
-    const msg = data?.choices?.[0]?.message || data?.message || data?.msg || data || {};
-    const thinkText = msg.reasoning_content || msg.thinking;
+    const msg = normalizeMessage(data?.choices?.[0]?.message || data?.message || data?.msg || data || {});
+    const thinkText = msg.reasoning_content;
     if (typeof thinkText === "string" && thinkText.trim()) {
       emit({ type: "free.think", text: thinkText.trim() });
     }

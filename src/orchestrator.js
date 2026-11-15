@@ -632,7 +632,16 @@ export class Chats {
             if (tail.length > 50) tail.shift();
             if (evt.type === "free.init" && evt.model) {
               t.via = evt.provider ? `${evt.provider}:${evt.model}` : evt.model;
+              t.modelUsed = evt.model; t.provider = evt.provider || null;
+              t.latencyMs = Number.isFinite(evt.latencyMs) ? evt.latencyMs : null;
+              t.fellBackFrom = evt.fellBackFrom || null; t.fellBackReason = evt.fellBackReason || null;
+              try { // show the model in the UI while the turn is still running
+                const cur = this.get(id);
+                const { via, modelUsed, provider, latencyMs, fellBackFrom, fellBackReason } = t;
+                if (cur.turns[ti]) { Object.assign(cur.turns[ti], { via, modelUsed, provider, latencyMs, fellBackFrom, fellBackReason }); this.save(cur); }
+              } catch {}
             }
+            if (evt.type === "free.latency" && Number.isFinite(evt.ms) && t.modelUsed === evt.model) t.latencyMs = evt.ms;
             if (evt.type === "free.message" && typeof evt.text === "string") {
               t.reply = evt.text;
             }

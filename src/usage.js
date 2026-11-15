@@ -78,8 +78,8 @@ export function aggregateUsage({ chats = [], jobs = [], days = 14, now = new Dat
     byModel.set(key, row);
   };
 
-  for (const c of chats) for (const t of c.turns || []) take("orch", t.started, t.agent || "claude", t.model, t.tokens, t.cost);
-  for (const j of jobs) take("workers", j.created, j.agent, j.model, j.tokens, j.cost);
+  for (const c of chats) for (const t of c.turns || []) take("orch", t.started, t.agent || "claude", t.modelUsed || t.model, t.tokens, t.cost);
+  for (const j of jobs) take("workers", j.created, j.agent, j.modelUsed || j.model, j.tokens, j.cost);
 
   return {
     days,

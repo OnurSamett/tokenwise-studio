@@ -414,7 +414,13 @@ export class Jobs {
         const line = buf[stream].slice(0, i); buf[stream] = buf[stream].slice(i + 1);
         if (!line.trim()) continue;
         write1(stream, line);
-        if (stream === "out") { try { const t = textOf(JSON.parse(line)); if (t) lastText = t; } catch { lastText = line; } }
+        if (stream === "out") {
+          try {
+            const o = JSON.parse(line), t = textOf(o);
+            if (t) lastText = t;
+            if (spec.agent === "free" && (o.type === "free.init" || o.type === "free.latency")) this._liveFreeModel(id, o); // show the model while the job runs
+          } catch { lastText = line; }
+        }
       }
     };
     child.stdout.on("data", onData("out"));
@@ -514,6 +520,18 @@ export class Jobs {
     return job;
   }
 
+  /** Record the free model actually in use on the (still running) job file. */
+  _liveFreeModel(id, e) {
+    try {
+      const j = this.get(id);
+      if (e.type === "free.init" && e.model) {
+        Object.assign(j, { modelUsed: e.model, provider: e.provider || null, latencyMs: Number.isFinite(e.latencyMs) ? e.latencyMs : null, fellBackFrom: e.fellBackFrom || null, fellBackReason: e.fellBackReason || null });
+      } else if (e.type === "free.latency" && j.modelUsed === e.model && Number.isFinite(e.ms)) j.latencyMs = e.ms;
+      else return;
+      this.save(j);
+    } catch {}
+  }
+
   /** Token/cost totals from this job's own log (incremental by byte offset): Codex turn.completed lines are summed, Claude's final result line is used. */
   usage(id) {
     const f = this.file(id, "log");
@@ -524,14 +542,20 @@ export class Jobs {
     }
     let c = this._usageCache.get(id);
     if (!c || st.size < c.offset) {
-      c = { offset: 0, sum: { input: 0, cached: 0, output: 0 }, found: false, claude: null, cost: null, model: null };
+      c = { offset: 0, sum: { input: 0, cached: 0, output: 0 }, found: false, claude: null, cost: null, modelUsed: null, provider: null, latencyMs: null, fellBackFrom: null, fellBackReason: null };
       this._usageCache.set(id, c);
     }
     const applyLine = (l, target) => {
       if (!l) return;
       let e;
       try { const o = JSON.parse(l); if (o.stream !== "out") return; e = JSON.parse(o.line); } catch { return; }
-      if (e && e.type === "free.init" && e.model) { target.model = `${e.model} (${e.provider})`; return; } // the model that actually answered
+      if (e && e.type === "free.init" && e.model) { // the model that actually answered (job.model keeps what was requested)
+        target.modelUsed = e.model; target.provider = e.provider || null;
+        target.latencyMs = Number.isFinite(e.latencyMs) ? e.latencyMs : null;
+        target.fellBackFrom = e.fellBackFrom || null; target.fellBackReason = e.fellBackReason || null;
+        return;
+      }
+      if (e && e.type === "free.latency" && Number.isFinite(e.ms) && target.modelUsed === e.model) { target.latencyMs = e.ms; return; }
       if (e && e.type === "free.usage" && e.usage) {
         target.claude = { input: e.usage.prompt_tokens || 0, cached: 0, output: e.usage.completion_tokens || 0 };
         return;
@@ -573,12 +597,15 @@ export class Jobs {
       }
       if (completeLen < bytesRead) {
         const tail = slice.subarray(completeLen).toString("utf8");
-        view = { sum: { ...c.sum }, found: c.found, claude: c.claude ? { ...c.claude } : null, cost: c.cost, model: c.model };
+        view = { ...c, sum: { ...c.sum }, claude: c.claude ? { ...c.claude } : null };
         applyLine(tail, view);
       }
     }
     const tokens = view.claude ? { ...view.claude } : (view.found ? { ...view.sum } : null);
-    return { tokens, cost: view.cost, ...(view.model ? { model: view.model } : {}) };
+    return {
+      tokens, cost: view.cost,
+      ...(view.modelUsed ? { modelUsed: view.modelUsed, provider: view.provider, latencyMs: view.latencyMs, ...(view.fellBackFrom ? { fellBackFrom: view.fellBackFrom, fellBackReason: view.fellBackReason } : {}) } : {}),
+    };
   }
 
   async wait(id, timeoutS = 600) {

@@ -49,6 +49,10 @@ export const freeProvider = () => freeProviders()[0] || null;
 const picked = new Map();
 const DOWN_TTL_MS = 4 * 60 * 60 * 1000;
 const PROBE_TTL_MS = 60 * 60 * 1000;
+// Measured latency stays valid for 6h; a model slower than SLOW_MS to answer a tiny probe is demoted behind faster ones.
+const LATENCY_TTL_MS = 6 * 60 * 60 * 1000;
+export const SLOW_MS = Number(process.env.TOKENWISE_FREE_SLOW_MS) > 0 ? Number(process.env.TOKENWISE_FREE_SLOW_MS) : 15_000;
+const MAX_PARALLEL_PROBES = 3;
 const probeTimeoutMs = () => {
   const n = Number(process.env.TOKENWISE_FREE_PROBE_TIMEOUT_MS);
   return n > 0 ? n : 8_000;
@@ -83,15 +87,25 @@ export function needsProbe(provider, model, now = Date.now()) {
   return !(entry && entry.status === "ok" && Number(entry.checkedAt) > now - PROBE_TTL_MS);
 }
 
-/** Persist model health ("ok" or 4h "down") in ~/.tokenwise-studio/free-health.json. */
-export function recordModelHealth(provider, model, ok, reason = "", now = Date.now()) {
+/** Last measured probe latency (ms) of a model, or null when unknown or older than 6h. */
+export function modelLatency(provider, model, now = Date.now()) {
+  const e = loadHealth()[healthKey(provider, model)];
+  return e && e.status === "ok" && Number.isFinite(e.latencyMs) && Number(e.latencyMs) >= 0 && Number(e.latencyAt) > now - LATENCY_TTL_MS ? Number(e.latencyMs) : null;
+}
+const isSlow = (provider, model, now = Date.now()) => { const l = modelLatency(provider, model, now); return l !== null && l > SLOW_MS; };
+
+/** Persist model health ("ok" or 4h "down") plus the measured latency in ~/.tokenwise-studio/free-health.json. */
+export function recordModelHealth(provider, model, ok, reason = "", now = Date.now(), latencyMs = null) {
   const map = loadHealth();
   const cutoff = now - 24 * 60 * 60 * 1000;
   for (const [k, v] of Object.entries(map)) {
     if (!v || (Number(v.checkedAt) || 0) < cutoff && (Number(v.downUntil) || 0) <= now) delete map[k];
   }
+  const prev = map[healthKey(provider, model)];
+  const lat = Number.isFinite(latencyMs) ? { latencyMs: Math.round(latencyMs), latencyAt: now }
+    : prev?.status === "ok" && Number.isFinite(prev.latencyMs) ? { latencyMs: prev.latencyMs, latencyAt: prev.latencyAt } : {};
   map[healthKey(provider, model)] = ok
-    ? { status: "ok", checkedAt: now }
+    ? { status: "ok", checkedAt: now, ...lat }
     : { status: "down", checkedAt: now, downUntil: now + DOWN_TTL_MS, reason: String(reason || "").slice(0, 120) };
   saveHealth(map);
 }
@@ -163,7 +177,8 @@ async function rankedModels(p) {
   const now = Date.now();
   const alive = all.filter((id) => !isModelDown(p.name, id, now));
   if (!alive.length) throw new Error(`no usable model found on ${p.name}`);
-  return alive;
+  // Keep the quality order, but models measured slower than SLOW_MS go behind the responsive ones.
+  return [...alive.filter((id) => !isSlow(p.name, id, now)), ...alive.filter((id) => isSlow(p.name, id, now))];
 }
 
 function applyHint(ids, hint) {
@@ -200,8 +215,14 @@ export async function pickModels(p, first = false, { hint = process.env.TOKENWIS
 }
 export const pickModel = async (p, first) => (await pickModels(p, first))[0];
 
-/** Probe a model with max_tokens=1 and an 8s timeout; records ok or 4h down in free-health.json. */
+/** Probe a model with max_tokens=1 (8s timeout); records ok + measured latency or 4h down in free-health.json. Resolves to true. */
 export async function probeModel(p, model, { timeoutMs = probeTimeoutMs() } = {}) {
+  await timedProbe(p, model, timeoutMs);
+  return true;
+}
+
+async function timedProbe(p, model, timeoutMs) {
+  const t0 = Date.now();
   try {
     const res = await fetch(`${p.base}/chat/completions`, {
       method: "POST",
@@ -223,8 +244,9 @@ export async function probeModel(p, model, { timeoutMs = probeTimeoutMs() } = {}
       );
     }
     await res.text?.().catch(() => "");
-    recordModelHealth(p.name, model, true, "ok");
-    return true;
+    const ms = Date.now() - t0;
+    recordModelHealth(p.name, model, true, "ok", Date.now(), ms);
+    return ms;
   } catch (err) {
     if (isDownError(err)) {
       const reason = isTimeoutError(err) ? `probe timed out after ${Math.round(timeoutMs / 1000)}s` : (err?.message || `HTTP ${err?.status || 0}`);
@@ -243,6 +265,183 @@ export async function ensureModelReady(p, model, { forced = false, timeoutMs = p
     // Some models reject max_tokens=1 with HTTP 400 without being unavailable; let the real call decide.
     if (Number(err?.status) === 400 && !isDownError(err)) return true;
     throw err;
+  }
+}
+
+/**
+ * Pick the order to try `models` in. Candidates that need a probe (max 3) are probed IN PARALLEL; the
+ * first-ranked one that answers fast wins immediately (the others finish in the background and only
+ * update the health cache). Down/timed-out models are dropped, models slower than SLOW_MS go last.
+ * A forced model is returned first without any probe. Never makes a call when the head is freshly probed and fast.
+ * Returns { models, latency: {model: ms}, skipped: [{ model, status, message, slow? }] }.
+ */
+export async function selectReady(p, models, { forced = null, timeoutMs = probeTimeoutMs() } = {}) {
+  const latency = {}, skipped = [];
+  const known = (m) => modelLatency(p.name, m);
+  if (forced) {
+    for (const m of models) { const l = known(m); if (l !== null) latency[m] = l; }
+    return { models, latency, skipped };
+  }
+  const window = models.slice(0, MAX_PARALLEL_PROBES);
+  const pending = new Map();
+  for (const m of window) {
+    if (needsProbe(p.name, m)) {
+      pending.set(m, timedProbe(p, m, timeoutMs).then((ms) => ({ ok: true, ms }), (err) => ({ ok: false, err })));
+    }
+  }
+  const good = [], slow = [];
+  let winner = false;
+  for (const m of window) {
+    if (winner && pending.has(m)) { good.push(m); continue; } // already have a fast head: leave this probe running in the background
+    if (!pending.has(m)) {
+      const l = known(m);
+      if (l !== null) latency[m] = l;
+      (l !== null && l > SLOW_MS ? slow : good).push(m);
+      if (l === null || l <= SLOW_MS) winner = true;
+      continue;
+    }
+    const r = await pending.get(m);
+    if (r.ok) {
+      latency[m] = r.ms;
+      if (r.ms > SLOW_MS) { slow.push(m); skipped.push({ model: m, status: 0, message: `slow (${(r.ms / 1000).toFixed(1)}s to answer a probe)`, slow: true }); }
+      else { good.push(m); winner = true; }
+    } else {
+      const status = Number(r.err?.status) || 0;
+      if (status === 400 && !isDownError(r.err)) { good.push(m); winner = true; continue; }
+      if (isDownError(r.err)) {
+        skipped.push({ model: m, status, message: isTimeoutError(r.err) ? `probe to ${p.name} timed out` : String(r.err?.message || r.err).slice(0, 200) });
+        continue;
+      }
+      good.push(m); // rate limit / auth: the real call reports it and the caller skips the provider
+      winner = true;
+    }
+  }
+  return { models: [...good, ...slow, ...models.slice(window.length)], latency, skipped };
+}
+
+/**
+ * Separate a model's internal reasoning from its visible answer. Handles <think>…</think>, harmony channels
+ * ("<|channel|>analysis<|message|>…<|end|>", "<|start|>assistant<|channel|>final<|message|>…", only "final" is the answer)
+ * and stray "<channel|>" / "<|channel|>" markers (text before the last one is reasoning). Returns { content, reasoning }.
+ */
+export function splitReasoning(raw) {
+  let text = String(raw ?? "");
+  const think = [];
+  if (!text) return { content: "", reasoning: "" };
+  text = text.replace(/<think>([\s\S]*?)<\/think>/gi, (_, r) => { if (r.trim()) think.push(r.trim()); return ""; });
+  const close = text.search(/<\/think>/i); // opening tag omitted by the model
+  if (close >= 0) { if (text.slice(0, close).trim()) think.push(text.slice(0, close).trim()); text = text.slice(close + 8); }
+  if (/<\|channel\|>/.test(text)) {
+    const re = /(?:<\|start\|>\s*assistant\s*)?<\|channel\|>\s*([A-Za-z_]+)[^<]*?(?:<\|constrain\|>[^<]*?)?<\|message\|>([\s\S]*?)(?=<\|end\|>|<\|return\|>|<\|call\|>|<\|start\|>|<\|channel\|>|$)/g;
+    const finals = [];
+    let m, any = false;
+    while ((m = re.exec(text))) { any = true; const body = m[2].trim(); if (body) (m[1].toLowerCase() === "final" ? finals : think).push(body); }
+    if (any) text = finals.join("\n\n");
+  }
+  const stray = [...text.matchAll(/<\|?channel\|>/g)].pop();
+  if (stray) {
+    const before = text.slice(0, stray.index).trim(), after = text.slice(stray.index + stray[0].length).trim();
+    if (after) { if (before) think.push(before); text = after; } else text = before;
+  }
+  text = text.replace(/<\|(?:end|return|call|start|message|constrain)\|>(?:\s*assistant)?/g, "").trim();
+  return { content: text, reasoning: think.join("\n\n") };
+}
+
+/** Copy of an assistant message with reasoning moved to reasoning_content (API field first) and the content cleaned. */
+export function normalizeMessage(msg) {
+  if (!msg || typeof msg !== "object") return msg;
+  const { content, reasoning } = splitReasoning(typeof msg.content === "string" ? msg.content : "");
+  const api = [msg.reasoning_content, msg.reasoning, msg.thinking].find((v) => typeof v === "string" && v.trim()) || "";
+  const all = [api.trim(), reasoning].filter(Boolean).join("\n\n");
+  const out = { ...msg, content: typeof msg.content === "string" ? content : msg.content };
+  if (all) out.reasoning_content = all;
+  return out;
+}
+
+/**
+ * One chat completion, streamed so a long answer never trips a total timeout: only "no first token within
+ * firstTokenMs", "silent for idleMs" and the overall totalMs cap abort it (all surface as a TimeoutError).
+ * Falls back to a plain JSON body when the server (or a test stub) does not stream.
+ * Resolves to an OpenAI-shaped { choices:[{message}], usage, _latency:{ firstMs, totalMs } }.
+ */
+export async function chatCompletion(p, { model, messages, tools = null, extra = {} }, { firstTokenMs = 30_000, idleMs = 30_000, totalMs = 180_000, usageOpt = true } = {}) {
+  const t0 = Date.now();
+  const ac = new AbortController();
+  let reason = null, timer = null;
+  const arm = (ms, why) => { clearTimeout(timer); timer = setTimeout(() => { reason = why; ac.abort(); }, ms); };
+  arm(Math.min(firstTokenMs, totalMs), "no first token");
+  const signal = AbortSignal.any ? AbortSignal.any([ac.signal, AbortSignal.timeout(totalMs)]) : ac.signal;
+  const timedOut = (e) => (reason ? Object.assign(new Error(`request to ${p.name} timed out (${reason})`), { name: "TimeoutError" }) : e);
+  try {
+    const res = await fetch(`${p.base}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p.key}`, "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ model, messages, ...(tools ? { tools, tool_choice: "auto" } : {}), ...extra, stream: true, ...(usageOpt ? { stream_options: { include_usage: true } } : {}) }),
+      signal,
+    });
+    if (!res.ok) {
+      const t = ((await res.text?.().catch(() => "")) || "").replace(/\s+/g, " ").slice(0, 200);
+      // A provider that rejects stream_options: retry once without it (token usage is then simply not reported).
+      if (usageOpt && (res.status === 400 || res.status === 422) && /stream_options|include_usage/i.test(t)) {
+        clearTimeout(timer);
+        return await chatCompletion(p, { model, messages, tools, extra }, { firstTokenMs, idleMs, totalMs, usageOpt: false });
+      }
+      throw Object.assign(new Error(res.status === 429 ? `rate limit reached on ${p.name}` : `HTTP ${res.status} from ${p.name}: ${t}`), { status: res.status });
+    }
+    const ct = String(res.headers?.get?.("content-type") || "");
+    if (!/event-stream/i.test(ct) || !res.body?.getReader) {
+      const data = await res.json();
+      const ms = Date.now() - t0;
+      if (data?.choices?.[0]?.message) data.choices[0].message = normalizeMessage(data.choices[0].message);
+      return Object.assign(data && typeof data === "object" ? data : {}, { _latency: { firstMs: ms, totalMs: ms } });
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    const msg = { role: "assistant", content: "" };
+    const calls = [];
+    let usage = null, buf = "", firstMs = null;
+    const onData = (json) => {
+      if (json?.error) throw Object.assign(new Error(String(json.error?.message || json.error).slice(0, 200)), { status: Number(json.error?.code) || 0 });
+      if (json?.usage) usage = json.usage;
+      const d = json?.choices?.[0]?.delta;
+      if (!d) return;
+      if (firstMs === null) firstMs = Date.now() - t0;
+      if (typeof d.content === "string") msg.content += d.content;
+      const think = d.reasoning_content ?? d.reasoning;
+      if (typeof think === "string") msg.reasoning_content = (msg.reasoning_content || "") + think;
+      for (const tc of d.tool_calls || []) {
+        const i = Number.isInteger(tc.index) ? tc.index : calls.length;
+        const c = calls[i] || (calls[i] = { id: tc.id || null, type: "function", function: { name: "", arguments: "" } });
+        if (tc.id) c.id = tc.id;
+        if (tc.function?.name) c.function.name += tc.function.name;
+        if (typeof tc.function?.arguments === "string") c.function.arguments += tc.function.arguments;
+      }
+    };
+    const line = (l) => {
+      l = l.trim();
+      if (!l.startsWith("data:")) return;
+      const v = l.slice(5).trim();
+      if (!v || v === "[DONE]") return;
+      let json; try { json = JSON.parse(v); } catch { return; }
+      onData(json);
+    };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      arm(idleMs, "no data for " + Math.round(idleMs / 1000) + "s");
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) { line(buf.slice(0, nl)); buf = buf.slice(nl + 1); }
+    }
+    if (buf) line(buf);
+    const calls2 = calls.filter(Boolean);
+    if (calls2.length) msg.tool_calls = calls2.map((c, i) => ({ ...c, id: c.id || `call_${i}` }));
+    if (!msg.content) msg.content = calls2.length ? null : "";
+    return { choices: [{ message: normalizeMessage(msg) }], usage: usage || undefined, _latency: { firstMs: firstMs ?? Date.now() - t0, totalMs: Date.now() - t0 } };
+  } catch (e) {
+    throw timedOut(e);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -269,24 +468,14 @@ const KEYS = ["NVIDIA_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "MISTRAL_A
 const out = (o) => process.stdout.write(KEYS.reduce((s, k) => s.split(k).join("***"), JSON.stringify(o)) + "\n");
 async function readStdin() { let s = ""; for await (const c of process.stdin) s += c; return s.trim(); }
 
-async function ask(p, model, task, timeoutMs = 120_000) {
-  const res = await fetch(`${p.base}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${p.key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model, stream: false,
-      messages: [
-        { role: "system", content: "You are a careful read-only assistant. Answer the task concisely. You cannot see any files except what is in the task." },
-        { role: "user", content: task },
-      ],
-    }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!res.ok) {
-    const t = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 200);
-    throw Object.assign(new Error(res.status === 429 ? `rate limit reached on ${p.name}` : `HTTP ${res.status} from ${p.name}: ${t}`), { status: res.status });
-  }
-  return res.json();
+async function ask(p, model, task, { totalMs = 180_000, firstTokenMs = 30_000 } = {}) {
+  return chatCompletion(p, {
+    model,
+    messages: [
+      { role: "system", content: "You are a careful read-only assistant. Answer the task concisely. You cannot see any files except what is in the task." },
+      { role: "user", content: task },
+    ],
+  }, { totalMs, firstTokenMs });
 }
 
 export async function runFreeChat(task, { emit = out, probeTimeout } = {}) {
@@ -301,31 +490,41 @@ export async function runFreeChat(task, { emit = out, probeTimeout } = {}) {
     return { ok: false, exitCode: 1, status: 0, message: "empty task" };
   }
 
-  let last = null;
+  let last = null, fellFrom = null;
   for (const [i, p] of providers.entries()) {
-    let models;
-    try { models = await pickModels(p, i === 0); }
-    catch (e) { last = { status: Number(e?.status) || 0, message: String(e?.message || e).slice(0, 200) }; emit({ type: "free.skip", provider: p.name, status: last.status, message: last.message }); continue; }
-    const forced = forcedModelFor(p, i === 0);
-    for (const [j, model] of models.entries()) {
-      const hasNext = j < models.length - 1 || i < providers.length - 1;
-      const callTimeoutMs = hasNext ? 60_000 : 120_000;
+    let models, sel;
+    try {
+      models = await pickModels(p, i === 0);
+      const forced = forcedModelFor(p, i === 0);
+      sel = await selectReady(p, models, { forced: forced && models.includes(forced) ? forced : null, timeoutMs: probeTimeout });
+    } catch (e) { last = { status: Number(e?.status) || 0, message: String(e?.message || e).slice(0, 200) }; emit({ type: "free.skip", provider: p.name, status: last.status, message: last.message }); continue; }
+    for (const sk of sel.skipped) {
+      last = { status: sk.status, message: sk.message };
+      fellFrom ||= { from: `${p.name}:${sk.model}`, reason: sk.message };
+      emit({ type: "free.skip", provider: p.name, model: sk.model, status: sk.status, message: sk.message });
+    }
+    for (const [j, model] of sel.models.entries()) {
+      const hasNext = j < sel.models.length - 1 || i < providers.length - 1;
+      const totalMs = hasNext ? 90_000 : 180_000, firstTokenMs = hasNext ? 20_000 : 60_000;
       try {
-        await ensureModelReady(p, model, { forced: forced === model, timeoutMs: probeTimeout });
-        emit({ type: "free.init", provider: p.name, model });
-        const data = await ask(p, model, task, callTimeoutMs);
+        emit({ type: "free.init", provider: p.name, model, ...(sel.latency[model] != null ? { latencyMs: sel.latency[model] } : {}), ...(fellFrom ? { fellBackFrom: fellFrom.from, fellBackReason: fellFrom.reason } : {}) });
+        const data = await ask(p, model, task, { totalMs, firstTokenMs });
         recordModelHealth(p.name, model, true, "ok");
-        const text = data?.choices?.[0]?.message?.content ?? "";
+        const m0 = normalizeMessage(data?.choices?.[0]?.message || {});
+        const text = m0.content ?? "";
+        if (m0.reasoning_content) emit({ type: "free.think", text: m0.reasoning_content });
         const usage = { prompt_tokens: data?.usage?.prompt_tokens ?? 0, completion_tokens: data?.usage?.completion_tokens ?? 0 };
+        if (data?._latency) emit({ type: "free.latency", provider: p.name, model, ms: data._latency.firstMs });
         emit({ type: "free.message", text });
         emit({ type: "free.usage", usage });
-        return { ok: true, exitCode: 0, provider: p.name, model, text, usage };
+        return { ok: true, exitCode: 0, provider: p.name, model, text, usage, latencyMs: data?._latency?.firstMs ?? sel.latency[model] ?? null, fellBackFrom: fellFrom?.from || null };
       } catch (e) {
         const status = Number(e?.status) || 0;
         const timedOut = isTimeoutError(e);
-        const message = timedOut ? `request to ${p.name} timed out after ${Math.round(callTimeoutMs / 1000)}s` : String(e?.message || e).slice(0, 200);
+        const message = timedOut ? `request to ${p.name} timed out (${String(e?.message || "").match(/\(([^)]*)\)/)?.[1] || `${Math.round(totalMs / 1000)}s`})` : String(e?.message || e).slice(0, 200);
         if (isDownError(e)) recordModelHealth(p.name, model, false, message);
         last = { status, message };
+        fellFrom ||= { from: `${p.name}:${model}`, reason: message };
         emit({ type: "free.skip", provider: p.name, model, status, message });
         // Bad key or rate limit: the whole provider is out, move on. Missing/unavailable model: try its next model.
         if (status === 401 || status === 403 || status === 429) break;

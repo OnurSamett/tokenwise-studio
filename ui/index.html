@@ -1123,6 +1123,26 @@ const clock = (a, b) => { const s = Math.max(0, Math.round(((b ? new Date(b) : n
 const AGENT = { codex: "Codex", claude: "Claude", gemini: "Gemini", local: "Local", free: "Free API" };
 const BADGE = { codex: "C", claude: "A", gemini: "G", local: "L", free: "F" };
 const modelName = (m = "") => { const f = String(m).match(/(luna|terra|sol|astra|haiku|sonnet|opus|flash|argon|hydrogen|pro)/i); return f ? f[1][0].toUpperCase() + f[1].slice(1).toLowerCase() : m; };
+// Free models: readable name from a provider id ("mistralai/mistral-large-4-1t-a52b" -> "Mistral Large 4"); size tags like 550b / a55b / 1t are dropped.
+const freeName = (id = "") => {
+  const raw = String(id).replace(/^(nvidia|openrouter|groq|mistral|custom):/, "").split("/").pop().replace(/:free$/, "");
+  if (!raw || raw === "auto" || raw === "free") return "";
+  const words = raw.split(/[-_]/).filter((w) => w && !/^(a?\d+(\.\d+)?[bkmt]|e\d+b|instruct|chat|preview)$/i.test(w));
+  return (words.length ? words : [raw]).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+};
+/** "Codex · Sol" for paid agents; "Free · Mistral Large 4" for free runs (the model that actually answered, once known). */
+const agentModel = (x) => {
+  if (x.agent === "free") { const n = freeName(x.modelUsed || x.model); return n ? t("free.label", { name: n }) : t("free.auto"); }
+  return `${AGENT[x.agent] || x.agent} · ${modelName(x.model)}`;
+};
+/** Small notes for a free run: measured latency and a fallback hint. */
+const freeBits = (x) => {
+  if (x.agent !== "free" || !x.modelUsed) return [];
+  const bits = [];
+  if (Number.isFinite(x.latencyMs)) bits.push(t("free.latency", { s: (x.latencyMs / 1000).toFixed(1) }));
+  if (x.fellBackFrom) bits.push(t("free.fellBack", { from: freeName(x.fellBackFrom) || x.fellBackFrom }));
+  return bits;
+};
 const effortBars = (e) => { const n = { low: 1, medium: 2, high: 3, xhigh: 4 }[e] || 2; return h("span", { class: "effort", title: t("effort.title", { effort: effortLabel(e) }) }, ...[1, 2, 3].map((i) => h("i", { class: i <= Math.min(n, 3) ? "on" : "" }))); };
 const stateLabel = (s) => t(`state.${s}`) || s;
 
@@ -1927,9 +1947,11 @@ function renderTurnChrome() {
     const tb = turnBlock(i);
     if (!tb.user.firstChild) userContent(tb.user, tr.user, tr.images, tr.mentions);
     const ag = tr.agent || "claude";
-    if (!tb.meta.firstChild || tb.meta.dataset.agent !== ag) {
-      tb.meta.dataset.agent = ag;
-      set(tb.meta, agentLogo(ag), h("b", {}, ag === "claude" ? modelName(tr.model || c.model) : `${AGENT[ag]} ${modelName(tr.model)}`), " · ", new Date(tr.started).toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit" }));
+    const metaKey = [ag, tr.modelUsed || "", tr.latencyMs || "", tr.fellBackFrom || "", lang].join("|");
+    if (!tb.meta.firstChild || tb.meta.dataset.agent !== metaKey) {
+      tb.meta.dataset.agent = metaKey;
+      const fb = freeBits({ ...tr, agent: ag });
+      set(tb.meta, agentLogo(ag), h("b", {}, ag === "claude" ? modelName(tr.model || c.model) : ag === "free" ? agentModel({ ...tr, agent: ag }) : `${AGENT[ag]} ${modelName(tr.model)}`), " · ", new Date(tr.started).toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit" }), fb.length ? h("span", { title: tr.fellBackReason || "" }, " · " + fb.join(" · ")) : null);
     }
     const running = c.status === "running" && i === c.turns.length - 1;
     const eff = tr.effort || "medium";
@@ -1952,11 +1974,12 @@ function renderTurnChrome() {
       const tok = mine.reduce((n, j) => n + (j.tokens ? (j.tokens.input || 0) + (j.tokens.output || 0) : 0), 0);
       const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
       const orchTok = tr.tokens ? (tr.tokens.input || 0) + (tr.tokens.output || 0) : 0, total = orchTok + tok, budget = appSettings?.settings?.turnBudget || 0;
-      const byAgent = {}; for (const j of mine) { const k = `${AGENT[j.agent]} ${modelName(j.model)}`; byAgent[k] = (byAgent[k] || 0) + 1; }
+      const byAgent = {}; for (const j of mine) { const k = agentModel(j).replace(" · ", " "); byAgent[k] = (byAgent[k] || 0) + 1; }
       tb.cost.hidden = false;
       set(tb.cost, tr.agent === "codex"
         ? h("span", { title: t("turn.costCodexTitle") }, h("b", {}, `Codex ${modelName(tr.model)}`), tr.tokens ? t("turn.costCodexTokens", { n: fmt((tr.tokens.input || 0) + (tr.tokens.output || 0)) }) : "")
-        : h("span", { title: t("turn.costApiTitle") }, h("b", {}, modelName(tr.model || c.model)), ` $${(tr.cost || 0).toFixed(2)}`),
+        : tr.agent === "free" ? h("span", {}, h("b", {}, agentModel(tr)))
+          : h("span", { title: t("turn.costApiTitle") }, h("b", {}, modelName(tr.model || c.model)), ` $${(tr.cost || 0).toFixed(2)}`),
         mine.length ? [h("span", {}, "·"), h("span", {}, Object.entries(byAgent).map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(", ")), tok ? h("span", { title: t("turn.workerTokensTitle") }, t("turn.workerTokens", { n: fmt(tok) })) : null] : null,
         total ? h("span", { title: budget ? t("turn.budgetTitle", { n: fmt(budget) }) : t("turn.turnTokensTitle") }, t("turn.tokensThisTurn", { n: fmt(total) }), budget ? t("turn.budgetPct", { pct: Math.round(total / budget * 100), budget: fmt(budget) }) : "") : null);
     }
@@ -1968,7 +1991,8 @@ function renderWorkerRow(j) {
   const isRun = j.status === "running";
   return h("div", { class: "wk" }, h("button", { class: "worker" + (isRun ? " running" : ""), "data-eff": j.effort || "medium", onclick: () => openJob(j.id) },
     (() => { const lg = j.agent === "free" ? makerLogo(j.model) || logoImg("nvidia") : agentLogo(j.agent); return h("span", { class: "badge " + j.agent + (lg ? " has-logo" : "") }, lg || BADGE[j.agent] || "?"); })(),
-    h("span", {}, h("div", { class: "w-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort), h("span", { class: "w-state " + j.status }, stateLabel(j.status))), h("div", { class: "w-task" }, j.title),
+    h("span", {}, h("div", { class: "w-name" }, agentModel(j), effortBars(j.effort), h("span", { class: "w-state " + j.status }, stateLabel(j.status))), h("div", { class: "w-task" }, j.title),
+      freeBits(j).length ? h("div", { class: "moved free-note", title: j.fellBackReason || "" }, freeBits(j).join(" · ")) : null,
       j.movedFrom ? h("div", { class: "moved", title: movedWhy }, t("teamCard.tookOver", { agent: AGENT[j.movedFrom.agent] || j.movedFrom.agent, reason: movedWhy })) : null),
     h("span", { class: "bar " + j.status }, h("i")),
     h("span", { class: "w-time" }, clock(j.created, j.finished))),
@@ -2486,7 +2510,7 @@ async function renderDrawer(full) {
       j.status === "running" ? h("div", { class: "d-foot" }, h("span", { class: "note" }, t("job.worktreeFoot")), h("button", { class: "btn", onclick: () => act("discard", j.id) }, t("job.stop"))) : null;
     set(d,
       h("div", { class: "d-head" }, h("span", { class: "badge " + j.agent }, BADGE[j.agent]),
-        h("div", {}, h("h3", {}, j.title), h("div", { class: "meta" }, `${AGENT[j.agent]} · ${modelName(j.model)} · ${t("effort.ofJob", { effort: effortLabel(j.effort) })} · `, h("span", { class: "w-state " + j.status }, stateLabel(j.status)), " · ", h("span", { class: "w-time" }, clock(j.created, j.finished)))),
+        h("div", {}, h("h3", {}, j.title), h("div", { class: "meta" }, `${agentModel(j)}${freeBits(j).length ? ` (${freeBits(j).join(", ")})` : ""} · ${t("effort.ofJob", { effort: effortLabel(j.effort) })} · `, h("span", { class: "w-state " + j.status }, stateLabel(j.status)), " · ", h("span", { class: "w-time" }, clock(j.created, j.finished)))),
         h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
       h("div", { class: "d-body" },
         j.role === "playtest" ? renderPlaytestReport(j, ptResp) : null,
@@ -2521,7 +2545,7 @@ async function renderDrawer(full) {
     let overlapCount = 0;
     for (const j of p) {
       const { files, conflicts } = await api(`diff/${j.id}`);
-      blocks.push(h("div", { class: "section", style: "margin-bottom:8px" }, h("h4", {}, `${AGENT[j.agent]} · ${modelName(j.model)} · ${j.title}`), testPanel(j), conflictActionBar(j, conflicts)));
+      blocks.push(h("div", { class: "section", style: "margin-bottom:8px" }, h("h4", {}, `${agentModel(j)} · ${j.title}`), testPanel(j), conflictActionBar(j, conflicts)));
       for (const f of files) {
         const fc = conflicts?.files?.[f.path] || { status: "ok", appliesCleanly: true, alsoChangedBy: [] };
         if (!fc.appliesCleanly) blockedCount++;
@@ -2529,7 +2553,7 @@ async function renderDrawer(full) {
         const canApply = fc.appliesCleanly !== false;
         const cb = h("input", { type: "checkbox", checked: canApply, disabled: !canApply, onclick: (e) => e.stopPropagation(), onchange: () => count() });
         cb.dataset.job = j.id; cb.dataset.path = f.path; boxes.push(cb);
-        blocks.push(fileBlock(f, cb, `${AGENT[j.agent]} · ${modelName(j.model)}`, j, fc));
+        blocks.push(fileBlock(f, cb, agentModel(j), j, fc));
       }
     }
     let summaryBanner = null;
@@ -3008,7 +3032,7 @@ async function renderDrawer(full) {
     };
     const tot = U.totals, est = tot.estimated > 0;
     const rows = U.byModel.map((r) => h("tr", {}, h("td", {}, h("span", { style: "display:inline-flex;gap:7px;align-items:center" }, agentLogo(r.agent) || h("span", { class: "badge " + r.agent, style: "width:18px;height:18px;font-size:10px;border-radius:5px" }, BADGE[r.agent] || "?"), AGENT[r.agent] || r.agent)),
-      h("td", {}, modelName(r.model) || r.model), h("td", { class: "n" }, `${r.turns || 0} / ${r.jobs || 0}`), h("td", { class: "n" }, fmtN(r.total)), h("td", { class: "n" }, money(r.cost) + (r.estimated > 0 ? " ~" : ""))));
+      h("td", {}, (r.agent === "free" ? freeName(r.model) : modelName(r.model)) || r.model), h("td", { class: "n" }, `${r.turns || 0} / ${r.jobs || 0}`), h("td", { class: "n" }, fmtN(r.total)), h("td", { class: "n" }, money(r.cost) + (r.estimated > 0 ? " ~" : ""))));
     const draw = () => set(body,
       h("div", { class: "utotals" },
         h("div", {}, h("span", {}, t("usage.tokens")), h("b", {}, fmtN(tot.total))), h("div", {}, h("span", {}, t("usage.apiEqCost")), h("b", {}, money(tot.cost) + (est ? " ~" : ""))),
@@ -3534,7 +3558,7 @@ async function renderDrawer(full) {
             stagedAt = 0;
             closeDrawer();
             await refresh();
-            toast(t("shootout.toastPicked", { name: `${AGENT[j.agent] || j.agent} ${modelName(j.model)}` }), {
+            toast(t("shootout.toastPicked", { name: agentModel(j).replace(" · ", " ") }), {
               actionLabel: t("job.undoApply"),
               onAction: () => undoApplyJobs([j.id]),
             });
@@ -3568,7 +3592,7 @@ async function renderDrawer(full) {
         h("div", { class: "so-head" },
           h("span", { class: "badge " + j.agent + (lg ? " has-logo" : "") }, lg || BADGE[j.agent] || "?"),
           h("div", { class: "so-title" },
-            h("div", { class: "so-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort)),
+            h("div", { class: "so-name" }, agentModel(j), effortBars(j.effort)),
             h("div", { class: "so-sub" },
               h("span", { class: "w-state " + (stCls === "picked" || stCls === "ready" ? "done" : stCls) }, stText),
               "·",
@@ -4590,7 +4614,8 @@ function renderModelBtn() {
     hot ? h("span", { class: "warn", "aria-hidden": "true" }) : null,
     h("span", { class: "car", "aria-hidden": "true" }, "▾"));
   btn.setAttribute("aria-label", t("mp.btnAria", { model: orchRow(model).name, effort: effortLabel(eff) }));
-  btn.title = t("mp.title");
+  const lf = showFreeBadge ? lastFreeUsed() : null;
+  btn.title = lf ? `${t("mp.title")} · ${t("free.lastUsed", { name: freeName(lf.modelUsed) })}` : t("mp.title");
   btn.classList.toggle("open", pickerOpen === "model");
   btn.setAttribute("aria-expanded", pickerOpen === "model" ? "true" : "false");
 }
@@ -4599,6 +4624,19 @@ function setOrch({ model, effort }) {
   if (effort) $("#oeffort").value = effort;
   renderModelBtn(); renderLimits();
   if (pickerOpen === "model") renderModelPop(model ? `[data-m="${model}"]` : effort ? `[data-eff="${effort}"]` : null);
+}
+
+/** The free model that actually answered most recently (this chat's turns first, then worker jobs) with its measured latency. */
+function lastFreeUsed() {
+  const turnsOf = curChat()?.turns || [];
+  for (let i = turnsOf.length - 1; i >= 0; i--) if (turnsOf[i].agent === "free" && turnsOf[i].modelUsed) return { ...turnsOf[i], agent: "free" };
+  for (let i = (S.jobs || []).length - 1; i >= 0; i--) if (S.jobs[i].agent === "free" && S.jobs[i].modelUsed) return S.jobs[i];
+  return null;
+}
+function lastFreeStatus() {
+  const u = lastFreeUsed(); if (!u) return null;
+  const bits = freeBits(u);
+  return h("div", { class: "effnote", role: "status", id: "free-last" }, t("free.lastUsed", { name: freeName(u.modelUsed) }) + (bits.length ? ` · ${bits.join(" · ")}` : ""));
 }
 
 function limitHint(model) {
@@ -4647,6 +4685,7 @@ function renderModelPop(focusSel) {
     h("h4", { role: "presentation" }, t("mp.orch")),
     rows,
     limitHint(model),
+    lastFreeStatus(),
     h("div", { class: "sep" }),
     h("div", { class: "fastrow" }, h("span", {}, t("mp.freeMode")),
       h("button", { type: "button", class: "switch" + (freeMode ? " on" : ""), role: "switch", "data-free-mode": "1", "aria-checked": freeMode ? "true" : "false", "aria-label": t("mp.freeModeAria"), "data-nav": "1", onclick: async () => {

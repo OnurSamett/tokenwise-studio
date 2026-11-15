@@ -152,7 +152,8 @@ export function normalize(agent, entry, base) {
   }
   let e; try { e = JSON.parse(entry.line); } catch { return [{ kind: "say", text: entry.line }]; }
   if (typeof e.type === "string" && e.type.startsWith("free.")) {
-    if (e.type === "free.init") return [{ kind: "meta", text: `${e.provider === "ollama" ? "local" : "free API"} · ${e.provider} · ${e.model}` }];
+    if (e.type === "free.init") return [{ kind: "meta", text: `${e.provider === "ollama" ? "local" : "free API"} · ${e.provider} · ${e.model}${Number.isFinite(e.latencyMs) ? ` · ${(e.latencyMs / 1000).toFixed(1)}s` : ""}${e.fellBackFrom ? ` · fell back from ${e.fellBackFrom}` : ""}` }];
+    if (e.type === "free.latency") return [];
     if (e.type === "free.skip") return [{ kind: "meta", text: `${e.model ? `${e.provider} · ${e.model}` : e.provider} unavailable (${e.message}); trying the next ${e.model ? "free model" : "free provider"}` }];
     if (e.type === "free.message") return [{ kind: "say", text: e.text }];
     if (e.type === "free.think") return [{ kind: "think", text: e.text }];

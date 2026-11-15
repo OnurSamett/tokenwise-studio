@@ -371,6 +371,8 @@ test("free orchestrator loop with stubbed chatFn: delegates job, waits, reviews 
       assert.equal(after1.status, "idle");
       assert.equal(after1.turns[0].agent, "free");
       assert.equal(after1.turns[0].reply, "First turn summary from free orchestrator.");
+      assert.equal(after1.turns[0].modelUsed, "stub-free-model"); // the model actually used is recorded on the turn
+      assert.equal(after1.turns[0].provider, "nvidia");
 
       // Second turn on the same chat should include compact running history
       chats.send({ id: c1.id, message: "Follow-up question", model: "free", force: "free" });

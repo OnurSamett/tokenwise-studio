@@ -201,10 +201,9 @@ test("forced 404 -> falls through to ranked fallback and marks forced model down
       assert.equal(health["nvidia:moonshotai/kimi-k2.6"].status, "down");
       assert.equal(health["nvidia:nvidia/nemotron-3-ultra-550b-a55b"].status, "ok");
 
-      // Also verify probe ran with max_tokens=1 on ranked fallback before actual call
+      // A forced model is called directly (no probe) and its fallbacks are not probed up front either (fewer calls)
       assert.deepEqual(calls, [
         { model: "moonshotai/kimi-k2.6", max_tokens: undefined },
-        { model: "nvidia/nemotron-3-ultra-550b-a55b", max_tokens: 1 },
         { model: "nvidia/nemotron-3-ultra-550b-a55b", max_tokens: undefined },
       ]);
 
@@ -303,18 +302,18 @@ test("probe timeout marks down and moves to next ranked candidate; 429 does not 
         await assert.rejects(() => probeModel(p, "nvidia/nemotron-3-ultra-550b-a55b"), (e) => e?.name === "TimeoutError");
         assert.equal(isModelDown("nvidia", "nvidia/nemotron-3-ultra-550b-a55b"), true);
 
-        // Next run skips the timed-out model, probes mistral, and uses 120s (no more candidates queued after mistral)
+        // Next run skips the timed-out model, probes mistral, and uses 180s (no more candidates queued after mistral)
         timeoutsSeen.length = 0;
         const events = [];
         const res = await runFreeChat("hello", { emit: (e) => events.push(e) });
         assert.equal(res.ok, true);
         assert.equal(res.model, "mistralai/mistral-large-4-1t-a52b");
         assert.equal(timeoutsSeen.includes(25), true);
-        assert.equal(timeoutsSeen.includes(120_000), true);
+        assert.equal(timeoutsSeen.includes(180_000), true);
       },
     );
 
-    // When another candidate is queued, per-call timeout drops to 60s
+    // When another candidate is queued, per-call timeout drops to 90s
     await withEnvAndFetch(
       { TOKENWISE_FREE_PROVIDERS: "nvidia", TOKENWISE_FREE_PROBE_TIMEOUT_MS: "25" },
       async (url, init) => {
@@ -334,8 +333,8 @@ test("probe timeout marks down and moves to next ranked candidate; 429 does not 
         timeoutsSeen.length = 0;
         const res = await runFreeChat("hello", { emit: () => {} });
         assert.equal(res.ok, true);
-        assert.equal(timeoutsSeen.includes(60_000), true);
-        assert.equal(timeoutsSeen.includes(120_000), false);
+        assert.equal(timeoutsSeen.includes(90_000), true);
+        assert.equal(timeoutsSeen.includes(180_000), false);
       },
     );
 
