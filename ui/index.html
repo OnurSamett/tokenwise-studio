@@ -3115,12 +3115,24 @@ function projectMenu() {
   const open = async (path) => {
     if (sending) return;
     closePop();
-    try { S = await api("project", { path }); studioDraft = { raw: "", result: null, selected: new Set() }; resetWorkspace(); newTask(); await refresh(); renderLimits(); toast(t("project.opened", { name: S.project?.name || "" })); } catch (e) { toast(e.message, true); }
+    try {
+      S = await api("project", { path });
+      studioDraft = { raw: "", result: null, selected: new Set() };
+      resetWorkspace();
+      newTask();
+      await refresh();
+      renderLimits();
+      window.webkit?.messageHandlers?.tw?.postMessage({ type: "project", action: "switched", repo: S.repo });
+      toast(t("project.opened", { name: S.project?.name || "" }));
+    } catch (e) { toast(e.message, true); }
   };
   inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && inp.value.trim()) open(inp.value.trim()); });
   const rec = (S.recents || []).filter((p) => p !== S.repo);
   popover($("#project"),
-    window.__tokenwiseNative ? h("button", { onclick: () => { closePop(); window.location.href = "tokenwise-native://choose-project"; } }, t("project.browse")) : null,
+    window.__tokenwiseNative ? [
+      h("button", { onclick: () => { closePop(); window.location.href = "tokenwise-native://choose-project"; } }, t("project.browse")),
+      h("button", { onclick: () => { if (sending) return; closePop(); window.location.href = "tokenwise-native://switch-project"; } }, t("project.switchInWindow")),
+    ] : null,
     h("div", { class: "ph" }, t("project.current")), h("button", { disabled: true, style: "opacity:1;cursor:default" }, S.project?.name, h("span", { class: "path" }, S.repo)),
     rec.length ? [h("div", { class: "sep" }), h("div", { class: "ph" }, t("project.recent"))] : null,
     rec.map((p) => h("button", { onclick: () => open(p) }, p.split("/").filter(Boolean).pop(), h("span", { class: "path" }, p))),

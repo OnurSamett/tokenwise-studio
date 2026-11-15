@@ -52,6 +52,7 @@ export const DICT = {
 
     // Project popover
     "project.browse": "Open folder…",
+    "project.switchInWindow": "Switch project in this window…",
     "project.placeholder": "Open folder: /path/to/project",
     "project.current": "Current",
     "project.recent": "Recent",
@@ -930,6 +931,7 @@ export const DICT = {
 
     // Project popover
     "project.browse": "Klasör aç…",
+    "project.switchInWindow": "Projeyi bu pencerede değiştir…",
     "project.placeholder": "Klasör aç: /proje/yolu",
     "project.current": "Geçerli",
     "project.recent": "Son kullanılanlar",

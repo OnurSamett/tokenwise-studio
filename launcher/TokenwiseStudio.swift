@@ -2,8 +2,9 @@
 // tokenwise studio.app/Contents/MacOS/tokenwise-studio.
 //   --notify --title T --message M [--subtitle S] [--repo PATH]   post a notification, then exit
 //   --open-url URL --repo PATH     open a window for an already running server
+//   --print-state                  print parsed app-state and recents as JSON, then exit
 //   tokenwise-studio://open?repo=<path>&url=<url>   same, via the URL scheme (works if already running)
-//   (no args)  regular Dock app: notification click -> that repo's window, otherwise the Open Project panel
+//   (no args)  regular Dock app: restore last project windows, or open the Welcome window
 import AppKit
 import WebKit
 import UserNotifications
@@ -11,7 +12,15 @@ import Speech
 import AVFoundation
 
 let resources = Bundle.main.resourcePath ?? ""
-let stateDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".tokenwise-studio")
+let homeDirURL: URL = {
+    if let envHome = ProcessInfo.processInfo.environment["HOME"], !envHome.isEmpty {
+        return URL(fileURLWithPath: (envHome as NSString).standardizingPath, isDirectory: true)
+    }
+    return FileManager.default.homeDirectoryForCurrentUser
+}()
+let stateDir = homeDirURL.appendingPathComponent(".tokenwise-studio", isDirectory: true)
+let appStateURL = stateDir.appendingPathComponent("app-state.json")
+let recentsURL = stateDir.appendingPathComponent("recents.json")
 let logURL = stateDir.appendingPathComponent("launcher.log")
 
 func fail(_ msg: String) -> Never {
@@ -32,10 +41,175 @@ func readServers() -> [String: String] {
     return map
 }
 
+struct WindowFrameData: Codable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+
+    var nsRect: NSRect { NSRect(x: x, y: y, width: width, height: height) }
+    var isValid: Bool {
+        x.isFinite && y.isFinite && width.isFinite && height.isFinite && width >= 900 && height >= 600
+    }
+}
+
+struct SavedWindowState: Codable {
+    let repo: String
+    var frame: WindowFrameData?
+}
+
+struct AppState: Codable {
+    var windows: [SavedWindowState]
+    var lastOpened: [String: Double]?
+}
+
+struct RecentEntry {
+    let path: String
+    let name: String
+    let shortPath: String
+    let isGit: Bool
+    let lastOpened: Double?
+}
+
+func isExistingDirectory(_ path: String) -> Bool {
+    var d: ObjCBool = false
+    return FileManager.default.fileExists(atPath: path, isDirectory: &d) && d.boolValue
+}
+
+func shortenHomePath(_ path: String) -> String {
+    let std = (path as NSString).standardizingPath
+    let home = (homeDirURL.path as NSString).standardizingPath
+    if std == home { return "~" }
+    if home != "/" && std.hasPrefix(home + "/") {
+        return "~" + String(std.dropFirst(home.count))
+    }
+    return std
+}
+
+func isGitRepository(_ path: String) -> Bool {
+    var cur = (path as NSString).standardizingPath
+    let fm = FileManager.default
+    while !cur.isEmpty {
+        let dotGit = (cur as NSString).appendingPathComponent(".git")
+        if fm.fileExists(atPath: dotGit) { return true }
+        let parent = (cur as NSString).deletingLastPathComponent
+        if parent == cur || parent.isEmpty { break }
+        cur = parent
+    }
+    return false
+}
+
+func inferredLastOpenedMs(_ path: String) -> Double? {
+    let fm = FileManager.default
+    let candidates = [
+        (path as NSString).appendingPathComponent(".tokenwise-studio/chats"),
+        (path as NSString).appendingPathComponent(".tokenwise-studio/jobs"),
+        (path as NSString).appendingPathComponent(".tokenwise-studio"),
+    ]
+    var best: Double? = nil
+    for c in candidates {
+        if let attrs = try? fm.attributesOfItem(atPath: c),
+           let mod = attrs[.modificationDate] as? Date {
+            let ms = mod.timeIntervalSince1970 * 1000
+            if best == nil || ms > best! { best = ms }
+        }
+    }
+    return best
+}
+
+func parseTimestampMs(_ val: Any?) -> Double? {
+    if let n = val as? Double, n.isFinite, n > 0 {
+        return n < 100_000_000_000 ? n * 1000 : n
+    }
+    if let n = val as? Int, n > 0 {
+        let d = Double(n)
+        return d < 100_000_000_000 ? d * 1000 : d
+    }
+    if let s = val as? String, !s.isEmpty {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let dt = iso.date(from: s) { return dt.timeIntervalSince1970 * 1000 }
+        iso.formatOptions = [.withInternetDateTime]
+        if let dt = iso.date(from: s) { return dt.timeIntervalSince1970 * 1000 }
+    }
+    return nil
+}
+
+func readAppState() -> AppState {
+    guard let data = try? Data(contentsOf: appStateURL),
+          let decoded = try? JSONDecoder().decode(AppState.self, from: data) else {
+        return AppState(windows: [], lastOpened: [:])
+    }
+    return AppState(windows: decoded.windows, lastOpened: decoded.lastOpened ?? [:])
+}
+
+func writeAppState(_ state: AppState) {
+    try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+    let enc = JSONEncoder()
+    enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+    guard let data = try? enc.encode(state) else { return }
+    try? data.write(to: appStateURL, options: .atomic)
+}
+
+func rememberRecent(_ repo: String) {
+    let std = (repo as NSString).standardizingPath
+    var existing: [String] = []
+    if let data = try? Data(contentsOf: recentsURL),
+       let raw = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+        for item in raw {
+            if let s = item as? String {
+                existing.append((s as NSString).standardizingPath)
+            } else if let obj = item as? [String: Any], let s = obj["path"] as? String {
+                existing.append((s as NSString).standardizingPath)
+            }
+        }
+    }
+    var list = [std]
+    for p in existing where p != std && !list.contains(p) {
+        list.append(p)
+        if list.count >= 8 { break }
+    }
+    try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+    guard let data = try? JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted]) else { return }
+    try? data.write(to: recentsURL, options: .atomic)
+}
+
+func readRecentEntries(appState: AppState? = nil) -> [RecentEntry] {
+    guard let data = try? Data(contentsOf: recentsURL),
+          let raw = try? JSONSerialization.jsonObject(with: data) as? [Any] else { return [] }
+    let st = appState ?? readAppState()
+    var seen = Set<String>()
+    var out: [RecentEntry] = []
+    for item in raw {
+        let rawPath: String?
+        var explicitTs: Double? = nil
+        if let s = item as? String {
+            rawPath = s
+        } else if let obj = item as? [String: Any], let s = obj["path"] as? String {
+            rawPath = s
+            explicitTs = parseTimestampMs(obj["lastOpened"] ?? obj["openedAt"])
+        } else {
+            rawPath = nil
+        }
+        guard let p = rawPath, !p.isEmpty else { continue }
+        let std = (p as NSString).standardizingPath
+        guard !seen.contains(std), isExistingDirectory(std) else { continue }
+        seen.insert(std)
+        let ts = explicitTs ?? st.lastOpened?[std] ?? st.lastOpened?[p] ?? inferredLastOpenedMs(std)
+        let name = (std as NSString).lastPathComponent
+        out.append(RecentEntry(
+            path: std,
+            name: name.isEmpty ? std : name,
+            shortPath: shortenHomePath(std),
+            isGit: isGitRepository(std),
+            lastOpened: ts
+        ))
+    }
+    return out
+}
+
 func readRecents() -> [String] {
-    guard let data = try? Data(contentsOf: stateDir.appendingPathComponent("recents.json")),
-          let list = try? JSONSerialization.jsonObject(with: data) as? [String] else { return [] }
-    return list.filter { var d: ObjCBool = false; return FileManager.default.fileExists(atPath: $0, isDirectory: &d) && d.boolValue }
+    readRecentEntries().map { $0.path }
 }
 
 /// The version this app was built for (written into Info.plist by `tokenwise-studio setup`).
@@ -452,10 +626,813 @@ final class DictationController {
     }
 }
 
+// MARK: - welcome window
+
+func resolveWelcomeLanguage() -> String {
+    if let setting = readStudioLanguageSetting()?.lowercased() {
+        if setting == "tr" { return "tr" }
+        if setting == "en" { return "en" }
+    }
+    if let first = Locale.preferredLanguages.first?.lowercased(), first.hasPrefix("tr") {
+        return "tr"
+    }
+    return "en"
+}
+
+func defaultNewProjectParent() -> String {
+    let projects = homeDirURL.appendingPathComponent("Projects", isDirectory: true).path
+    if isExistingDirectory(projects) { return projects }
+    return homeDirURL.path
+}
+
+func appIconDataURL() -> String? {
+    guard let icon = NSApp?.applicationIconImage,
+          let tiff = icon.tiffRepresentation,
+          let rep = NSBitmapImageRep(data: tiff),
+          let png = rep.representation(using: .png, properties: [:]) else { return nil }
+    return "data:image/png;base64," + png.base64EncodedString()
+}
+
+func runGitInit(at path: String) -> (ok: Bool, error: String?) {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    p.arguments = ["git", "init"]
+    p.currentDirectoryURL = URL(fileURLWithPath: path, isDirectory: true)
+    var env = ProcessInfo.processInfo.environment
+    env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
+    p.environment = env
+    let errPipe = Pipe()
+    p.standardOutput = Pipe()
+    p.standardError = errPipe
+    do {
+        try p.run()
+        p.waitUntilExit()
+        if p.terminationStatus == 0 { return (true, nil) }
+        let msg = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (false, msg?.isEmpty == false ? msg : "exit \(p.terminationStatus)")
+    } catch {
+        return (false, error.localizedDescription)
+    }
+}
+
+final class WelcomeWebView: WKWebView {
+    var onDragState: ((Bool) -> Void)?
+    var onDropFolder: ((String) -> Void)?
+
+    override init(frame: NSRect, configuration: WKWebViewConfiguration) {
+        super.init(frame: frame, configuration: configuration)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private func firstFolderURL(from info: NSDraggingInfo) -> URL? {
+        let opts: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: opts) as? [URL] else {
+            return nil
+        }
+        return urls.first { isExistingDirectory($0.path) }
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if firstFolderURL(from: sender) != nil {
+            onDragState?(true)
+            return .copy
+        }
+        return []
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        firstFolderURL(from: sender) != nil ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDragState?(false)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        firstFolderURL(from: sender) != nil
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        onDragState?(false)
+        guard let url = firstFolderURL(from: sender) else { return false }
+        onDropFolder?(url.path)
+        return true
+    }
+}
+
+final class WelcomeWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, NSWindowDelegate {
+    let window: NSWindow
+    let web: WelcomeWebView
+    let scriptHandler = WeakScriptHandler()
+    var onOpenProject: ((String) -> Void)?
+    var onClose: (() -> Void)?
+    private var lastParent = defaultNewProjectParent()
+
+    override init() {
+        let cfg = WKWebViewConfiguration()
+        cfg.defaultWebpagePreferences.allowsContentJavaScript = true
+        cfg.userContentController.add(scriptHandler, name: "twWelcome")
+        web = WelcomeWebView(frame: .zero, configuration: cfg)
+        if #available(macOS 13.3, *), ProcessInfo.processInfo.environment["TOKENWISE_DEBUG"] == "1" {
+            web.isInspectable = true
+        }
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 540),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        super.init()
+        scriptHandler.target = self
+        window.title = "tokenwise studio"
+        window.contentMinSize = NSSize(width: 540, height: 420)
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.backgroundColor = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(red: 0.039, green: 0.039, blue: 0.047, alpha: 1)
+                : NSColor(red: 0.98, green: 0.98, blue: 0.98, alpha: 1)
+        }
+        window.center()
+
+        web.translatesAutoresizingMaskIntoConstraints = false
+        web.navigationDelegate = self
+        web.uiDelegate = self
+        web.setValue(false, forKey: "drawsBackground")
+        web.onDragState = { [weak self] active in
+            self?.evalJS("window.__setDragOver && window.__setDragOver(\(active ? "true" : "false"))")
+        }
+        web.onDropFolder = { [weak self] path in
+            self?.openValidFolder(path)
+        }
+
+        let content = NSView()
+        content.addSubview(web)
+        NSLayoutConstraint.activate([
+            web.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            web.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            web.topAnchor.constraint(equalTo: content.topAnchor),
+            web.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+        ])
+        window.contentView = content
+        reloadContent()
+    }
+
+    func show() {
+        refreshData()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func close() {
+        window.close()
+    }
+
+    func refreshData() {
+        guard let json = encodeJSArg(buildPayload()) else { return }
+        evalJS("window.__updateWelcome && window.__updateWelcome(\(json))")
+    }
+
+    private func reloadContent() {
+        let html = buildHTML(payload: buildPayload())
+        web.loadHTMLString(html, baseURL: nil)
+    }
+
+    private func evalJS(_ script: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.web.evaluateJavaScript(script, completionHandler: nil)
+        }
+    }
+
+    private func buildPayload() -> [String: Any] {
+        let st = readAppState()
+        let entries = readRecentEntries(appState: st).map { e -> [String: Any] in
+            var obj: [String: Any] = [
+                "path": e.path,
+                "name": e.name,
+                "shortPath": e.shortPath,
+                "isGit": e.isGit,
+            ]
+            if let ts = e.lastOpened { obj["lastOpened"] = ts }
+            return obj
+        }
+        var payload: [String: Any] = [
+            "lang": resolveWelcomeLanguage(),
+            "recents": entries,
+            "defaultParent": lastParent,
+            "defaultParentShort": shortenHomePath(lastParent),
+        ]
+        if let icon = appIconDataURL() { payload["icon"] = icon }
+        return payload
+    }
+
+    private func openValidFolder(_ rawPath: String) {
+        let std = (rawPath as NSString).standardizingPath
+        guard isExistingDirectory(std) else { return }
+        onOpenProject?(std)
+    }
+
+    private func chooseExistingFolder() {
+        let p = NSOpenPanel()
+        p.canChooseDirectories = true
+        p.canChooseFiles = false
+        p.allowsMultipleSelection = false
+        let isTr = resolveWelcomeLanguage() == "tr"
+        p.prompt = isTr ? "Projeyi Aç" : "Open Project"
+        p.message = isTr ? "tokenwise studio için bir proje klasörü seç" : "Choose a project folder for tokenwise studio"
+        p.beginSheetModal(for: window) { [weak self] r in
+            if r == .OK, let u = p.url {
+                self?.openValidFolder(u.path)
+            }
+        }
+    }
+
+    private func chooseParentFolder() {
+        let p = NSOpenPanel()
+        p.canChooseDirectories = true
+        p.canChooseFiles = false
+        p.allowsMultipleSelection = false
+        p.canCreateDirectories = true
+        if isExistingDirectory(lastParent) {
+            p.directoryURL = URL(fileURLWithPath: lastParent, isDirectory: true)
+        }
+        let isTr = resolveWelcomeLanguage() == "tr"
+        p.prompt = isTr ? "Seç" : "Choose"
+        p.message = isTr ? "Yeni proje klasörü için konum seç" : "Choose a parent location for the new project folder"
+        p.beginSheetModal(for: window) { [weak self] r in
+            guard let self = self, r == .OK, let u = p.url else { return }
+            let std = (u.path as NSString).standardizingPath
+            self.lastParent = std
+            if let arg = encodeJSArg(["path": std, "shortPath": shortenHomePath(std)]) {
+                self.evalJS("window.__setNewProjectParent && window.__setNewProjectParent(\(arg))")
+            }
+        }
+    }
+
+    private func createProjectFolder(parent rawParent: String, name rawName: String, gitInit: Bool) {
+        let isTr = resolveWelcomeLanguage() == "tr"
+        func sendError(_ msg: String) {
+            if let arg = encodeJSArg(["message": msg]) {
+                evalJS("window.__newProjectError && window.__newProjectError(\(arg))")
+            }
+        }
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty {
+            sendError(isTr ? "Bir klasör adı gir." : "Enter a folder name.")
+            return
+        }
+        if name.contains("/") || name.contains("\0") || name == "." || name == ".." {
+            sendError(isTr ? "Geçerli bir klasör adı gir (eğik çizgi içeremez)." : "Enter a valid folder name (slashes are not allowed).")
+            return
+        }
+        let parent = (rawParent as NSString).standardizingPath
+        guard isExistingDirectory(parent) else {
+            sendError(isTr ? "Seçilen konum bulunamadı." : "Selected location does not exist.")
+            return
+        }
+        let target = (parent as NSString).appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: target) {
+            sendError(isTr ? "Bu konumda aynı adda bir klasör veya dosya zaten var." : "A folder or file with that name already exists there.")
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(atPath: target, withIntermediateDirectories: false, attributes: nil)
+        } catch {
+            sendError((isTr ? "Klasör oluşturulamadı: " : "Could not create folder: ") + error.localizedDescription)
+            return
+        }
+        if gitInit {
+            let res = runGitInit(at: target)
+            if !res.ok {
+                sendError((isTr ? "Klasör oluşturuldu ama git init başarısız oldu: " : "Folder created, but git init failed: ") + (res.error ?? ""))
+                return
+            }
+        }
+        lastParent = parent
+        openValidFolder(target)
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "twWelcome",
+              message.frameInfo.isMainFrame,
+              message.webView === web,
+              let body = message.body as? [String: Any],
+              let type = body["type"] as? String else { return }
+        switch type {
+        case "openRecent":
+            if let path = body["path"] as? String { openValidFolder(path) }
+        case "browse":
+            chooseExistingFolder()
+        case "chooseNewParent":
+            chooseParentFolder()
+        case "createProject":
+            let parent = (body["parent"] as? String) ?? lastParent
+            let name = (body["name"] as? String) ?? ""
+            let gitInit = (body["gitInit"] as? Bool) ?? true
+            createProjectFolder(parent: parent, name: name, gitInit: gitInit)
+        default:
+            break
+        }
+    }
+
+    func webView(_ w: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = action.request.url else { decisionHandler(.cancel); return }
+        if url.isFileURL, isExistingDirectory(url.path) {
+            decisionHandler(.cancel)
+            openValidFolder(url.path)
+            return
+        }
+        if url.scheme == "about" {
+            decisionHandler(.allow)
+            return
+        }
+        decisionHandler(.cancel)
+    }
+
+    func windowWillClose(_ n: Notification) {
+        onClose?()
+    }
+
+    func teardown() {
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "twWelcome")
+    }
+
+    private func buildHTML(payload: [String: Any]) -> String {
+        let initJson = encodeJSArg(payload) ?? "{}"
+        return """
+        <!doctype html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>tokenwise studio</title>
+        <style>
+          :root {
+            --bg: #0a0a0c; --s1: #111114; --s2: #17171b; --s3: #1e1e23;
+            --line: #232329; --line2: #303038;
+            --text: #ededf0; --muted: #9a9aa3; --dim: #63636d;
+            --accent: #8b8fff; --accent-hi: #767bf7; --accent-soft: rgba(139,143,255,.14);
+            --ok: #5cc98a; --bad: #f07178;
+            --shadow: rgba(0,0,0,.45);
+            color-scheme: dark;
+          }
+          @media (prefers-color-scheme: light) {
+            :root {
+              --bg: #fafafa; --s1: #ffffff; --s2: #f4f4f5; --s3: #ebebee;
+              --line: #e5e5ea; --line2: #d6d6dd;
+              --text: #18181b; --muted: #55555f; --dim: #8b8b95;
+              --accent: #5b5fe0; --accent-hi: #4b4fd1; --accent-soft: rgba(91,95,224,.10);
+              --ok: #2f9e62; --bad: #d64550;
+              --shadow: rgba(20,20,40,.12);
+              color-scheme: light;
+            }
+          }
+          * { box-sizing: border-box; }
+          html, body { height: 100%; margin: 0; }
+          body {
+            background: var(--bg); color: var(--text);
+            font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            -webkit-font-smoothing: antialiased;
+            user-select: none;
+            display: flex; flex-direction: column;
+          }
+          button { font: inherit; color: inherit; cursor: pointer; }
+          .wrap {
+            position: relative;
+            flex: 1; display: flex; flex-direction: column;
+            padding: 28px 30px 24px;
+            max-width: 700px; width: 100%; margin: 0 auto;
+            min-height: 0;
+          }
+          .hero { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+          .logo {
+            width: 44px; height: 44px; border-radius: 12px;
+            background: var(--s2); border: 1px solid var(--line2);
+            display: grid; place-items: center; overflow: hidden; flex: none;
+          }
+          .logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+          .hero h1 { font-size: 19px; font-weight: 650; letter-spacing: -.3px; margin: 0; }
+          .hero h1 span { color: var(--muted); font-weight: 500; }
+          .hero p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+          .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+          .btn-primary, .btn-secondary {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 12px 16px; border-radius: 11px; font-weight: 600; font-size: 13.5px;
+            transition: background .14s, border-color .14s, transform .08s;
+          }
+          .btn-primary {
+            background: var(--accent); color: #ffffff; border: 1px solid transparent;
+          }
+          .btn-primary:hover { background: var(--accent-hi); }
+          .btn-secondary {
+            background: var(--s2); color: var(--text); border: 1px solid var(--line2);
+          }
+          .btn-secondary:hover { background: var(--s3); border-color: var(--dim); }
+          .btn-primary:active, .btn-secondary:active { transform: translateY(1px); }
+          .drop-hint {
+            border: 1px dashed var(--line2); border-radius: 10px;
+            padding: 8px 12px; text-align: center;
+            color: var(--dim); font-size: 12px; margin-bottom: 18px;
+            background: var(--s1);
+            transition: border-color .15s, background .15s, color .15s;
+          }
+          .sec-head {
+            display: flex; align-items: center; justify-content: space-between;
+            font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+            color: var(--dim); margin: 0 2px 8px;
+          }
+          .recents {
+            flex: 1; min-height: 0; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 6px;
+            padding-right: 2px;
+          }
+          .recent-item {
+            display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+            background: var(--s1); border: 1px solid var(--line); border-radius: 11px;
+            padding: 10px 13px;
+            transition: background .13s, border-color .13s;
+          }
+          .recent-item:hover { background: var(--s2); border-color: var(--line2); }
+          .recent-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+          .r-icon {
+            width: 30px; height: 30px; border-radius: 8px;
+            background: var(--s2); border: 1px solid var(--line);
+            color: var(--muted); display: grid; place-items: center; flex: none;
+          }
+          .r-mid { flex: 1; min-width: 0; }
+          .r-top { display: flex; align-items: center; gap: 7px; }
+          .r-name { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .badge {
+            font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 999px;
+            flex: none; letter-spacing: .01em;
+          }
+          .badge.git { background: var(--accent-soft); color: var(--accent); }
+          .badge.nongit { background: var(--s3); color: var(--muted); border: 1px solid var(--line2); }
+          .r-path {
+            font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+            color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            margin-top: 2px;
+          }
+          .r-time { font-size: 12px; color: var(--dim); flex: none; white-space: nowrap; }
+          .empty {
+            background: var(--s1); border: 1px solid var(--line); border-radius: 12px;
+            padding: 26px 18px; text-align: center; color: var(--muted); font-size: 13px;
+          }
+          .drop-overlay {
+            position: fixed; inset: 10px; border-radius: 14px;
+            border: 2px dashed var(--accent);
+            background: color-mix(in srgb, var(--bg) 82%, var(--accent) 18%);
+            display: none; align-items: center; justify-content: center; flex-direction: column; gap: 8px;
+            font-size: 15px; font-weight: 600; color: var(--accent);
+            z-index: 40; pointer-events: none;
+          }
+          body.drag-over .drop-overlay { display: flex; }
+          .modal-bg {
+            position: fixed; inset: 0; background: rgba(0,0,0,.55);
+            display: none; align-items: center; justify-content: center; padding: 20px; z-index: 50;
+          }
+          .modal-bg.open { display: flex; }
+          .modal {
+            width: 100%; max-width: 440px;
+            background: var(--s1); border: 1px solid var(--line2); border-radius: 14px;
+            padding: 20px; box-shadow: 0 18px 44px var(--shadow);
+          }
+          .modal h2 { margin: 0 0 14px; font-size: 16px; font-weight: 650; }
+          .field { margin-bottom: 13px; }
+          .field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+          .input, .loc-path {
+            width: 100%; background: var(--s2); border: 1px solid var(--line2); border-radius: 9px;
+            padding: 8px 11px; color: var(--text); font: inherit;
+          }
+          .input:focus { outline: none; border-color: var(--accent); }
+          .loc-row { display: flex; gap: 8px; align-items: center; }
+          .loc-path {
+            flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font: 12.5px ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted);
+          }
+          .btn-sm {
+            padding: 8px 12px; border-radius: 9px; background: var(--s2); border: 1px solid var(--line2);
+            font-size: 12.5px; font-weight: 600; flex: none;
+          }
+          .btn-sm:hover { background: var(--s3); }
+          .preview {
+            margin-top: 6px; font: 11.5px ui-monospace, "SF Mono", Menlo, monospace;
+            color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          }
+          .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin: 12px 0 6px; cursor: pointer; }
+          .check-row input { accent-color: var(--accent); width: 15px; height: 15px; }
+          .err { color: var(--bad); font-size: 12.5px; min-height: 18px; margin-top: 6px; }
+          .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+          .modal-foot .btn-secondary, .modal-foot .btn-primary { padding: 8px 14px; font-size: 13px; border-radius: 9px; }
+        </style>
+        </head>
+        <body>
+        <div class="wrap">
+          <div class="hero">
+            <div class="logo" id="logo"></div>
+            <div>
+              <h1>tokenwise <span>studio</span></h1>
+              <p id="subtitle"></p>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn-primary" id="open-btn" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span id="open-lbl"></span>
+            </button>
+            <button class="btn-secondary" id="new-btn" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span id="new-lbl"></span>
+            </button>
+          </div>
+          <div class="drop-hint" id="drop-hint"></div>
+          <div class="sec-head"><span id="recents-lbl"></span></div>
+          <div class="recents" id="recents"></div>
+        </div>
+        <div class="drop-overlay" id="drop-overlay">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span id="drop-active-lbl"></span>
+        </div>
+        <div class="modal-bg" id="new-modal">
+          <div class="modal" role="dialog" aria-modal="true">
+            <h2 id="modal-title"></h2>
+            <div class="field">
+              <label for="np-name" id="np-name-lbl"></label>
+              <input class="input" id="np-name" type="text" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="field">
+              <label id="np-loc-lbl"></label>
+              <div class="loc-row">
+                <div class="loc-path" id="np-loc"></div>
+                <button class="btn-sm" id="np-choose" type="button"></button>
+              </div>
+              <div class="preview" id="np-preview"></div>
+            </div>
+            <label class="check-row">
+              <input type="checkbox" id="np-git" checked>
+              <span id="np-git-lbl"></span>
+            </label>
+            <div class="err" id="np-err"></div>
+            <div class="modal-foot">
+              <button class="btn-secondary" id="np-cancel" type="button"></button>
+              <button class="btn-primary" id="np-create" type="button"></button>
+            </div>
+          </div>
+        </div>
+        <script>
+          const STRINGS = {
+            en: {
+              subtitle: "Pick a project folder to start working with your agent team.",
+              openFolder: "Open folder…",
+              newFolder: "New project folder…",
+              dropHint: "or drop a project folder anywhere here",
+              dropActive: "Drop folder to open project",
+              recentHeading: "Recent projects",
+              emptyRecents: "No recent projects yet. Open an existing folder or create a new one.",
+              git: "git",
+              nonGit: "no git",
+              justNow: "just now",
+              minAgo: "{n}m ago",
+              hrAgo: "{n}h ago",
+              dayAgo: "{n}d ago",
+              modalTitle: "New project folder",
+              nameLabel: "Folder name",
+              namePlaceholder: "my-project",
+              locLabel: "Location",
+              choose: "Choose…",
+              gitInit: "Initialize git repository (git init)",
+              cancel: "Cancel",
+              createOpen: "Create & Open",
+            },
+            tr: {
+              subtitle: "Ajan ekibinle çalışmaya başlamak için bir proje klasörü seç.",
+              openFolder: "Klasör aç…",
+              newFolder: "Yeni proje klasörü…",
+              dropHint: "veya bir proje klasörünü buraya sürükleyip bırak",
+              dropActive: "Projeyi açmak için klasörü bırak",
+              recentHeading: "Son projeler",
+              emptyRecents: "Henüz son kullanılan proje yok. Var olan bir klasörü aç ya da yeni bir tane oluştur.",
+              git: "git",
+              nonGit: "git yok",
+              justNow: "şimdi",
+              minAgo: "{n} dk önce",
+              hrAgo: "{n} sa önce",
+              dayAgo: "{n} gün önce",
+              modalTitle: "Yeni proje klasörü",
+              nameLabel: "Klasör adı",
+              namePlaceholder: "yeni-projem",
+              locLabel: "Konum",
+              choose: "Seç…",
+              gitInit: "Git deposu başlat (git init)",
+              cancel: "Vazgeç",
+              createOpen: "Oluştur ve Aç",
+            },
+          };
+
+          let state = \(initJson);
+          let parentPath = state.defaultParent || "";
+          let parentShort = state.defaultParentShort || parentPath;
+
+          const $ = (id) => document.getElementById(id);
+          const L = () => STRINGS[state.lang === "tr" ? "tr" : "en"];
+          const post = (msg) => window.webkit?.messageHandlers?.twWelcome?.postMessage(msg);
+
+          function fmtTime(ts) {
+            if (!ts) return "";
+            const diff = Math.max(0, Date.now() - ts);
+            const mins = Math.floor(diff / 60000);
+            const s = L();
+            if (mins < 1) return s.justNow;
+            if (mins < 60) return s.minAgo.replace("{n}", String(mins));
+            const hrs = Math.floor(mins / 60);
+            if (hrs < 24) return s.hrAgo.replace("{n}", String(hrs));
+            const days = Math.floor(hrs / 24);
+            if (days < 14) return s.dayAgo.replace("{n}", String(days));
+            try {
+              return new Date(ts).toLocaleDateString(state.lang === "tr" ? "tr-TR" : "en-US", { month: "short", day: "numeric" });
+            } catch {
+              return "";
+            }
+          }
+
+          function renderLogo() {
+            const box = $("logo");
+            box.textContent = "";
+            if (state.icon) {
+              const img = document.createElement("img");
+              img.src = state.icon;
+              img.alt = "";
+              box.appendChild(img);
+            } else {
+              box.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>';
+            }
+          }
+
+          function renderTexts() {
+            const s = L();
+            $("subtitle").textContent = s.subtitle;
+            $("open-lbl").textContent = s.openFolder;
+            $("new-lbl").textContent = s.newFolder;
+            $("drop-hint").textContent = s.dropHint;
+            $("drop-active-lbl").textContent = s.dropActive;
+            $("recents-lbl").textContent = s.recentHeading;
+            $("modal-title").textContent = s.modalTitle;
+            $("np-name-lbl").textContent = s.nameLabel;
+            $("np-name").placeholder = s.namePlaceholder;
+            $("np-loc-lbl").textContent = s.locLabel;
+            $("np-choose").textContent = s.choose;
+            $("np-git-lbl").textContent = s.gitInit;
+            $("np-cancel").textContent = s.cancel;
+            $("np-create").textContent = s.createOpen;
+          }
+
+          function renderRecents() {
+            const s = L();
+            const list = $("recents");
+            list.textContent = "";
+            const items = Array.isArray(state.recents) ? state.recents : [];
+            if (!items.length) {
+              const empty = document.createElement("div");
+              empty.className = "empty";
+              empty.textContent = s.emptyRecents;
+              list.appendChild(empty);
+              return;
+            }
+            for (const item of items) {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "recent-item";
+              btn.title = item.path;
+              btn.onclick = () => post({ type: "openRecent", path: item.path });
+
+              const icon = document.createElement("div");
+              icon.className = "r-icon";
+              icon.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+
+              const mid = document.createElement("div");
+              mid.className = "r-mid";
+
+              const top = document.createElement("div");
+              top.className = "r-top";
+
+              const name = document.createElement("span");
+              name.className = "r-name";
+              name.textContent = item.name;
+
+              const badge = document.createElement("span");
+              badge.className = "badge " + (item.isGit ? "git" : "nongit");
+              badge.textContent = item.isGit ? s.git : s.nonGit;
+
+              top.appendChild(name);
+              top.appendChild(badge);
+
+              const p = document.createElement("div");
+              p.className = "r-path";
+              p.textContent = item.shortPath || item.path;
+
+              mid.appendChild(top);
+              mid.appendChild(p);
+
+              const time = document.createElement("div");
+              time.className = "r-time";
+              time.textContent = fmtTime(item.lastOpened);
+
+              btn.appendChild(icon);
+              btn.appendChild(mid);
+              btn.appendChild(time);
+              list.appendChild(btn);
+            }
+          }
+
+          function updatePreview() {
+            $("np-loc").textContent = parentShort || parentPath;
+            $("np-loc").title = parentPath;
+            const raw = $("np-name").value.trim();
+            const sep = parentShort.endsWith("/") ? "" : "/";
+            $("np-preview").textContent = raw ? (parentShort + sep + raw) : "";
+          }
+
+          function openModal() {
+            $("np-err").textContent = "";
+            $("np-name").value = "";
+            $("np-git").checked = true;
+            updatePreview();
+            $("new-modal").classList.add("open");
+            setTimeout(() => $("np-name").focus(), 20);
+          }
+
+          function closeModal() {
+            $("new-modal").classList.remove("open");
+          }
+
+          $("open-btn").onclick = () => post({ type: "browse" });
+          $("new-btn").onclick = openModal;
+          $("np-choose").onclick = () => post({ type: "chooseNewParent" });
+          $("np-cancel").onclick = closeModal;
+          $("new-modal").onclick = (e) => { if (e.target === $("new-modal")) closeModal(); };
+          $("np-name").oninput = () => { $("np-err").textContent = ""; updatePreview(); };
+          $("np-name").onkeydown = (e) => {
+            if (e.key === "Enter") $("np-create").click();
+            else if (e.key === "Escape") closeModal();
+          };
+          $("np-create").onclick = () => {
+            post({
+              type: "createProject",
+              parent: parentPath,
+              name: $("np-name").value,
+              gitInit: $("np-git").checked,
+            });
+          };
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && $("new-modal").classList.contains("open")) closeModal();
+          });
+          document.addEventListener("dragover", (e) => e.preventDefault());
+          document.addEventListener("drop", (e) => e.preventDefault());
+
+          window.__setDragOver = (on) => document.body.classList.toggle("drag-over", !!on);
+          window.__setNewProjectParent = (info) => {
+            if (!info || !info.path) return;
+            parentPath = info.path;
+            parentShort = info.shortPath || info.path;
+            $("np-err").textContent = "";
+            updatePreview();
+          };
+          window.__newProjectError = (info) => {
+            $("np-err").textContent = info?.message || "Error";
+          };
+          window.__updateWelcome = (next) => {
+            if (!next) return;
+            state = next;
+            if (!parentPath && state.defaultParent) {
+              parentPath = state.defaultParent;
+              parentShort = state.defaultParentShort || parentPath;
+            }
+            renderLogo();
+            renderTexts();
+            renderRecents();
+            updatePreview();
+          };
+
+          renderLogo();
+          renderTexts();
+          renderRecents();
+          updatePreview();
+        </script>
+        </body>
+        </html>
+        """
+    }
+}
+
 // MARK: - project window
 
 final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDelegate, WKScriptMessageHandler, NSWindowDelegate {
-    let repo: String
+    var repo: String
     let window: NSWindow
     let web: WKWebView
     let spinner = NSProgressIndicator()
@@ -464,10 +1441,22 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
     let scriptHandler = WeakScriptHandler()
     var onClose: ((String) -> Void)?
     var onChooseProject: (() -> Void)?
+    var onSwitchProject: ((StudioWindow) -> Void)?
+    var onProjectSwitched: ((StudioWindow, String) -> Void)?
+    var onWindowChanged: (() -> Void)?
     var restarted = false // one automatic restart per page load when the server disappears
     var downloadTargets: [ObjectIdentifier: URL] = [:]
+    private var moveSaveWork: DispatchWorkItem?
 
-    init(repo: String) {
+    private static func isFrameVisible(_ rect: NSRect) -> Bool {
+        for screen in NSScreen.screens {
+            let inter = rect.intersection(screen.visibleFrame)
+            if inter.width >= 100 && inter.height >= 100 { return true }
+        }
+        return false
+    }
+
+    init(repo: String, frame: WindowFrameData? = nil) {
         self.repo = repo
         let name = (repo as NSString).lastPathComponent
         let cfg = WKWebViewConfiguration()
@@ -486,7 +1475,12 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         window.contentMinSize = NSSize(width: 900, height: 600)
         window.isReleasedWhenClosed = false
         window.delegate = self
-        if !window.setFrameAutosaveName("tokenwise-studio:" + repo) { window.center() }
+        let hasAutosaved = window.setFrameAutosaveName("tokenwise-studio:" + repo)
+        if let frame = frame, frame.isValid, StudioWindow.isFrameVisible(frame.nsRect) {
+            window.setFrame(frame.nsRect, display: false)
+        } else if !hasAutosaved {
+            window.center()
+        }
 
         let content = NSView()
         web.translatesAutoresizingMaskIntoConstraints = false
@@ -513,6 +1507,19 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         ])
         window.contentView = content
         spinner.startAnimation(nil)
+    }
+
+    func switchTo(repo newRepo: String) {
+        self.repo = newRepo
+        let name = (newRepo as NSString).lastPathComponent
+        window.title = "tokenwise studio — \(name)"
+        dictation.cancel()
+        restarted = false
+        spinner.isHidden = false
+        spinner.startAnimation(nil)
+        label.isHidden = false
+        label.stringValue = "Starting…"
+        web.isHidden = true
     }
 
     func show() {
@@ -558,11 +1565,18 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
     func webView(_ w: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
-        if url.scheme == "tokenwise-native", url.host == "choose-project", action.sourceFrame.isMainFrame,
+        if url.scheme == "tokenwise-native", action.sourceFrame.isMainFrame,
            let source = action.sourceFrame.request.url, source.scheme == "http", isLocalHost(source.host) {
-            decisionHandler(.cancel)
-            onChooseProject?()
-            return
+            if url.host == "choose-project" {
+                decisionHandler(.cancel)
+                onChooseProject?()
+                return
+            }
+            if url.host == "switch-project" {
+                decisionHandler(.cancel)
+                onSwitchProject?(self)
+                return
+            }
         }
         // <a download> (chat export, blob: URLs) and other explicit downloads: save them instead of navigating.
         if action.shouldPerformDownload { decisionHandler(.download); return }
@@ -662,6 +1676,15 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
             } else if action == "stop" {
                 dictation.stop()
             }
+        } else if type == "project" {
+            let action = (body["action"] as? String ?? "").lowercased()
+            if action == "switched", let newRepo = body["repo"] as? String {
+                onProjectSwitched?(self, newRepo)
+            } else if action == "switch" {
+                onSwitchProject?(self)
+            } else if action == "open" {
+                onChooseProject?()
+            }
         }
     }
 
@@ -694,7 +1717,26 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
         p.beginSheetModal(for: window) { r in completionHandler(r == .OK ? p.urls : nil) }
     }
 
+    func windowDidMove(_ n: Notification) {
+        scheduleWindowChangeSave()
+    }
+
+    func windowDidEndLiveResize(_ n: Notification) {
+        moveSaveWork?.cancel()
+        moveSaveWork = nil
+        onWindowChanged?()
+    }
+
+    private func scheduleWindowChangeSave() {
+        moveSaveWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.onWindowChanged?() }
+        moveSaveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
     func windowWillClose(_ n: Notification) {
+        moveSaveWork?.cancel()
+        moveSaveWork = nil
         dictation.cancel()
         web.configuration.userContentController.removeScriptMessageHandler(forName: "tw")
         onClose?(repo)
@@ -705,8 +1747,10 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
 
 final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, NSMenuDelegate {
     var windows: [String: StudioWindow] = [:]
+    var welcomeWindow: WelcomeWindow?
     var handledLaunch = false // a notification click or open request arrived
     var panelOpen = false
+    var isTerminating = false
     let recentMenu = NSMenu(title: "Open Recent")
 
     func applicationWillFinishLaunching(_ n: Notification) {
@@ -720,16 +1764,32 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
             handledLaunch = true
             openProject(repo: v.repo, url: v.url)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
-            if !handledLaunch && windows.isEmpty { showOpenPanel() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+            if !handledLaunch && windows.isEmpty { restoreOrShowWelcome() }
         }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { false }
 
     func applicationShouldHandleReopen(_ s: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if windows.isEmpty { showOpenPanel(); return false }
+        if windows.isEmpty {
+            showWelcomeWindow()
+            return false
+        }
         return true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        isTerminating = true
+        saveAppStateNow()
+        return .terminateNow
+    }
+
+    func applicationWillTerminate(_ n: Notification) {
+        if !isTerminating {
+            isTerminating = true
+            saveAppStateNow()
+        }
     }
 
     // tokenwise-studio://open?repo=...&url=...
@@ -743,26 +1803,175 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         }
     }
 
-    // MARK: opening
+    // MARK: state persistence & restore
 
-    func openProject(repo: String, url: URL?) {
-        handledLaunch = true
-        if let w = windows[repo] {
-            if let url = url { w.load(url) }
-            w.show(); return
+    func saveAppStateNow(recordingOpenedRepo openedRepo: String? = nil) {
+        var state = readAppState()
+        var lastOpened = state.lastOpened ?? [:]
+        if let openedRepo = openedRepo {
+            let std = (openedRepo as NSString).standardizingPath
+            lastOpened[std] = Date().timeIntervalSince1970 * 1000
         }
-        let w = StudioWindow(repo: repo)
-        w.onClose = { [weak self] r in self?.windows[r] = nil }
+        // Keep lastOpened bounded
+        if lastOpened.count > 40 {
+            let keep = Set(lastOpened.sorted { $0.value > $1.value }.prefix(32).map { $0.key })
+            lastOpened = lastOpened.filter { keep.contains($0.key) }
+        }
+
+        // Preserve back-to-front order so restoring in array order keeps frontmost window on top.
+        var orderedRepos: [String] = []
+        var byNSWindow: [ObjectIdentifier: StudioWindow] = [:]
+        for w in windows.values { byNSWindow[ObjectIdentifier(w.window)] = w }
+        for nsw in NSApp.orderedWindows.reversed() {
+            if let sw = byNSWindow[ObjectIdentifier(nsw)], !orderedRepos.contains(sw.repo) {
+                orderedRepos.append(sw.repo)
+            }
+        }
+        for r in windows.keys.sorted() where !orderedRepos.contains(r) {
+            orderedRepos.append(r)
+        }
+
+        state.windows = orderedRepos.compactMap { r in
+            guard let sw = windows[r] else { return nil }
+            let f = sw.window.frame
+            let fd = WindowFrameData(x: Double(f.origin.x), y: Double(f.origin.y), width: Double(f.size.width), height: Double(f.size.height))
+            return SavedWindowState(repo: r, frame: fd)
+        }
+        state.lastOpened = lastOpened
+        writeAppState(state)
+    }
+
+    func restoreOrShowWelcome() {
+        let state = readAppState()
+        var seen = Set<String>()
+        var valid: [SavedWindowState] = []
+        for entry in state.windows {
+            let std = (entry.repo as NSString).standardizingPath
+            guard !seen.contains(std), isExistingDirectory(std) else { continue }
+            seen.insert(std)
+            valid.append(SavedWindowState(repo: std, frame: entry.frame))
+        }
+        if valid.isEmpty {
+            showWelcomeWindow()
+            return
+        }
+        for item in valid {
+            openProject(repo: item.repo, url: nil, frame: item.frame, recordOpened: false)
+        }
+    }
+
+    // MARK: welcome & opening
+
+    func showWelcomeWindow() {
+        if welcomeWindow == nil {
+            let ww = WelcomeWindow()
+            ww.onOpenProject = { [weak self] repo in
+                self?.openProject(repo: repo, url: nil)
+            }
+            ww.onClose = { [weak self] in
+                self?.welcomeWindow?.teardown()
+                self?.welcomeWindow = nil
+            }
+            welcomeWindow = ww
+        }
+        welcomeWindow?.show()
+    }
+
+    func closeWelcomeWindow() {
+        welcomeWindow?.close()
+    }
+
+    func openProject(repo: String, url: URL?, frame: WindowFrameData? = nil, recordOpened: Bool = true) {
+        handledLaunch = true
+        let std = (repo as NSString).standardizingPath
+        closeWelcomeWindow()
+        if recordOpened {
+            rememberRecent(std)
+        }
+        if let w = windows[std] {
+            if let url = url { w.load(url) }
+            w.show()
+            saveAppStateNow(recordingOpenedRepo: recordOpened ? std : nil)
+            return
+        }
+        let w = StudioWindow(repo: std, frame: frame)
+        w.onClose = { [weak self] closedRepo in
+            guard let self = self else { return }
+            self.windows[closedRepo] = nil
+            if !self.isTerminating {
+                self.saveAppStateNow()
+            }
+        }
         w.onChooseProject = { [weak self] in self?.showOpenPanel() }
-        windows[repo] = w
+        w.onSwitchProject = { [weak self] win in self?.switchProject(in: win) }
+        w.onProjectSwitched = { [weak self] win, newRepo in self?.handleWebProjectSwitch(win, newRepo: newRepo) }
+        w.onWindowChanged = { [weak self] in
+            guard let self = self, !self.isTerminating else { return }
+            self.saveAppStateNow()
+        }
+        windows[std] = w
         w.show()
+        saveAppStateNow(recordingOpenedRepo: recordOpened ? std : nil)
         if let url = url { w.load(url); return }
-        DispatchQueue.global().async {
-            let u = ensureServer(repo: repo)
+        DispatchQueue.global().async { [weak w] in
+            let u = ensureServer(repo: std)
             DispatchQueue.main.async {
+                guard let w = w, w.repo == std else { return }
                 if let u = u { w.load(u) } else { w.failed("The studio server did not start within 15 seconds.") }
             }
         }
+    }
+
+    func switchProject(in win: StudioWindow) {
+        if panelOpen { return }
+        panelOpen = true
+        let p = NSOpenPanel()
+        p.canChooseDirectories = true
+        p.canChooseFiles = false
+        p.allowsMultipleSelection = false
+        let isTr = resolveWelcomeLanguage() == "tr"
+        p.prompt = isTr ? "Değiştir" : "Switch Project"
+        p.message = isTr ? "Bu pencerede açılacak proje klasörünü seç" : "Choose a project folder to open in this window"
+        p.beginSheetModal(for: win.window) { [weak self, weak win] r in
+            guard let self = self else { return }
+            self.panelOpen = false
+            guard r == .OK, let u = p.url, let win = win else { return }
+            let newRepo = (u.path as NSString).standardizingPath
+            guard isExistingDirectory(newRepo), newRepo != win.repo else { return }
+            if let existing = self.windows[newRepo], existing !== win {
+                existing.show()
+                win.window.close()
+                self.saveAppStateNow(recordingOpenedRepo: newRepo)
+                return
+            }
+            let oldRepo = win.repo
+            self.windows.removeValue(forKey: oldRepo)
+            self.windows[newRepo] = win
+            win.switchTo(repo: newRepo)
+            rememberRecent(newRepo)
+            self.saveAppStateNow(recordingOpenedRepo: newRepo)
+            DispatchQueue.global().async { [weak win] in
+                let serverURL = ensureServer(repo: newRepo)
+                DispatchQueue.main.async {
+                    guard let win = win, win.repo == newRepo else { return }
+                    if let serverURL = serverURL { win.load(serverURL) }
+                    else { win.failed("The studio server did not start within 15 seconds.") }
+                }
+            }
+        }
+    }
+
+    func handleWebProjectSwitch(_ win: StudioWindow, newRepo rawRepo: String) {
+        let newRepo = (rawRepo as NSString).standardizingPath
+        guard isExistingDirectory(newRepo), newRepo != win.repo else { return }
+        if let existing = windows[newRepo], existing !== win {
+            existing.window.close()
+        }
+        windows.removeValue(forKey: win.repo)
+        win.repo = newRepo
+        win.window.title = "tokenwise studio — \((newRepo as NSString).lastPathComponent)"
+        windows[newRepo] = win
+        saveAppStateNow(recordingOpenedRepo: newRepo)
     }
 
     func showOpenPanel() {
@@ -773,15 +1982,16 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         p.canChooseDirectories = true
         p.canChooseFiles = false
         p.allowsMultipleSelection = false
-        p.prompt = "Open Project"
-        p.message = "Choose a project for tokenwise studio"
+        let isTr = resolveWelcomeLanguage() == "tr"
+        p.prompt = isTr ? "Projeyi Aç" : "Open Project"
+        p.message = isTr ? "tokenwise studio için bir proje seç" : "Choose a project for tokenwise studio"
         let r = p.runModal()
         panelOpen = false
         if r == .OK, let u = p.url { openProject(repo: u.path, url: nil) }
-        else if windows.isEmpty { NSApp.terminate(nil) }
     }
 
     @objc func openProjectMenu(_ s: Any?) { showOpenPanel() }
+    @objc func showWelcomeMenu(_ s: Any?) { showWelcomeWindow() }
     @objc func openRecent(_ s: NSMenuItem) {
         if let p = s.representedObject as? String { openProject(repo: p, url: nil) }
     }
@@ -850,6 +2060,8 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         item(view, "Reload", "reload:", "r", target: self)
 
         let win = add("Window")
+        item(win, "Show Welcome Window", "showWelcomeMenu:", "1", [.command, .shift], target: self)
+        win.addItem(.separator())
         item(win, "Minimize", "performMiniaturize:", "m")
         NSApp.mainMenu = main
         NSApp.windowsMenu = win
@@ -863,7 +2075,7 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         let repo = response.notification.request.content.userInfo["repo"] as? String
         DispatchQueue.main.async { [self] in
             if let r = validate(repo: repo, url: nil) { openProject(repo: r.repo, url: nil) }
-            else if windows.isEmpty { showOpenPanel() }
+            else if windows.isEmpty { showWelcomeWindow() }
             done()
         }
     }
@@ -910,8 +2122,55 @@ func postNotification(_ args: [String]) -> Never {
     exit(0)
 }
 
-recordAppPath()
+func printStateAndExit() -> Never {
+    let appState = readAppState()
+    let recents = readRecentEntries(appState: appState)
+    let langSetting = readStudioLanguageSetting() ?? "auto"
+    let resolvedLang = resolveWelcomeLanguage()
+    let windowsList: [[String: Any]] = appState.windows.map { w in
+        var obj: [String: Any] = [
+            "repo": w.repo,
+            "exists": isExistingDirectory((w.repo as NSString).standardizingPath),
+        ]
+        if let f = w.frame {
+            obj["frame"] = ["x": f.x, "y": f.y, "width": f.width, "height": f.height]
+        }
+        return obj
+    }
+    let recentsList: [[String: Any]] = recents.map { r in
+        var obj: [String: Any] = [
+            "path": r.path,
+            "name": r.name,
+            "shortPath": r.shortPath,
+            "isGit": r.isGit,
+        ]
+        if let ts = r.lastOpened { obj["lastOpened"] = ts }
+        return obj
+    }
+    let payload: [String: Any] = [
+        "stateDir": stateDir.path,
+        "languageSetting": langSetting,
+        "resolvedLanguage": resolvedLang,
+        "appState": [
+            "windows": windowsList,
+            "lastOpened": appState.lastOpened ?? [:],
+        ],
+        "recents": recentsList,
+    ]
+    if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+       let out = String(data: data, encoding: .utf8) {
+        print(out)
+    } else {
+        print("{}")
+    }
+    exit(0)
+}
+
 let args = Array(CommandLine.arguments.dropFirst())
+if args.contains("--print-state") {
+    printStateAndExit()
+}
+recordAppPath()
 if args.contains("--notify") {
     NSApplication.shared.setActivationPolicy(.accessory) // windowless, no Dock icon
     postNotification(args)
