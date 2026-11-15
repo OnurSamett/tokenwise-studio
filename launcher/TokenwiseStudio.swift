@@ -41,6 +41,23 @@ func readRecents() -> [String] {
 /// The version this app was built for (written into Info.plist by `tokenwise-studio setup`).
 let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
 
+/// Record this bundle's path in ~/.tokenwise-studio/app.json so Node processes can find it even after a move.
+func recordAppPath() {
+    let bundlePath = Bundle.main.bundlePath
+    guard bundlePath.hasSuffix(".app"),
+          Bundle.main.bundleIdentifier == "com.nolienlabs.tokenwise-studio" else { return }
+    let file = stateDir.appendingPathComponent("app.json")
+    if let existing = try? Data(contentsOf: file),
+       let obj = try? JSONSerialization.jsonObject(with: existing) as? [String: Any],
+       (obj["bundlePath"] as? String) == bundlePath {
+        return
+    }
+    try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+    let payload: [String: Any] = ["bundlePath": bundlePath, "bundleId": "com.nolienlabs.tokenwise-studio"]
+    guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
+    try? data.write(to: file, options: .atomic)
+}
+
 func logLine(_ msg: String) {
     try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
     let line = "\(Date()) app: \(msg)\n"
@@ -893,6 +910,7 @@ func postNotification(_ args: [String]) -> Never {
     exit(0)
 }
 
+recordAppPath()
 let args = Array(CommandLine.arguments.dropFirst())
 if args.contains("--notify") {
     NSApplication.shared.setActivationPolicy(.accessory) // windowless, no Dock icon

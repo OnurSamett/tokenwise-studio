@@ -7,8 +7,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeam, teamGuide } from "./team.js";
 import { RATE_LIMIT, available, nearLimit, claudePacing, recordProviderCooldown, clearCooldown, getCooldown, formatHHMM } from "./fallback.js";
+import { limitResetTime } from "./cooldowns.js";
+import { limits } from "./limits.js";
 import { resolve } from "./workers.js";
-import { notify, turnNotice, handoffNotice } from "./notify.js";
+import { notify, turnNotice, handoffNotice, notifyLimitHandoff } from "./notify.js";
 import { loadSettings } from "./settings.js";
 import { loadInstructions, instructionsGuide } from "./instructions.js";
 import { budgetDecision, turnTotal, writeBudgetState, fmtTokens } from "./budget.js";
@@ -103,19 +105,32 @@ const codexReady = (home) => available("codex", { write: false }, home) && !near
 
 /** Which agent runs this turn? Claude unless it is unavailable or near its plan limit and Codex is free. */
 export function pickOrchestrator(home, model, effort) {
-  const claude = { agent: "claude", model, effort, reason: null };
+  const claude = { agent: "claude", model, effort, reason: null, isLimit: false, resetsAt: null };
   if (!fallbackEnabled()) return claude;
   let why = null;
+  let isLimit = false;
+  let resetsAt = null;
   // Test hook: TOKENWISE_ORCH_FORCE=codex forces the Codex path regardless of Claude's limits.
   if (process.env.TOKENWISE_ORCH_FORCE === "codex") why = "forced by TOKENWISE_ORCH_FORCE";
   else {
     const cd = getCooldown("claude");
-    if (cd) why = `Claude cooling down until ${formatHHMM(cd.until)}`;
-    else if (!available("claude", { write: false }, home)) why = "Claude is not available";
-    else { const nl = nearLimit("claude", home); if (nl) why = `Claude ${nl}`; }
+    if (cd) {
+      why = `Claude cooling down until ${formatHHMM(cd.until)}`;
+      isLimit = true;
+      resetsAt = cd.source !== "default" ? cd.until : limitResetTime("claude", limits(home));
+    } else if (!available("claude", { write: false }, home)) {
+      why = "Claude is not available";
+    } else {
+      const nl = nearLimit("claude", home);
+      if (nl) {
+        why = `Claude ${nl}`;
+        isLimit = true;
+        resetsAt = limitResetTime("claude", limits(home));
+      }
+    }
   }
   if (!why || !codexReady(home)) return claude;
-  return { agent: "codex", ...codexPick(model, effort), reason: why };
+  return { agent: "codex", ...codexPick(model, effort), reason: why, isLimit, resetsAt };
 }
 
 /** Pure decision: should a failed Claude run be re-run on Codex? */
@@ -324,7 +339,10 @@ export class Chats {
       const n = turnNotice({ turn: cur.turns[ti], chatTitle: cur.title, failed, stopped: stopped || cur.status === "stopped", readyJobs });
       if (n) notify({ ...n, repo: this.jobs.repo, key: `turn:${id}:${ti}` });
     };
-    if (turn.handoff) { const n = handoffNotice(turn.handoff.reason); notify({ ...n, subtitle: c.title, repo: this.jobs.repo, key: `handoff:${id}:${ti}` }); }
+    if (turn.handoff) {
+      if (pick.isLimit) notifyLimitHandoff({ provider: "claude", resetsAt: pick.resetsAt, subtitle: c.title, repo: this.jobs.repo });
+      else { const n = handoffNotice(turn.handoff.reason); notify({ ...n, subtitle: c.title, repo: this.jobs.repo, key: `handoff:${id}:${ti}` }); }
+    }
 
     const run = (agent) => {
       const t = c.turns[ti];
@@ -421,8 +439,10 @@ export class Chats {
       child.on("close", (code) => {
         const stopped = this.get(id).status === "stopped";
         const tailText = tail.join("\n");
+        let resetsAt = null;
         if (!stopped && !spawnFailed && (code !== 0 || isError) && RATE_LIMIT.test(tailText)) {
-          recordProviderCooldown(agent, { text: tailText, home: this.jobs.home, reason: "hit a rate limit" });
+          const cd = recordProviderCooldown(agent, { text: tailText, home: this.jobs.home, reason: "hit a rate limit" });
+          if (cd && cd.source !== "default") resetsAt = cd.until;
         } else if (!stopped && !spawnFailed && code === 0 && !isError) {
           clearCooldown(agent);
         }
@@ -437,7 +457,7 @@ export class Chats {
           w("meta", `Claude ${reason}; continuing this turn on Codex`);
           w("handoff", JSON.stringify({ from: "claude", to: "codex", reason }));
           this.save(c);
-          { const n = handoffNotice(reason); notify({ ...n, subtitle: c.title, repo: this.jobs.repo, key: `handoff:${id}:${ti}` }); }
+          notifyLimitHandoff({ provider: "claude", resetsAt, subtitle: c.title, repo: this.jobs.repo });
           run("codex");
           return;
         }

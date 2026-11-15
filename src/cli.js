@@ -9,13 +9,11 @@ import { fileURLToPath } from "node:url";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { launcherHash, quitStudioServers } from "./autoupdate.js";
 import { installArgs } from "./version.js";
+import { BUNDLE_ID, APP_NAME, EXE, defaultAppPath, appJsonPath, findAppBundle, findOwnedAppBundles, verifyAppBundle } from "./appbundle.js";
 
 const SRC = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(SRC);
 const MCP_NAME = "tokenwise-studio";
-const BUNDLE_ID = "com.nolienlabs.tokenwise-studio";
-const APP_NAME = "tokenwise studio.app";
-const EXE = "tokenwise-studio";
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 
 const HELP = `tokenwise studio ${pkg.version}
@@ -41,16 +39,11 @@ Usage:
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
 const home = () => os.homedir();
-const appPath = () => path.join(home(), "Applications", APP_NAME);
+const appPath = () => findAppBundle({ requireExecutable: false, home })?.appPath || defaultAppPath(home());
 // The native app counts only if it is ours and has its executable.
-const nativeAppInstalled = () => {
-  try {
-    const plist = fs.readFileSync(path.join(appPath(), "Contents", "Info.plist"), "utf8");
-    return plist.includes(`<string>${BUNDLE_ID}</string>`) && fs.existsSync(path.join(appPath(), "Contents", "MacOS", EXE));
-  } catch { return false; }
-};
+export const nativeAppInstalled = (deps = {}) => Boolean(findAppBundle(deps));
 // How to show a running server: "none" | "browser" | "app".
-const decideOpen = ({ noOpen, browser, platform, installed }) =>
+export const decideOpen = ({ noOpen, browser, platform, installed }) =>
   noOpen ? "none" : platform === "darwin" && !browser && installed ? "app" : "browser";
 const logPath = () => path.join(home(), ".tokenwise-studio", "launcher.log");
 
@@ -123,9 +116,9 @@ function buildIcon(resourcesDir) {
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
-function buildApp() {
-  const app = appPath();
-  if (fs.existsSync(app) && !ownedApp()) throw new Error(`${app} already exists and was not created by tokenwise studio; leaving it alone`);
+function buildApp(target = appPath()) {
+  const app = target;
+  if (fs.existsSync(app) && !ownedApp(app)) throw new Error(`${app} already exists and was not created by tokenwise studio; leaving it alone`);
   fs.rmSync(app, { recursive: true, force: true });
   const macos = path.join(app, "Contents", "MacOS"), res = path.join(app, "Contents", "Resources");
   fs.mkdirSync(macos, { recursive: true });
@@ -153,7 +146,7 @@ exec ${q(stableNode())} ${q(path.join(SRC, "cli.js"))} --pick >> "$LOG" 2>&1
     fs.writeFileSync(path.join(res, "pick.sh"), pickSh, { mode: 0o755 });
     fs.writeFileSync(path.join(res, "config.json"), JSON.stringify({ node: stableNode(), cli: path.join(SRC, "cli.js"), version: pkg.version, launcherHash: launcherHash(ROOT) }, null, 2));
   } else {
-    console.warn("  note: no Swift compiler (install the Xcode command line tools: xcode-select --install, then re-run setup); notifications will come from Script Editor");
+    console.warn("  note: no Swift compiler (install the Xcode command line tools: xcode-select --install, then re-run setup); desktop notifications require the native app");
     const lp = path.join(macos, "launcher");
     fs.writeFileSync(lp, pickSh);
     fs.chmodSync(lp, 0o755);
@@ -194,7 +187,7 @@ ${hasIcon ? "  <key>CFBundleIconFile</key><string>AppIcon</string>\n" : ""}  <ke
     // notification through `open` so the permission prompt shows up now.
     run("/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister", ["-f", app]);
     const o = run("open", ["-n", "-a", app, "--args", "--notify", "--title", "tokenwise studio", "--message", "Notifications are on. Click one to open the studio.", "--subtitle", "Setup"]);
-    console.log(o.ok ? "  asked macOS for notification permission (click Allow if prompted)" : "  could not request notification permission; notifications may come from Script Editor");
+    console.log(o.ok ? "  asked macOS for notification permission (click Allow if prompted)" : "  could not request notification permission; desktop notifications may not appear");
   }
   return app;
 }
@@ -202,6 +195,7 @@ ${hasIcon ? "  <key>CFBundleIconFile</key><string>AppIcon</string>\n" : ""}  <ke
 async function doSetup() {
   const dry = has("--dry-run"), mac = process.platform === "darwin";
   const wantMcp = !has("--no-mcp"), wantApp = !has("--no-app") && mac;
+  const targetApp = wantApp ? appPath() : defaultAppPath(home());
   const mcpPath = path.join(SRC, "mcp.js");
   const claude = wantMcp && hasClaude();
   const registered = claude && mcpRegistered();
@@ -213,7 +207,7 @@ async function doSetup() {
   else console.log(`  - register the MCP server with Claude Code (user scope):\n      claude mcp add ${MCP_NAME} --scope user -- ${stableNode()} ${mcpPath}`);
   if (has("--no-app")) console.log("  - skip the launcher app (--no-app)");
   else if (!mac) console.log("  - skip the launcher app (macOS only)");
-  else console.log(`  - create the launcher app ${appPath()}\n      (log: ${logPath()})`);
+  else console.log(`  - ${fs.existsSync(targetApp) ? "update" : "create"} the launcher app ${targetApp}\n      (log: ${logPath()})`);
   console.log("");
   if (!dry) {
     if (claude && !registered) {
@@ -221,17 +215,16 @@ async function doSetup() {
       console.log(r.ok ? "registered MCP server with Claude Code" : `MCP registration failed: ${r.out.trim()}`);
     }
     if (wantApp) {
-      try { console.log(`created ${buildApp()}`); } catch (e) { console.error(`could not create the launcher app: ${e.message}`); }
+      try { console.log(`created ${buildApp(targetApp)}`); } catch (e) { console.error(`could not create the launcher app: ${e.message}`); }
     }
     console.log("");
   }
   await doDoctor();
-  if (!dry) console.log(`\nDone. Start it with: cd your-project && tokenwise-studio${wantApp ? "  (or open the app from ~/Applications)" : ""}`);
+  if (!dry) console.log(`\nDone. Start it with: cd your-project && tokenwise-studio${wantApp ? `  (or open ${targetApp})` : ""}`);
 }
 
-function ownedApp() {
-  const plist = path.join(appPath(), "Contents", "Info.plist");
-  try { return fs.readFileSync(plist, "utf8").includes(`<string>${BUNDLE_ID}</string>`); } catch { return false; }
+function ownedApp(p = appPath()) {
+  return Boolean(verifyAppBundle(p, { requireExecutable: false }));
 }
 
 function doUninstall() {
@@ -245,11 +238,19 @@ function doUninstall() {
       console.log(r.ok ? "    removed" : `    failed: ${r.out.trim()}`);
     }
   } else console.log("  - MCP registration: nothing to remove");
-  if (ownedApp()) {
-    console.log(`  - delete ${appPath()}`);
-    if (!dry) { fs.rmSync(appPath(), { recursive: true, force: true }); console.log("    deleted"); }
-  } else if (fs.existsSync(appPath())) console.log(`  - ${appPath()} exists but is not ours (bundle id mismatch); leaving it alone`);
-  else console.log("  - launcher app: nothing to remove");
+  const owned = findOwnedAppBundles({ home });
+  const def = defaultAppPath(home());
+  if (owned.length) {
+    for (const p of owned) {
+      console.log(`  - delete ${p}`);
+      if (!dry) { fs.rmSync(p, { recursive: true, force: true }); console.log("    deleted"); }
+    }
+    if (!dry) fs.rmSync(appJsonPath(home()), { force: true });
+  } else if (fs.existsSync(def)) console.log(`  - ${def} exists but is not ours (bundle id mismatch); leaving it alone`);
+  else {
+    console.log("  - launcher app: nothing to remove");
+    if (!dry) fs.rmSync(appJsonPath(home()), { force: true });
+  }
   console.log("\nTo finish, run: npm uninstall -g tokenwise-studio");
 }
 
@@ -302,10 +303,11 @@ async function startUi() {
   if (!url) { console.error(`tokenwise studio: ports ${first}-${first + 10} are all busy`); process.exit(1); }
   startAutoUpdater();
   console.log(`tokenwise studio is running at ${url}  (project: ${path.basename(repo)})`);
-  const mode = decideOpen({ noOpen: has("--no-open"), browser: has("--browser"), platform: process.platform, installed: process.platform === "darwin" && nativeAppInstalled() });
+  const found = process.platform === "darwin" ? findAppBundle({ home }) : null;
+  const mode = decideOpen({ noOpen: has("--no-open"), browser: has("--browser"), platform: process.platform, installed: !!found });
   const appUrl = `tokenwise-studio://open?repo=${encodeURIComponent(repo)}&url=${encodeURIComponent(url)}`;
   if (process.env.TOKENWISE_DRY_OPEN === "1") { console.log(`open-mode: ${mode}${mode === "app" ? ` ${appUrl}` : ""}`); process.exit(0); }
-  if (mode === "app" && !run("open", ["-a", appPath(), appUrl]).ok) {
+  if (mode === "app" && !run("open", ["-a", found.appPath, appUrl]).ok) {
     console.warn("tokenwise studio: could not open the app; falling back to the browser");
     openBrowser(url);
   } else if (mode === "browser") openBrowser(url);
@@ -334,12 +336,19 @@ async function doExport() {
   } catch (e) { console.error("tokenwise-studio export: " + (e.code === "ENOENT" ? `unknown chat ${opt("--chat")}` : e.message)); process.exit(1); }
 }
 
-const cmd = argv[0];
-if (has("--help") || has("-h") || cmd === "help") console.log(HELP);
-else if (has("--version") || has("-v")) console.log(pkg.version);
-else if (cmd === "doctor") await doDoctor();
-else if (cmd === "setup") await doSetup();
-else if (cmd === "uninstall") doUninstall();
-else if (cmd === "update") await doUpdate();
-else if (cmd === "export") await doExport();
-else await startUi();
+const isMain = (() => {
+  try { return !!process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); }
+  catch { return false; }
+})();
+
+if (isMain) {
+  const cmd = argv[0];
+  if (has("--help") || has("-h") || cmd === "help") console.log(HELP);
+  else if (has("--version") || has("-v")) console.log(pkg.version);
+  else if (cmd === "doctor") await doDoctor();
+  else if (cmd === "setup") await doSetup();
+  else if (cmd === "uninstall") doUninstall();
+  else if (cmd === "update") await doUpdate();
+  else if (cmd === "export") await doExport();
+  else await startUi();
+}

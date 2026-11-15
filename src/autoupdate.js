@@ -9,15 +9,15 @@ import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { cacheFile, compareVersions, currentVersion, installArgs, installSource, latestVersion } from "./version.js";
 import { loadSettings } from "./settings.js";
+import { BUNDLE_ID, defaultAppPath, findAppBundle } from "./appbundle.js";
 
 export const DAY_MS = 24 * 3600 * 1000;
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const BUNDLE_ID = "com.nolienlabs.tokenwise-studio";
 const stateDir = () => path.join(os.homedir(), ".tokenwise-studio");
 export const logFile = () => path.join(stateDir(), "update.log");
 const lockFile = () => path.join(stateDir(), "update.lock");
 export const serversFile = () => path.join(stateDir(), "servers.json");
-export const appBundlePath = () => path.join(os.homedir(), "Applications", "tokenwise studio.app");
+export const appBundlePath = () => findAppBundle({ requireExecutable: false })?.appPath || defaultAppPath();
 
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
 
