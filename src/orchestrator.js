@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeam, teamGuide } from "./team.js";
-import { RATE_LIMIT, available, nearLimit } from "./fallback.js";
+import { RATE_LIMIT, available, nearLimit, claudePacing, recordProviderCooldown, clearCooldown, getCooldown, formatHHMM } from "./fallback.js";
 import { resolve } from "./workers.js";
 import { notify, turnNotice, handoffNotice } from "./notify.js";
 import { loadSettings } from "./settings.js";
@@ -23,11 +23,15 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(python3:*)", "Bash(pytest:*)", "Bash(npm test:*)", "Bash(npm run:*)", "Bash(node:*)",
   "Bash(go test:*)", "Bash(cargo test:*)"];
 
-/** Orchestrator guide for a permission mode, plus (optional) the project's instructions file, turn budget rule, and non-git rule. */
-export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true } = {}) {
+/** Orchestrator guide for a permission mode, plus (optional) project instructions, turn budget, non-git, and quota pacing rules. */
+export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false } = {}) {
   const parts = [baseGuide(permissionMode)];
   if (!isGit) parts.push("NON-GIT PROJECT: this folder is not a git repository. Write jobs (write=true) require git and will be rejected. Only use read-only jobs (write=false) here; if the user asks for file changes, explain that they can set up git from the studio UI (or run git init and make an initial commit) first.");
   if (turnBudget > 0) parts.push(`TURN TOKEN BUDGET: each turn has about ${fmtTokens(turnBudget)} tokens for you plus all workers. Keep tasks tight. When delegate answers that the budget is spent, start no more jobs: wrap up with what is done and what remains.`);
+  if (pacing?.active) {
+    const prefer = allowFree ? "codex, gemini, or free" : "codex or gemini";
+    parts.push(`QUOTA PACING (Save Claude for planning): Claude's ${pacing.window} usage is at ${pacing.pct}% (pacing level ${pacing.threshold}%). You stay on Claude for planning and review; steer worker jobs away from Claude by preferring ${prefer} for delegation instead of claude workers unless no other worker can handle the task.`);
+  }
   const ig = instructionsGuide(instructions);
   if (ig) parts.push(ig);
   return parts.join("\n\n");
@@ -94,8 +98,12 @@ export function pickOrchestrator(home, model, effort) {
   let why = null;
   // Test hook: TOKENWISE_ORCH_FORCE=codex forces the Codex path regardless of Claude's limits.
   if (process.env.TOKENWISE_ORCH_FORCE === "codex") why = "forced by TOKENWISE_ORCH_FORCE";
-  else if (!available("claude", { write: false }, home)) why = "Claude is not available";
-  else { const nl = nearLimit("claude", home); if (nl) why = `Claude ${nl}`; }
+  else {
+    const cd = getCooldown("claude");
+    if (cd) why = `Claude cooling down until ${formatHHMM(cd.until)}`;
+    else if (!available("claude", { write: false }, home)) why = "Claude is not available";
+    else { const nl = nearLimit("claude", home); if (nl) why = `Claude ${nl}`; }
+  }
   if (!why || !codexReady(home)) return claude;
   return { agent: "codex", ...codexPick(model, effort), reason: why };
 }
@@ -114,7 +122,7 @@ function codexCommand({ repo, chatId, model, effort, thread, prompt, images = []
     ...(fastMode ? ['service_tier="fast"'] : []),
     `mcp_servers.tokenwise_studio.command=${JSON.stringify(process.execPath)}`,
     `mcp_servers.tokenwise_studio.args=[${JSON.stringify(MCP)}]`,
-    `mcp_servers.tokenwise_studio.env={TOKENWISE_REPO=${JSON.stringify(repo)},TOKENWISE_PARENT=${JSON.stringify(chatId)}}`,
+    `mcp_servers.tokenwise_studio.env={TOKENWISE_REPO=${JSON.stringify(repo)},TOKENWISE_PARENT=${JSON.stringify(chatId)},TOKENWISE_ORCH_AGENT="codex"}`,
     `mcp_servers.tokenwise_studio.default_tools_approval_mode="approve"`,
   ].flatMap((v) => ["-c", v]);
   // `exec resume` does not accept -C/--sandbox: cwd comes from spawn, the sandbox from config.
@@ -223,7 +231,8 @@ export class Chats {
       if (available("codex", { write: false }, this.jobs.home)) {
         pick = { agent: "codex", ...(codexModels.includes(model) ? { model, effort } : codexPick(model, effort)), reason: null };
       } else {
-        throw new Error("Codex is not available. Sign in to Codex and try again.");
+        const cd = getCooldown("codex");
+        throw new Error(cd ? `Codex is cooling down until ${formatHHMM(cd.until)}.` : "Codex is not available. Sign in to Codex and try again.");
       }
     } else if (force === "claude") {
       pick = { agent: "claude", model, effort, reason: null };
@@ -237,10 +246,13 @@ export class Chats {
 
     const mcpFile = this.f(id, "mcp.json");
     fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: { "tokenwise-studio": {
-      command: process.execPath, args: [MCP], env: { TOKENWISE_REPO: this.jobs.repo, TOKENWISE_PARENT: id },
+      command: process.execPath, args: [MCP], env: { TOKENWISE_REPO: this.jobs.repo, TOKENWISE_PARENT: id, TOKENWISE_ORCH_AGENT: turn.agent },
     } } }));
-    const baseG = buildGuide(settings.permissionMode, { instructions: loadInstructions(this.jobs.repo), turnBudget: settings.turnBudget });
-    const tg = teamGuide(loadTeam(this.jobs.home));
+    const team = loadTeam(this.jobs.home);
+    const allowFree = settings.allowFree && team.allow?.free !== false;
+    const pacing = pick.agent === "claude" ? claudePacing(this.jobs.home, { settings }) : null;
+    const baseG = buildGuide(settings.permissionMode, { instructions: loadInstructions(this.jobs.repo), turnBudget: settings.turnBudget, isGit: this.jobs.isGit(), pacing, allowFree });
+    const tg = teamGuide(team, { pacing, allowFree });
     const guide = tg ? baseG + "\n\n" + tg : baseG;
     const allowedTools = settings.permissionMode === "plan-only" ? ALLOWED.filter((t) => t !== "mcp__tokenwise-studio__job_merge") : ALLOWED;
 
@@ -387,6 +399,12 @@ export class Chats {
       child.on("error", (e) => { spawnFailed = true; w("meta", `spawn error: ${e.message}`); });
       child.on("close", (code) => {
         const stopped = this.get(id).status === "stopped";
+        const tailText = tail.join("\n");
+        if (!stopped && !spawnFailed && (code !== 0 || isError) && RATE_LIMIT.test(tailText)) {
+          recordProviderCooldown(agent, { text: tailText, home: this.jobs.home, reason: "hit a rate limit" });
+        } else if (!stopped && !spawnFailed && code === 0 && !isError) {
+          clearCooldown(agent);
+        }
         if (agent === "claude" && !spawnFailed && shouldHandOff({
           agent, code, isError, lines: tail, stopped,
           fallbackEnabled: fallbackEnabled() && !(force === "claude" && explicit === true), codexReady: codexReady(this.jobs.home),

@@ -4,6 +4,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { activeCooldowns } from "./cooldowns.js";
+import { geminiUsage } from "./gemini-usage.js";
 
 const win = (pct, resetsAt) => (pct == null ? null : { pct: Math.round(pct), resetsAt: resetsAt ? resetsAt * 1000 : null });
 
@@ -74,5 +76,12 @@ function codexLimits() {
 }
 
 export function limits(home) {
-  return { claude: claudeLimits(home), codex: codexLimits() };
+  const g = geminiUsage();
+  const hasGemini = g.day.jobs > 0 || g.cooldowns24h > 0 || !!g.cooldown;
+  return {
+    claude: claudeLimits(home),
+    codex: codexLimits(),
+    gemini: hasGemini ? g : null,
+    cooldowns: activeCooldowns(),
+  };
 }

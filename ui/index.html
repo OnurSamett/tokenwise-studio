@@ -73,7 +73,15 @@
   .orchnow .on .plogo { width: 16px; height: 16px; }
   .orchnow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok, #3fb950); margin-left: auto; flex: none; }
   .orchnow.moved .dot { background: var(--warn); }
+  .orchnow.pacing { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+  .orchnow.pacing .dot { background: var(--accent); }
+  .orchnow.cooling .dot { background: var(--bad); }
+  .orch-tag { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 999px; letter-spacing: .01em; }
+  .orch-tag.pacing { background: var(--accent-soft); color: var(--accent); }
   .orchnow .why { font-size: 11.5px; color: var(--dim); line-height: 1.35; }
+  .cooldown-line { font-size: 11.5px; color: var(--bad); line-height: 1.35; }
+  .approx-tag { margin-left: auto; font-size: 10.5px; font-weight: 500; color: var(--dim); background: var(--s2); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
+  .pacing-note { font-size: 12.5px; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 9px; padding: 8px 11px; margin-bottom: 12px; }
   .ghost { background: none; border: 0; color: var(--dim); font-size: 13px; padding: 6px 10px; border-radius: 8px; width: 100%; text-align: left; }
   .ghost:hover { color: var(--text); background: var(--s1); }
 
@@ -876,7 +884,7 @@ function syncFromSettings(data, { applyComposer = false } = {}) {
 async function saveSetting(patch) {
   const data = await api("settings", patch);
   syncFromSettings(data, { applyComposer: "defaultModel" in patch || "defaultEffort" in patch });
-  if ("limitThreshold" in patch || "orchFallback" in patch || "allowFree" in patch) renderLimits();
+  if ("limitThreshold" in patch || "orchFallback" in patch || "allowFree" in patch || "saveClaudeForPlanning" in patch || "pacingThreshold" in patch) renderLimits();
   if ("autoUpdate" in patch) checkVersion();
   if ("updateCheck" in patch) {
     if (data.settings.updateCheck) checkVersion();
@@ -1961,7 +1969,7 @@ async function renderDrawer(full) {
   if (drawer.kind === "team") {
     if (!full) return;
     const opening = drawer;
-    let data; try { [data] = await Promise.all([api("team"), loadCatalog()]); } catch (e) { if (drawer === opening) { toast(e.message, true); closeDrawer(); } return; }
+    let data; try { [data] = await Promise.all([api(`team?orch=${encodeURIComponent($("#omodel").value)}`), loadCatalog()]); } catch (e) { if (drawer === opening) { toast(e.message, true); closeDrawer(); } return; }
     if (drawer !== opening) return;
     const opt = data.options, tm = JSON.parse(JSON.stringify(data.team));
     const RL = { code: t("team.role.code"), quick: t("team.role.quick"), review: t("team.role.review"), research: t("team.role.research"), images: t("team.role.images") };
@@ -2008,8 +2016,10 @@ async function renderDrawer(full) {
       });
       const freeOk = opt.agents.free?.ready || opt.agents.free?.optIn;
       const nonGitBox = S.project?.isGit === false ? h("div", { class: "nongit", style: "margin-bottom:16px" }, ...nonGitNoticeKids()) : null;
+      const pacingBox = opt.pacing?.active ? h("div", { class: "pacing-note" }, t("team.pacingNote", { window: t(opt.pacing.window === "weekly" ? "limits.weekly" : "limits.fiveHour"), pct: opt.pacing.pct })) : null;
       set(body,
         nonGitBox,
+        pacingBox,
         h("div", { class: "section" }, h("h4", {}, t("team.howChosen")), seg),
         tm.mode === "manual" ? h("div", { class: "section" }, h("h4", {}, t("team.preset")), presets) : null,
         tm.mode === "manual" ? h("div", { class: "section" }, h("h4", {}, t("team.roles")), rows) : h("div", { class: "section muted", style: "font-size:13.5px" }, t("team.autoInfo")),
@@ -2144,8 +2154,7 @@ async function renderDrawer(full) {
           h("tbody", {}, rows),
           h("tfoot", {}, h("tr", {}, h("td", { colspan: 3 }, t("usage.total")), h("td", { class: "n" }, fmtN(tot.total)), h("td", { class: "n" }, money(tot.cost) + (est ? " ~" : "")))))) : h("div", { class: "empty" }, t("usage.empty"))),
       h("div", { class: "section" }, h("h4", {}, t("usage.planLimitsNow")),
-        L && (L.claude || L.codex) ? h("div", { class: "usage" }, [["Claude", "claude", L.claude], ["ChatGPT Codex", "codex", L.codex]].filter((x) => x[2]).map(([name, agent, d0]) =>
-          h("div", { class: "plan" }, h("div", { class: "pname" }, agentLogo(agent) || h("span", { class: "badge " + agent }, BADGE[agent]), name), meter(t("limits.fiveHour"), d0.fiveHour), meter(t("limits.weekly"), d0.week)))) : h("div", { class: "muted", style: "font-size:13px" }, t("limits.empty"))),
+        (() => { const blocks = L ? planBlocks(L) : []; return blocks.length ? h("div", { class: "usage" }, blocks) : h("div", { class: "muted", style: "font-size:13px" }, t("limits.empty")); })()),
       h("p", { class: "shelp" }, t("usage.footnote")));
     draw();
     set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("usage.title")), h("div", { class: "meta" }, t("usage.meta", { project: path0() }))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")), body);
@@ -2207,6 +2216,20 @@ async function renderDrawer(full) {
         range.value = v;
         applyPatch({ limitThreshold: v });
       });
+      const paceMax = Math.min(89, Math.max(50, s.limitThreshold - 1));
+      const paceVal = Math.min(s.pacingThreshold ?? 70, paceMax);
+      const paceDisabled = !s.saveClaudeForPlanning || s.limitThreshold <= 50;
+      const pRange = h("input", { type: "range", min: 50, max: paceMax, step: 1, value: paceVal, disabled: paceDisabled || !!lock.pacingThreshold });
+      const pNum = h("input", { type: "number", min: 50, max: paceMax, step: 1, value: paceVal, disabled: paceDisabled || !!lock.pacingThreshold });
+      pRange.addEventListener("input", () => { pNum.value = pRange.value; });
+      pRange.addEventListener("change", () => applyPatch({ pacingThreshold: Number(pRange.value) }));
+      pNum.addEventListener("change", () => {
+        const v = Math.round(Number(pNum.value));
+        if (!Number.isFinite(v) || v < 50 || v > 89 || v >= s.limitThreshold) { toast(t("settings.pacingThresholdErr"), true); pNum.value = paceVal; pRange.value = paceVal; return; }
+        pNum.value = v;
+        pRange.value = v;
+        applyPatch({ pacingThreshold: v });
+      });
       const compactK = Math.round((s.compactThreshold || 120000) / 1000);
       const cRange = h("input", { type: "range", min: 60, max: 400, step: 10, value: compactK, disabled: !!lock.compactThreshold });
       const cNum = h("input", { type: "number", min: 60, max: 400, step: 1, value: compactK, disabled: !!lock.compactThreshold });
@@ -2257,6 +2280,13 @@ async function renderDrawer(full) {
             h("span", {}, t("settings.fastMode"), h("small", {}, t("settings.fastModeDesc"))))),
         h("div", { class: "section" },
           h("div", { class: "shead" }, h("h4", {}, t("settings.limitsWorkers"))),
+          h("label", { class: "toggle" + (lock.saveClaudeForPlanning ? " disabled" : "") },
+            h("input", { type: "checkbox", checked: s.saveClaudeForPlanning !== false ? true : null, disabled: !!lock.saveClaudeForPlanning, onchange: (e) => applyPatch({ saveClaudeForPlanning: e.target.checked }) }),
+            h("span", {}, [t("settings.saveClaude"), envBadge("saveClaudeForPlanning")], h("small", {}, t("settings.saveClaudeDesc")))),
+          h("div", { class: "sfield", style: "margin:10px 0 14px" },
+            h("label", {}, t("settings.pacingThreshold"), envBadge("pacingThreshold")),
+            h("p", { class: "shelp", style: "margin:0" }, t("settings.pacingThresholdHelp")),
+            h("div", { class: "rangewrap" }, pRange, pNum)),
           h("div", { class: "sfield", style: "margin-bottom:14px" },
             h("label", {}, t("settings.threshold"), envBadge("limitThreshold")),
             h("p", { class: "shelp", style: "margin:0" }, t("settings.thresholdHelp")),
@@ -2592,6 +2622,8 @@ async function act(what, id) {
 }
 
 // ---------- plan limits ----------
+const hhmm = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+const fmtCompactTok = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "k" : String(Math.round(n || 0)));
 const until = (tm) => { if (!tm) return ""; const m = Math.round((tm - Date.now()) / 60000); if (m <= 0) return t("limits.resetting"); if (m < 60) return t("limits.resetsM", { n: m }); const hrs = Math.round(m / 60); return hrs < 48 ? t("limits.resetsH", { n: hrs }) : t("limits.resetsD", { n: Math.round(hrs / 24) }); };
 function meter(label, w) {
   if (!w) return null;
@@ -2600,19 +2632,57 @@ function meter(label, w) {
   return h("div", { class: "meter" + (w.pct >= 95 ? " full" : w.pct >= 80 ? " hot" : ""), title: w.resetsAt ? t("limits.resetsAt", { when: new Date(w.resetsAt).toLocaleString(uiLocale(), { weekday: "short", hour: "2-digit", minute: "2-digit" }) }) : "" },
     h("span", {}, label, " · ", until(w.resetsAt)), h("b", {}, w.pct + "%"), h("span", { class: "track" }, h("i", { style: `width:${Math.min(100, w.pct)}%` })));
 }
+function planBlocks(L) {
+  const cds = L?.cooldowns || {};
+  const cdLine = (cd) => cd ? h("div", { class: "cooldown-line" }, t("limits.coolingDown", { time: hhmm(cd.until) })) : null;
+  const plan = (name, agent, d, cd) => (d || cd)
+    ? h("div", { class: "plan" },
+        h("div", { class: "pname" }, agentLogo(agent) || h("span", { class: "badge " + agent }, BADGE[agent]), name),
+        meter(t("limits.fiveHour"), d?.fiveHour),
+        meter(t("limits.weekly"), d?.week),
+        cdLine(cd))
+    : null;
+  const g = L?.gemini;
+  const gcd = cds.gemini || g?.cooldown;
+  const geminiCard = (g || gcd)
+    ? h("div", { class: "plan", title: t("limits.approxTip") },
+        h("div", { class: "pname" }, agentLogo("gemini") || h("span", { class: "badge gemini" }, BADGE.gemini), "Gemini", h("span", { class: "approx-tag" }, t("limits.approx"))),
+        g ? h("div", { class: "meter approx" }, h("span", {}, t("limits.fiveHour")), h("b", {}, t("limits.geminiStat", { jobs: tp("limits.jobs", g.fiveHour.jobs), tokens: fmtCompactTok(g.fiveHour.tokens) }))) : null,
+        g ? h("div", { class: "meter approx" }, h("span", {}, t("limits.daily")), h("b", {}, t("limits.geminiStat", { jobs: tp("limits.jobs", g.day.jobs), tokens: fmtCompactTok(g.day.tokens) }))) : null,
+        g && g.cooldowns24h > 0 && !gcd ? h("div", { class: "meter approx" }, h("span", {}, t("limits.rateLimits24h")), h("b", {}, String(g.cooldowns24h))) : null,
+        cdLine(gcd))
+    : null;
+  const freeCard = cds.free
+    ? h("div", { class: "plan" },
+        h("div", { class: "pname" }, logoImg("nvidia") || h("span", { class: "badge free" }, BADGE.free), AGENT.free),
+        cdLine(cds.free))
+    : null;
+  return [plan("Claude", "claude", L?.claude, cds.claude), plan("ChatGPT Codex", "codex", L?.codex, cds.codex), geminiCard, freeCard].filter(Boolean);
+}
 async function renderLimits() {
   let L; try { L = await api("limits"); } catch { return; }
-  const plan = (name, agent, d) => d ? h("div", { class: "plan" }, h("div", { class: "pname" }, agentLogo(agent) || h("span", { class: "badge " + agent }, BADGE[agent]), name), meter(t("limits.fiveHour"), d.fiveHour), meter(t("limits.weekly"), d.week)) : null;
-  const blocks = [plan("Claude", "claude", L.claude), plan("ChatGPT Codex", "codex", L.codex)].filter(Boolean);
+  const blocks = planBlocks(L);
   const model = $("#omodel").value;
   let O = null;
-  if (["sol", "terra", "luna"].includes(model)) O = { agent: "codex", model, reason: null };
-  else try { O = await api(`orchestrator?model=${model}&effort=${$("#oeffort").value}`); } catch {}
+  try { O = await api(`orchestrator?model=${encodeURIComponent(model)}&effort=${encodeURIComponent($("#oeffort").value)}`); } catch {
+    if (["sol", "terra", "luna"].includes(model)) O = { agent: "codex", model, reason: null, pacing: null };
+  }
   $("#orchlogo").src = `/providers/${["sol", "terra", "luna"].includes(model) ? "codex" : "claude"}.svg`;
   const why = O?.reason ? translateReason(O.reason, lang).replace(/^Claude\s+/i, "") : "";
-  const orch = O ? h("div", { class: "orchnow" + (O.agent === "codex" ? " moved" : ""), title: t(O.agent === "codex" ? "limits.codexTitle" : "limits.claudeTitle") },
-    h("div", { class: "on" }, agentLogo(O.agent), `${AGENT[O.agent] || O.agent} ${modelName(O.model)}`, h("span", { class: "dot" })),
-    h("div", { class: "why" }, O.agent === "codex" && why ? t("limits.insteadOfClaude", { reason: why }) : t("limits.orchReady"))) : null;
+  const isMoved = O?.agent === "codex" && !!why;
+  const isPacing = O?.agent === "claude" && !!O?.pacing?.active;
+  const isCooling = !!O?.cooldown;
+  const orchTitle = isMoved ? t("limits.codexTitle") : isPacing ? t("limits.claudePacingTitle") : t("limits.claudeTitle");
+  const orchWhy = isMoved
+    ? t("limits.insteadOfClaude", { reason: why })
+    : isPacing
+      ? t("limits.pacingWhy", { window: t(O.pacing.window === "weekly" ? "limits.weekly" : "limits.fiveHour"), pct: O.pacing.pct })
+      : isCooling
+        ? t("limits.coolingDown", { time: hhmm(O.cooldown.until) })
+        : t("limits.orchReady");
+  const orch = O ? h("div", { class: "orchnow" + (isMoved ? " moved" : isPacing ? " pacing" : isCooling ? " cooling" : ""), title: orchTitle },
+    h("div", { class: "on" }, agentLogo(O.agent), `${AGENT[O.agent] || O.agent} ${modelName(O.model)}`, isPacing ? h("span", { class: "orch-tag pacing" }, t("limits.pacingTag")) : null, h("span", { class: "dot" })),
+    h("div", { class: "why" }, orchWhy)) : null;
   set($("#usage"), orch, blocks.length ? blocks : h("div", { class: "none" }, t("limits.empty")));
 }
 

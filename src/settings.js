@@ -19,6 +19,8 @@ export const DEFAULTS = Object.freeze({
   defaultEffort: "medium",
   orchFallback: "auto",
   limitThreshold: 90,
+  saveClaudeForPlanning: true, // keep Claude for planning and steer workers away once Claude passes pacingThreshold
+  pacingThreshold: 70, // 50–89%, below limitThreshold
   fallbackOrder: [...WORKER_AGENTS],
   allowFree: false,
   fastMode: false,
@@ -43,6 +45,8 @@ const VALIDATORS = {
   defaultEffort: (v) => EFFORTS.includes(v) || `defaultEffort must be one of ${EFFORTS.join(", ")}`,
   orchFallback: (v) => ORCH_FALLBACK_MODES.includes(v) || `orchFallback must be one of ${ORCH_FALLBACK_MODES.join(", ")}`,
   limitThreshold: (v) => (typeof v === "number" && Number.isFinite(v) && v >= 50 && v <= 100) || "limitThreshold must be a number between 50 and 100",
+  saveClaudeForPlanning: (v) => typeof v === "boolean" || "saveClaudeForPlanning must be true or false",
+  pacingThreshold: (v) => (typeof v === "number" && Number.isFinite(v) && v >= 50 && v <= 89) || "pacingThreshold must be a number between 50 and 89",
   fallbackOrder: (v) =>
     (Array.isArray(v) && v.length === WORKER_AGENTS.length && new Set(v).size === WORKER_AGENTS.length && v.every((a) => WORKER_AGENTS.includes(a))) ||
     `fallbackOrder must be a permutation of ${WORKER_AGENTS.join(", ")}`,
@@ -139,6 +143,13 @@ export function saveSettings(patch = {}) {
   const cur = loadStored();
   for (const k of Object.keys(patch)) {
     cur[k] = Array.isArray(patch[k]) ? [...patch[k]] : patch[k];
+  }
+  const effLimit = applyEnv(cur).settings.limitThreshold;
+  if ("pacingThreshold" in patch && cur.pacingThreshold >= effLimit) {
+    throw new Error(`pacingThreshold must be below limitThreshold (${effLimit})`);
+  }
+  if ("limitThreshold" in patch && !("pacingThreshold" in patch) && cur.pacingThreshold >= effLimit && effLimit > 50) {
+    cur.pacingThreshold = Math.max(50, Math.min(89, effLimit - 1));
   }
   const file = settingsFile();
   fs.mkdirSync(path.dirname(file), { recursive: true });

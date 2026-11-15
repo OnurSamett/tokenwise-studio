@@ -218,6 +218,17 @@ export const DICT = {
     "limits.insteadOfClaude": "Orchestrating instead of Claude · {reason}",
     "limits.orchReady": "Orchestrator · ready",
     "limits.empty": "Shows up after the first run.",
+    "limits.coolingDown": "cooling down until {time}",
+    "limits.pacingTag": "pacing",
+    "limits.pacingWhy": "Saving Claude for planning · {window} {pct}%",
+    "limits.claudePacingTitle": "Claude stays on planning; worker jobs prefer Codex, Gemini, or free models.",
+    "limits.approx": "~ local",
+    "limits.approxTip": "Approximate local counter (Antigravity has no quota API)",
+    "limits.daily": "24-hour",
+    "limits.jobs.one": "{n} job",
+    "limits.jobs.other": "{n} jobs",
+    "limits.geminiStat": "{jobs} · {tokens} tok",
+    "limits.rateLimits24h": "429 cooldowns (24h)",
 
     // Common drawer labels
     "drawer.loading": "Loading…",
@@ -414,6 +425,7 @@ export const DICT = {
     "team.freeAutoDesc": "Picks the strongest free model available and moves on if one is rate limited.",
     "team.ruleAutoDesc": "Picks the model for each piece by the tokenwise rules.",
     "team.autoInfo": "Automatic mode routes each piece by the tokenwise rules: cheap models for mechanical work, strong models for design, hard bugs and review, images through Codex. Switch to “I choose” to pin the team yourself.",
+    "team.pacingNote": "Quota pacing is active (Claude {window} at {pct}%): Claude is saved for planning, so worker jobs prefer Codex, Gemini, or free models.",
     "team.allowed": "Allowed",
     "team.freeTitle": "Free hosted models",
     "team.freeReadyDesc": "NVIDIA and other free tiers ({providers}). They may use prompts for training.",
@@ -532,6 +544,11 @@ export const DICT = {
     "settings.threshold": "Switch threshold (%)",
     "settings.thresholdHelp": "Skip or hand off a plan once its 5-hour or weekly usage reaches this percentage (50–100).",
     "settings.thresholdErr": "Threshold must be 50–100%",
+    "settings.saveClaude": "Save Claude for planning",
+    "settings.saveClaudeDesc": "Keep Claude for planning and steer worker jobs to Codex, Gemini, or free models once Claude passes the pacing level. On by default.",
+    "settings.pacingThreshold": "Pacing level (%)",
+    "settings.pacingThresholdHelp": "Steer worker jobs away from Claude once its 5-hour or weekly usage reaches this percentage (50–89, below the switch threshold).",
+    "settings.pacingThresholdErr": "Pacing level must be 50–89% and below the switch threshold",
     "settings.fallbackOrder": "Worker fallback order",
     "settings.fallbackOrderHelp": "Order tried when a worker plan is unavailable or hits a limit.",
     "settings.moveUp": "Move up",
@@ -649,6 +666,7 @@ export const DICT = {
     "reason.weeklyLimit": "weekly limit at {pct}%",
     "reason.usageLimit": "hit its usage limit",
     "reason.rateLimit": "hit a rate limit",
+    "reason.coolingDown": "cooling down until {time}",
     "reason.chosenByUser": "chosen by user",
     "reason.forced": "forced by TOKENWISE_ORCH_FORCE",
     "notice.budgetReached": "Turn budget reached ({used} of {budget} tokens). No new jobs will start this turn; running jobs keep going.",
@@ -1016,6 +1034,17 @@ export const DICT = {
     "limits.insteadOfClaude": "Claude yerine yönetiyor · {reason}",
     "limits.orchReady": "Yönetici · hazır",
     "limits.empty": "İlk çalıştırmadan sonra görünür.",
+    "limits.coolingDown": "{time} saatine kadar beklemede",
+    "limits.pacingTag": "dengeleme",
+    "limits.pacingWhy": "Claude planlama için ayrılıyor · {window} %{pct}",
+    "limits.claudePacingTitle": "Claude planlamada kalır; çalışan işleri Codex, Gemini veya ücretsiz modellere yönlendirilir.",
+    "limits.approx": "~ yerel",
+    "limits.approxTip": "Yaklaşık yerel sayaç (Antigravity için kota API'si yok)",
+    "limits.daily": "24 saatlik",
+    "limits.jobs.one": "{n} iş",
+    "limits.jobs.other": "{n} iş",
+    "limits.geminiStat": "{jobs} · {tokens} tok",
+    "limits.rateLimits24h": "429 bekleme (24s)",
 
     // Common drawer labels
     "drawer.loading": "Yükleniyor…",
@@ -1212,6 +1241,7 @@ export const DICT = {
     "team.freeAutoDesc": "Mevcut en güçlü ücretsiz modeli seçer, biri limite takılırsa diğerine geçer.",
     "team.ruleAutoDesc": "Her parça için tokenwise kurallarına göre model seçer.",
     "team.autoInfo": "Otomatik mod her parçayı tokenwise kurallarına göre yönlendirir: mekanik işler için ekonomik modeller, tasarım, zor hatalar ve inceleme için güçlü modeller, görseller için Codex. Ekibi kendin sabitlemek için “Ben seçeyim”e geç.",
+    "team.pacingNote": "Kota dengelemesi etkin (Claude {window} %{pct}): Claude planlama için ayrılıyor; çalışan işlerinde Codex, Gemini veya ücretsiz modeller tercih edilir.",
     "team.allowed": "İzin verilenler",
     "team.freeTitle": "Ücretsiz barındırılan modeller",
     "team.freeReadyDesc": "NVIDIA ve diğer ücretsiz katmanlar ({providers}). İstemleri eğitim için kullanabilirler.",
@@ -1330,6 +1360,11 @@ export const DICT = {
     "settings.threshold": "Geçiş eşiği (%)",
     "settings.thresholdHelp": "5 saatlik veya haftalık kullanım bu yüzdeye (50–100) ulaştığında planı atla veya devret.",
     "settings.thresholdErr": "Eşik %50–100 arasında olmalı",
+    "settings.saveClaude": "Claude'u planlama için sakla",
+    "settings.saveClaudeDesc": "Claude dengeleme düzeyini aştığında Claude'u planlamada tut ve çalışan işlerini Codex, Gemini veya ücretsiz modellere yönlendir. Varsayılan olarak açıktır.",
+    "settings.pacingThreshold": "Dengeleme düzeyi (%)",
+    "settings.pacingThresholdHelp": "5 saatlik veya haftalık kullanım bu yüzdeye ulaştığında çalışan işlerini Claude dışına yönlendir (%50–89, geçiş eşiğinin altında).",
+    "settings.pacingThresholdErr": "Dengeleme düzeyi %50–89 arasında ve geçiş eşiğinin altında olmalı",
     "settings.fallbackOrder": "Çalışan yedekleme sırası",
     "settings.fallbackOrderHelp": "Bir çalışan planı kullanılamadığında veya limite ulaştığında denenecek sıra.",
     "settings.moveUp": "Yukarı taşı",
@@ -1447,6 +1482,7 @@ export const DICT = {
     "reason.weeklyLimit": "haftalık limit %{pct}",
     "reason.usageLimit": "kullanım limitine ulaştı",
     "reason.rateLimit": "hız limitine takıldı",
+    "reason.coolingDown": "{time} saatine kadar beklemede",
     "reason.chosenByUser": "sen seçtin",
     "reason.forced": "TOKENWISE_ORCH_FORCE ile zorlandı",
     "notice.budgetReached": "Tur bütçesine ulaşıldı ({used} / {budget} token). Bu turda yeni iş başlatılmayacak; çalışan işler devam ediyor.",
@@ -1647,6 +1683,7 @@ export function translateReason(reason, lang = "en") {
   if (/^is unavailable$|^unavailable$/i.test(body)) return prefix + t("reason.unavailable", {}, lang);
   if (/^hit its usage limit$/i.test(body)) return prefix + t("reason.usageLimit", {}, lang);
   if (/^hit a rate limit$/i.test(body)) return prefix + t("reason.rateLimit", {}, lang);
+  if ((m = body.match(/^cooling down until (\d{1,2}:\d{2})$/i))) return prefix + t("reason.coolingDown", { time: m[1] }, lang);
   if (/^chosen by user$/i.test(body)) return t("reason.chosenByUser", {}, lang);
   if (/^forced by TOKENWISE_ORCH_FORCE$/i.test(body)) return t("reason.forced", {}, lang);
   return s;

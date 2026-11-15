@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Jobs } from "./jobs.js";
 import { loadTeam, teamGuide, ROLES } from "./team.js";
 import { loadSettings } from "./settings.js";
+import { claudePacing } from "./fallback.js";
 import { budgetGate } from "./budget.js";
 import { runTests, testRunning, testTail } from "./testrun.js";
 import { normalizeFreeModelArg } from "./workers.js";
@@ -53,7 +54,16 @@ server.registerTool("delegate", {
     "The worker cannot see this conversation: put every detail it needs in `task` (files, constraints, done-condition).",
     "Dispatch independent tasks in parallel, then job_wait each.",
     "If a worker's plan is near its usage limit or it hits a rate limit, the job is automatically moved to the next worker (codex → gemini → claude → free → local); job_wait follows the move.",
-  ].join(" ") + (teamGuide(loadTeam(path.join(repo, ".tokenwise-studio"))) ? "\n\n" + teamGuide(loadTeam(path.join(repo, ".tokenwise-studio"))) : ""),
+  ].join(" ") + (() => {
+    const home = path.join(repo, ".tokenwise-studio");
+    const orchAgent = process.env.TOKENWISE_ORCH_AGENT || "claude";
+    const s = loadSettings();
+    const tg = teamGuide(loadTeam(home), {
+      pacing: orchAgent === "claude" ? claudePacing(home, { settings: s }) : null,
+      allowFree: s.allowFree,
+    });
+    return tg ? "\n\n" + tg : "";
+  })(),
   inputSchema: {
     agent: z.enum(["codex", "claude", "gemini", "local", "free"]),
     task: z.string().min(10),

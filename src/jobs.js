@@ -5,7 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { command, resolve, textOf } from "./workers.js";
 import { loadTeam, ROLES } from "./team.js";
-import { RATE_LIMIT, available, nearLimit, nextAgent } from "./fallback.js";
+import { RATE_LIMIT, available, nearLimit, nextAgent, recordProviderCooldown, clearCooldown, getCooldown, formatHHMM } from "./fallback.js";
+import { recordGeminiRun } from "./gemini-usage.js";
 import { notify, jobNotice } from "./notify.js";
 import { withProjectNotes } from "./instructions.js";
 import { captureImages } from "./jobimages.js";
@@ -174,9 +175,11 @@ export class Jobs {
     const attachments = validateImages(this.repo, images);
     const team = loadTeam(this.home);
     if (agent === "free" && team.allow.free === false) throw new Error("free workers are disabled in the team settings");
-    // Before starting: if this plan is near its limit or the worker isn't usable, pick the next one in the chain.
+    // Before starting: if this plan is near its limit, cooling down, or not usable, pick the next one in the chain.
     if (!noFallback) {
-      const why = nearLimit(agent, this.home) || (!available(agent, { write, role }, this.home)
+      const cd = getCooldown(agent);
+      const cdWhy = cd ? `cooling down until ${formatHHMM(cd.until)}` : null;
+      const why = nearLimit(agent, this.home) || cdWhy || (!available(agent, { write, role }, this.home)
         ? (role === "research" && (agent === "free" || agent === "local") ? `${agent} does not support web research` : `${agent} not available`)
         : null);
       if (why) {
@@ -253,21 +256,31 @@ export class Jobs {
         return res(j);
       }
       j.status = code === 0 ? "done" : "failed";
-      // Hit a usage/rate limit? Re-run the same task on the next worker in the chain.
-      if (j.status === "failed" && !noFallback) {
+      let rateLimited = false;
+      // Hit a usage/rate limit? Record a cooldown and re-run the same task on the next worker in the chain.
+      if (j.status === "failed") {
         let tail = ""; try { tail = fs.readFileSync(this.file(id, "log"), "utf8").slice(-30000); } catch {}
         if (RATE_LIMIT.test(tail)) {
-          const alt = nextAgent({ tried: j.tried, write, role: j.role || null, home: this.home });
-          if (alt) {
-            try {
-              const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" } });
-              j.status = "moved"; j.movedTo = nj.id;
-              write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
-            } catch (e) { write1("meta", `fallback failed: ${e.message}`); }
+          rateLimited = true;
+          recordProviderCooldown(j.agent, { text: tail, home: this.home, reason: "hit a rate limit" });
+          if (!noFallback) {
+            const alt = nextAgent({ tried: j.tried, write, role: j.role || null, home: this.home });
+            if (alt) {
+              try {
+                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" } });
+                j.status = "moved"; j.movedTo = nj.id;
+                write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
+              } catch (e) { write1("meta", `fallback failed: ${e.message}`); }
+            }
           }
         }
+      } else {
+        clearCooldown(j.agent);
       }
       Object.assign(j, this.usage(id));
+      if (j.agent === "gemini") {
+        recordGeminiRun({ tokens: j.tokens, model: j.model, via: j.via || null, rateLimited });
+      }
       j.final = (fs.existsSync(lastFile) && fs.readFileSync(lastFile, "utf8").trim()) || lastText;
       // Some CLIs answer with local file:// markdown links; keep just the link text.
       if (j.final) j.final = String(j.final).replace(/\[([^\]]+)\]\(file:\/\/[^)]*\)/g, "$1");

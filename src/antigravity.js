@@ -4,13 +4,13 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 
 const CANDIDATES = [
-  process.env.TOKENWISE_AGY,
   "/Applications/Gemini.app/Contents/Helpers/agy",
   "/Applications/Antigravity.app/Contents/Helpers/agy",
-].filter(Boolean);
+];
 
 let agyPath;
 export function findAgy() {
+  if (process.env.TOKENWISE_AGY) return fs.existsSync(process.env.TOKENWISE_AGY) ? process.env.TOKENWISE_AGY : null;
   if (agyPath !== undefined) return agyPath;
   agyPath = CANDIDATES.find((p) => fs.existsSync(p)) || null;
   if (!agyPath) {
@@ -20,15 +20,16 @@ export function findAgy() {
   return agyPath;
 }
 
-let models = null, modelsAt = 0;
+let models = null, modelsAt = 0, modelsAgy = null;
 /** Model ids available to the signed-in account, or null when agy is missing / not signed in. */
 export function agyModels() {
   const agy = findAgy(); if (!agy) return null;
-  if (models && Date.now() - modelsAt < 5 * 60000) return models;
+  if (models && modelsAgy === agy && Date.now() - modelsAt < 5 * 60000) return models;
   try {
     const out = execFileSync(agy, ["models"], { encoding: "utf8", timeout: 15000, stdio: ["ignore", "pipe", "pipe"] });
     models = out.split("\n").map((l) => l.split("\t")[0].trim()).filter((id) => /^[\w.-]+$/.test(id) && id.includes("-"));
     modelsAt = Date.now();
+    modelsAgy = agy;
     return models.length ? models : null;
   } catch { return null; }
 }

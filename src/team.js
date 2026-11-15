@@ -7,6 +7,7 @@ import { agyModels } from "./antigravity.js";
 import { freeProviders } from "./freechat.js";
 import { CATALOG, describe } from "./models.js";
 import { loadSettings } from "./settings.js";
+import { claudePacing, getCooldown } from "./fallback.js";
 
 export const ROLES = ["code", "quick", "review", "research", "images"];
 const LABELS = {
@@ -125,7 +126,7 @@ export function geminiFamilies() {
 }
 
 /** What the UI can offer. Never throws. */
-export function teamOptions(freeModels = []) {
+export function teamOptions(freeModels = [], { home = null, orchestratorAgent = "claude" } = {}) {
   let d = {};
   try { d = doctor() || {}; } catch {}
   const ready = (a) => !!(d[a] && d[a].installed && d[a].signedIn);
@@ -133,12 +134,21 @@ export function teamOptions(freeModels = []) {
   try { providers = freeProviders().map((p) => p.name); } catch {}
   const fam = (agent) => Object.fromEntries(CATALOG.filter((c) => c.agent === agent).map((c) => [c.family, c.label]));
   const freeIds = (freeModels || []).map((m) => m.id);
+  const settings = loadSettings();
+  let pacing = null;
+  try { pacing = home ? claudePacing(home, { settings, orchestratorAgent }) : null; } catch {}
+  const freeAllowed = settings.allowFree && (!home || loadTeam(home).allow.free !== false);
+  const prefer = pacing?.active ? ["codex", "gemini", ...(freeAllowed ? ["free"] : [])] : null;
+  const cdOf = (a) => {
+    const cd = getCooldown(a);
+    return cd ? { until: cd.until, reason: cd.reason } : null;
+  };
   return {
     agents: {
-      codex: { ready: ready("codex"), models: ["luna", "terra", "sol", "astra"], labels: fam("codex"), unsupportedRoles: [] },
-      claude: { ready: ready("claude"), models: ["haiku", "sonnet", "opus"], labels: fam("claude"), unsupportedRoles: [] },
-      gemini: { ready: ready("gemini"), models: geminiFamilies(), labels: fam("gemini"), unsupportedRoles: [] },
-      free: { ready: providers.length > 0, models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: loadSettings().allowFree, unsupportedRoles: ["research"] },
+      codex: { ready: ready("codex"), cooldown: cdOf("codex"), models: ["luna", "terra", "sol", "astra"], labels: fam("codex"), unsupportedRoles: [] },
+      claude: { ready: ready("claude"), cooldown: cdOf("claude"), pacing: !!pacing?.active, models: ["haiku", "sonnet", "opus"], labels: fam("claude"), unsupportedRoles: [] },
+      gemini: { ready: ready("gemini"), cooldown: cdOf("gemini"), models: geminiFamilies(), labels: fam("gemini"), unsupportedRoles: [] },
+      free: { ready: providers.length > 0, cooldown: cdOf("free"), models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: settings.allowFree, unsupportedRoles: ["research"] },
     },
     roles: ROLES.map((id) => ({
       id,
@@ -146,12 +156,18 @@ export function teamOptions(freeModels = []) {
       ...(id === "research" ? { unsupportedAgents: ["free"] } : id === "images" ? { supportedAgents: ["codex"] } : {}),
     })),
     presets: Object.keys(PRESETS),
+    pacing: pacing?.active ? { ...pacing, prefer } : { active: false },
   };
 }
 
-/** Text block appended to the orchestrator's system prompt. Empty in auto mode. */
-export function teamGuide(team) {
-  if (!team || team.mode !== "manual") return "";
+/** Text block appended to the orchestrator's system prompt. Empty in auto mode unless pacing is active. */
+export function teamGuide(team, { pacing = null, allowFree = loadSettings().allowFree } = {}) {
+  const freeAllowed = allowFree && team?.allow?.free !== false;
+  const preferList = freeAllowed ? "codex, gemini or free" : "codex or gemini";
+  const paceLine = pacing?.active
+    ? `Quota pacing is active (Claude ${pacing.window} usage at ${pacing.pct}%): save Claude for planning and steer worker jobs away from claude (prefer ${preferList}).`
+    : "";
+  if (!team || team.mode !== "manual") return paceLine;
   const lines = [];
   for (const r of ROLES) {
     const w = team.roles?.[r];
@@ -170,5 +186,6 @@ export function teamGuide(team) {
   let g = "The user chose the team for this project. Use exactly these workers unless a plan is out of quota:\n" + lines.join("\n") +
     "\nDo not pick other agents/models on your own.";
   if (team.allow?.free === false) g += "\nNever use the 'free' agent.";
+  if (paceLine) g += `\n${paceLine}`;
   return g;
 }

@@ -13,6 +13,7 @@ import { Jobs, gitSetupPreview, setupGit } from "./jobs.js";
 import { Chats, pickOrchestrator } from "./orchestrator.js";
 import { normalize } from "./events.js";
 import { limits } from "./limits.js";
+import { claudePacing, getCooldown } from "./fallback.js";
 import { doctor, clearDoctorCache } from "./doctor.js";
 import { loadTeam, saveTeam, teamOptions, geminiFamilies } from "./team.js";
 import { CATALOG } from "./models.js";
@@ -155,15 +156,26 @@ function loadBenchmarks() {
 // Who would orchestrate the next message right now. pickOrchestrator runs CLI sign-in checks,
 // so the answer is cached briefly per model/effort.
 const orchCache = new Map();
+const CODEX_ORCH_MODELS = ["sol", "terra", "luna", "astra"];
 function orchestratorNow(model, effort) {
-  if (!["opus", "sonnet", "haiku"].includes(model)) model = "opus";
   if (!["low", "medium", "high", "xhigh"].includes(effort)) effort = "medium";
+  if (CODEX_ORCH_MODELS.includes(model)) {
+    const cd = getCooldown("codex");
+    return { agent: "codex", model, effort, reason: null, explicit: true, pacing: null, cooldown: cd ? { until: cd.until, reason: cd.reason } : null };
+  }
+  if (!["opus", "sonnet", "haiku"].includes(model)) model = "opus";
   const key = `${jobs.home}|${model}|${effort}`, hit = orchCache.get(key);
-  if (hit && Date.now() - hit.at < 30_000) return hit.v;
-  const p = pickOrchestrator(jobs.home, model, effort);
-  const v = { agent: p.agent, model: p.model, effort: p.effort, reason: p.reason || null };
-  orchCache.set(key, { at: Date.now(), v });
-  return v;
+  let base;
+  if (hit && Date.now() - hit.at < 5_000) {
+    base = hit.v;
+  } else {
+    const p = pickOrchestrator(jobs.home, model, effort);
+    base = { agent: p.agent, model: p.model, effort: p.effort, reason: p.reason || null };
+    orchCache.set(key, { at: Date.now(), v: base });
+  }
+  const pacing = base.agent === "claude" ? claudePacing(jobs.home) : null;
+  const cd = getCooldown(base.agent);
+  return { ...base, pacing, cooldown: cd ? { until: cd.until, reason: cd.reason } : null };
 }
 
 // Update check for the sidebar: cached answer if fresh, else kick off a background check and answer latest:null.
@@ -273,7 +285,11 @@ export const handler = async (req, res) => {
         return send(res, 200, { ...pre, changesBy: formatChangesBy(applied) });
       }
       if (what === "doctor") return send(res, 200, doctor());
-      if (what === "team") return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions(await listFreeModels()) });
+      if (what === "team") {
+        const orch = url.searchParams.get("orch") || "";
+        const orchestratorAgent = CODEX_ORCH_MODELS.includes(orch) ? "codex" : "claude";
+        return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions(await listFreeModels(), { home: jobs.home, orchestratorAgent }) });
+      }
       if (what === "models") {
         const d = doctor(), ok = (a) => !!(d[a] && d[a].installed && d[a].signedIn);
         return send(res, 200, {
@@ -351,7 +367,7 @@ export const handler = async (req, res) => {
         return send(res, 200, { override: loadTestOverride(jobs.home), lint: loadLintOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null });
       }
       if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
-      if (what === "chat") return send(res, 200, chats.send(b));
+      if (what === "chat") { orchCache.clear(); return send(res, 200, chats.send(b)); }
       if (what === "stop") return send(res, 200, chats.stop(id));
       if (what === "merge") return send(res, 200, jobs.merge(id, b.files, { autoCheck: b.autoCheck !== false }));
       if (what === "rebase") return send(res, 200, jobs.rebase(id));
