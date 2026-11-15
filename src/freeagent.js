@@ -284,7 +284,7 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
     usage.prompt_tokens += data?.usage?.prompt_tokens || 0;
     usage.completion_tokens += data?.usage?.completion_tokens || 0;
     const msg = normalizeMessage(data?.choices?.[0]?.message || {});
-    if (typeof msg.reasoning_content === "string" && msg.reasoning_content.trim()) emit({ type: "free.think", text: msg.reasoning_content.trim() });
+    if (typeof msg.reasoning_content === "string" && msg.reasoning_content.trim()) emit({ type: "free.think", text: msg.reasoning_content.trim().slice(0, 64 * 1024) });
     const calls = msg.tool_calls || [];
     if (!calls.length) {
       const text = msg.content || "";
@@ -453,7 +453,7 @@ export async function runFreeOrchestrator({
     const msg = normalizeMessage(data?.choices?.[0]?.message || data?.message || data?.msg || data || {});
     const thinkText = msg.reasoning_content;
     if (typeof thinkText === "string" && thinkText.trim()) {
-      emit({ type: "free.think", text: thinkText.trim() });
+      emit({ type: "free.think", text: thinkText.trim().slice(0, 64 * 1024) });
     }
     const calls = msg.tool_calls || [];
     if (!calls.length) {

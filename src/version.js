@@ -44,10 +44,10 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-// npm arguments that install a release: always the GitHub repository pinned to a validated vX.Y.Z tag.
-export function installArgs(tag) {
-  if (typeof tag !== "string" || !TAG_RE.test(tag)) throw new Error("refusing to install: not a validated release tag");
-  return ["install", "-g", "--ignore-scripts", `github:${REPO}#${tag}`];
+// npm arguments that install a release: always the GitHub repository pinned to its verified commit SHA.
+export function installArgs(tag, commit) {
+  if (typeof tag !== "string" || !TAG_RE.test(tag) || typeof commit !== "string" || !HEX40.test(commit)) throw new Error("refusing to install: not a validated release tag and commit");
+  return ["install", "-g", "--ignore-scripts", `github:${REPO}#${commit.toLowerCase()}`];
 }
 
 export const cacheFile = () => path.join(os.homedir(), ".tokenwise-studio", "update.json");
@@ -94,16 +94,16 @@ export async function verifyLatestRelease(fetchFn = fetch, { timeoutMs = 4000 } 
   return { version, tag, commit, source: "github" };
 }
 
-// Cached read only: { version, tag, source } or null. Never touches the network.
+// Cached read only: { version, tag, commit, source } or null. Never touches the network.
 export function cachedLatest({ maxAge = TTL } = {}) {
   const c = readJson(cacheFile());
-  if (c && c.source === "github" && typeof c.tag === "string" && TAG_RE.test(c.tag) && c.version === c.tag.slice(1) && Date.now() - (c.checkedAt || 0) < maxAge) {
-    return { version: c.version, tag: c.tag, source: "github" };
+  if (c && c.source === "github" && typeof c.tag === "string" && TAG_RE.test(c.tag) && c.version === c.tag.slice(1) && typeof c.commit === "string" && HEX40.test(c.commit) && Date.now() - (c.checkedAt || 0) < maxAge) {
+    return { version: c.version, tag: c.tag, commit: c.commit.toLowerCase(), source: "github" };
   }
   return null;
 }
 
-// { version, tag, source: "github" } or null. { force } skips the 24h cache.
+// { version, tag, commit, source: "github" } or null. { force } skips the 24h cache.
 export async function latestVersion({ force = false, fetchFn } = {}) {
   if (!force) { const c = cachedLatest(); if (c) return c; }
   try {
@@ -114,6 +114,6 @@ export async function latestVersion({ force = false, fetchFn } = {}) {
       const old = readJson(cacheFile()) || {};
       fs.writeFileSync(cacheFile(), JSON.stringify({ ...old, version: r.version, tag: r.tag, commit: r.commit, source: "github", checkedAt: Date.now() }, null, 2));
     } catch {}
-    return { version: r.version, tag: r.tag, source: "github" };
+    return { version: r.version, tag: r.tag, commit: r.commit, source: "github" };
   } catch { return null; }
 }

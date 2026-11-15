@@ -110,7 +110,7 @@ test("app lookup order: (a) app.json -> (b) mdfind (cached, arg array) -> (c) ~/
     };
     assert.equal(nativeNotifier({ fs: fsys, exec, home }), binOf(movedB));
     assert.equal(execCalls.length, 1);
-    assert.equal(execCalls[0].cmd, "mdfind");
+    assert.equal(execCalls[0].cmd, "/usr/bin/mdfind");
     assert.deepEqual(execCalls[0].args, [MDFIND_QUERY]);
 
     // Second call uses cached mdfind result

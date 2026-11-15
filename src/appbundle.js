@@ -40,7 +40,7 @@ export function verifyAppBundle(bundlePath, { fs: fsys = fs, requireExecutable =
 
 function queryMdfind(runExec) {
   try {
-    const out = runExec("mdfind", [MDFIND_QUERY], {
+    const out = runExec("/usr/bin/mdfind", [MDFIND_QUERY], {
       encoding: "utf8",
       timeout: 3000,
       stdio: ["ignore", "pipe", "pipe"],

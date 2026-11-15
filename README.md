@@ -80,7 +80,7 @@ The full feature list is in [FEATURES.md](FEATURES.md).
 
 [**Download for Mac**](https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg)
 
-Open the DMG and drag **tokenwise studio.app** to **Applications**. The signed, notarized release includes Node.js for Apple Silicon and Intel Macs (macOS 13.5+); you still need git and a signed-in worker CLI. Updates use Sparkle: choose **tokenwise studio > Check for Updates…**, or wait for the daily check.
+Open the DMG and drag **tokenwise studio.app** to **Applications**. The signed, notarized release includes Node.js for Apple Silicon and Intel Macs (macOS 13.3+); you still need git and a signed-in worker CLI. Updates use Sparkle: choose **tokenwise studio > Check for Updates…**, or wait for the daily check.
 
 ### macOS CLI installer
 
@@ -114,7 +114,7 @@ Requirements:
 - At least one worker CLI, signed in: [Codex CLI](https://github.com/openai/codex) (`codex login`), [Claude Code](https://www.npmjs.com/package/@anthropic-ai/claude-code) (`claude auth login`), Gemini via [Google Antigravity](https://antigravity.google) (`agy`, included in Gemini.app on macOS; run it once to sign in with your Google account; models `hydrogen` (fast, default) and `argon` (frontier)) or [Gemini CLI](https://github.com/google-gemini/gemini-cli) with `GEMINI_API_KEY` (Gemini CLI's own Google sign-in no longer works for individuals)
 
 ```bash
-npm install -g github:OnurSamett/tokenwise-studio
+curl -fsSL https://tokenwise.site/install.sh | sh
 tokenwise-studio setup
 ```
 
@@ -189,7 +189,7 @@ Details for the features above. Each section opens on click.
 
 **CLI/npm installs:** use `tokenwise-studio update` or the existing automatic updater. Settings > **Updates** has three modes: **Automatic**, **Notify only (default)** and **Off**. An earlier stored "Automatic" is read as Notify only once, with a note.
 
-- **Automatic** (opt-in): at most once every 24 hours the studio checks the latest GitHub release and, if it is newer and verified (tag vX.Y.Z, SHA256SUMS.txt present, tag commit matches the release target), installs that exact tag in the background (`npm install -g github:OnurSamett/tokenwise-studio#vX.Y.Z`, the same rule as `update`). It never installs while a job, test run or chat turn is running (it retries later), and never over a git checkout. When it is done the sidebar shows "Updated to vX — restart to use it" with a **Restart now** button. Progress is logged in `~/.tokenwise-studio/update.log`.
+- **Automatic** (opt-in): at most once every 24 hours the studio checks the latest GitHub release and, if it is newer and verified (tag vX.Y.Z, SHA256SUMS.txt present, tag commit matches the release target), installs the verified commit in the background (`npm install -g --ignore-scripts github:OnurSamett/tokenwise-studio#<40-hex-commit>`, the same rule as `update`). It never installs while a job, test run or chat turn is running (it retries later), and never over a git checkout. When it is done the sidebar shows "Updated to vX — restart to use it" with a **Restart now** button. Progress is logged in `~/.tokenwise-studio/update.log`.
 - **Restart now** stops the studio servers gracefully and the Mac app reloads its windows with the new version. If the app's Swift launcher changed in the new version, the app is rebuilt first (`tokenwise-studio setup --no-mcp`, no prompts).
 - **Notify only**: a small "New version" note with the command to copy; nothing is installed for you.
 - **Off**: no installs and no notice (turning off "Check for updates" does the same).

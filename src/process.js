@@ -5,7 +5,7 @@
 import crossSpawn from 'cross-spawn';
 import path from 'node:path';
 import { execFileSync as nativeExecFileSync, execFile as nativeExecFile } from 'node:child_process';
-import { resolveTool } from './resolve.js';
+import { resolveTool, untrustedDirs } from './resolve.js';
 export { addUntrustedDir } from './resolve.js';
 
 const cache = new Map();
@@ -13,7 +13,7 @@ export function resolveCommand(command, options = {}) {
   if (typeof command !== 'string') return command;
   const env = options.env || process.env;
   const win = process.platform === 'win32';
-  const key = [command, env.PATH ?? env.Path ?? '', options.cwd || '', process.cwd()].join('\0');
+  const key = [command, env.PATH ?? env.Path ?? '', options.cwd || '', process.cwd(), ...untrustedDirs()].join('\0');
   let found = cache.get(key);
   if (found === undefined) {
     found = resolveTool(command, { env, cwd: options.cwd ? path.resolve(String(options.cwd)) : process.cwd() });
@@ -25,13 +25,32 @@ export function resolveCommand(command, options = {}) {
   return command;
 }
 
-export const spawn = (command, args, options) => crossSpawn(resolveCommand(command, options), args, options);
-export const spawnSync = (command, args, options) => crossSpawn.sync(resolveCommand(command, options), args, options);
+function secureOptions(options = {}) {
+  if (process.platform === 'win32') {
+    options.env = { ...(options.env || process.env), NoDefaultCurrentDirectoryInExePath: "1" };
+  }
+  return options;
+}
+
+export const spawn = (command, args, options) => {
+  options = secureOptions(options);
+  return crossSpawn(resolveCommand(command, options), args, options);
+};
+export const spawnSync = (command, args, options) => {
+  options = secureOptions(options);
+  return crossSpawn.sync(resolveCommand(command, options), args, options);
+};
 export function execFile(command, ...rest) {
-  const opts = rest.find((r) => r && typeof r === 'object' && !Array.isArray(r));
+  let index = rest.findIndex((r) => r && typeof r === 'object' && !Array.isArray(r));
+  if (index < 0) {
+    index = Array.isArray(rest[0]) ? 1 : 0;
+    rest.splice(index, 0, {});
+  }
+  const opts = secureOptions(rest[index]);
   return nativeExecFile(resolveCommand(command, opts), ...rest);
 }
 export function execFileSync(command, args, options = {}) {
+  options = secureOptions(options);
   if (process.platform !== 'win32') return nativeExecFileSync(resolveCommand(command, options), args, options);
   const result = spawnSync(command, args, options);
   if (result.error || result.status !== 0) {

@@ -16,7 +16,9 @@ command -v curl >/dev/null 2>&1 || fail 'curl is missing.'
 cd "$HOME" || fail 'Cannot enter your home folder.'
 tag=$(curl -fsSL --max-time 15 -H 'Accept: application/vnd.github+json' https://api.github.com/repos/OnurSamett/tokenwise-studio/releases/latest | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const r=JSON.parse(d);const ok=!r.draft&&!r.prerelease&&/^v\d+\.\d+\.\d+$/.test(r.tag_name)&&(r.assets||[]).some(a=>a.name==="SHA256SUMS.txt");if(ok)process.stdout.write(r.tag_name)}catch{}})') || tag=''
 case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) fail 'Could not find a valid GitHub release (offline or rate limited?). Retry later, or download the DMG from https://github.com/OnurSamett/tokenwise-studio/releases/latest.' ;; esac
-package="github:OnurSamett/tokenwise-studio#$tag"
+sha=$(curl -fsSL --max-time 15 "https://api.github.com/repos/OnurSamett/tokenwise-studio/commits/$tag" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const r=JSON.parse(d);if(typeof r.sha==="string"&&/^[0-9a-f]{40}$/.test(r.sha))process.stdout.write(r.sha)}catch{}})') || sha=''
+[ -n "$sha" ] || fail 'Could not resolve the release commit. Retry later.'
+package="github:OnurSamett/tokenwise-studio#$sha"
 step "Running: npm install -g $package"
 npm install -g --ignore-scripts "$package" || fail 'npm installation failed. Check network access and your npm global prefix permissions; use a user-owned Node installation. No sudo is needed.'
 command -v tokenwise-studio >/dev/null 2>&1 || fail 'Installed, but tokenwise-studio is not on PATH. Add the bin directory under npm prefix -g to PATH, then run tokenwise-studio setup.'

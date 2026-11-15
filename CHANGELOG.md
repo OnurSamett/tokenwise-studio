@@ -1,12 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.10.1
 
 Security fixes from the v0.10.0 audit.
-- Updates come only from validated GitHub release tags; the npm registry package name is never queried or installed. Automatic updates now default to "Notify only"; a stored "Automatic" is read as Notify only once, with a note.
+- Updates are pinned to verified GitHub release commits; the npm registry package name is never queried or installed. Automatic updates now default to "Notify only"; a stored "Automatic" is read as Notify only once, with a note.
 - Tools (git, claude, codex, npm) resolve to absolute paths from PATH, never from the project or working directory (Windows binary planting). The server no longer runs with the project as its working directory.
 - Local server: GET /api needs a same-origin request or x-tokenwise; HTML refuses framing. The Mac app pins navigation and its bridge to its own server and confirms links that open unknown folders.
 - Project-shipped test commands need a one-time confirmation; test runs no longer inherit API keys. Markdown/file-reference scanners are linear-time. zod 4.6.7, npm-shrinkwrap.json, `npm ci --ignore-scripts` for the DMG.
+- Free models select responsive candidates using measured latency, show the active model label, and keep reasoning out of visible answers. Streaming and reasoning parsing now have size bounds and ReDoS protection.
+- macOS 13.3+ is required for both CLI-built apps and DMG releases.
 
 ## 0.10.0
 

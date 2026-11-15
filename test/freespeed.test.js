@@ -296,3 +296,50 @@ test("free runs emit leaked reasoning as free.think and a clean free.message (st
     assert.ok(ag.some((e) => e.type === "free.think"));
   });
 });
+
+test("splitReasoning bounds input and scans adversarial 140 KB inputs in under 50 ms", () => {
+  // Warm the parser before measuring the adversarial cases.
+  splitReasoning("<think>plan</think>answer");
+  for (const input of ["<think>".repeat(20 * 1024), "<|channel|>" + "a".repeat(140 * 1024), "<|channel|>".repeat(13 * 1024)]) {
+    const start = performance.now();
+    splitReasoning(input);
+    const ms = performance.now() - start;
+    assert.ok(ms < 50, `reasoning scan took ${ms.toFixed(1)}ms`);
+  }
+  assert.equal(splitReasoning("x".repeat(600 * 1024)).content.length, 512 * 1024);
+  assert.deepEqual(splitReasoning("İ<think>plan</think>answer"), { content: "İanswer", reasoning: "plan" });
+  assert.deepEqual(splitReasoning("a<THINK>one</THINK>b<think>two</think>c"), { content: "abc", reasoning: "one\n\ntwo" });
+});
+
+test("chatCompletion rejects oversized SSE buffers and combined content, reasoning and tool arguments", async () => {
+  const p = { name: "test", base: "https://stub", key: "x" };
+  await withStub({}, async () => sseRes(["x".repeat(1024 * 1024 + 1)]), async () => {
+    await assert.rejects(chatCompletion(p, { model: TOP, messages: [] }), /SSE buffer exceeds 1 MB/);
+  });
+  const event = (delta) => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;
+  const text = "x".repeat(256 * 1024);
+  const chunks = [
+    ...Array.from({ length: 6 }, () => event({ content: text })),
+    ...Array.from({ length: 6 }, () => event({ reasoning_content: text })),
+    ...Array.from({ length: 5 }, () => event({ tool_calls: [{ index: 0, function: { arguments: text } }] })),
+  ];
+  await withStub({}, async () => sseRes(chunks), async () => {
+    await assert.rejects(chatCompletion(p, { model: TOP, messages: [] }), /completion exceeds 4 MB/);
+  });
+  await withStub({}, async () => sseRes(Array.from({ length: 9 }, () => event({ content: "é".repeat(256 * 1024) }))), async () => {
+    await assert.rejects(chatCompletion(p, { model: TOP, messages: [] }), /completion exceeds 4 MB/);
+  });
+});
+
+test("free.think emission is capped at 64 KB", async () => {
+  await withStub({}, async (url, init) => {
+    if (url.endsWith('/models')) return catalogRes();
+    if (JSON.parse(init.body).max_tokens === 1) return jsonRes(200, { choices: [{ message: { content: 'ok' } }] });
+    return sseRes([`data: ${JSON.stringify({ choices: [{ delta: { content: 'answer', reasoning_content: 'r'.repeat(80 * 1024) } }] })}\n\n`]);
+  }, async () => {
+    const events = [];
+    const result = await runFreeChat('q', { emit: (e) => events.push(e) });
+    assert.equal(result.text, 'answer');
+    assert.equal(events.find((e) => e.type === 'free.think').text.length, 64 * 1024);
+  });
+});

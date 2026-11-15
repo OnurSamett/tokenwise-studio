@@ -4,6 +4,8 @@
 
 A NolienLabs project. Landing page: https://tokenwise.site
 
+Version 0.10.1: verified commit-pinned updates, hardened Windows tool resolution, local-origin and frame protections, confirmed project test commands with secrets stripped, and bounded free-model streaming. Free models use measured latency, display their model label, and separate reasoning from answers. Mac apps require macOS 13.3+.
+
 ## 1. Pitch and problem
 
 **tokenwise** is a skill for Claude Code, Codex CLI and Gemini CLI. For each piece of a large task it picks the model (Claude Haiku, Sonnet or Opus) and the reasoning effort separately, and hands mechanical work to cheaper subagents. **tokenwise studio** is its companion app: Claude Opus plans and reviews, while workers (Codex, Claude, Gemini, free hosted models, local Ollama) do the work in isolated git worktrees. You watch it all in a live UI and approve every change file by file.

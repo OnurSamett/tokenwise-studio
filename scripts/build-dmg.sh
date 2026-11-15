@@ -83,6 +83,8 @@ import fs from 'node:fs';
 import { buildApp } from './src/cli.js';
 buildApp(process.argv[2], { selfContained: true, sparkleDir: process.argv[3], sparklePublicKey: fs.readFileSync('launcher/sparkle-public-key.txt', 'utf8').trim() });
 JS
+# buildApp writes the shared macOS 13.3 minimum for CLI and DMG bundles.
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")" == "13.3" ]] || fail 'Expected macOS 13.3 minimum'
 FRAMEWORK="$APP/Contents/Frameworks/Sparkle.framework"
 mkdir -p "$APP/Contents/Frameworks"
 ditto "$SPARKLE_DIR/Sparkle.framework" "$FRAMEWORK"

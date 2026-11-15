@@ -1,7 +1,7 @@
 // Conflict detection and resolution helpers for write jobs before Apply (merge).
 // Uses git plumbing against a temporary GIT_INDEX_FILE so checks never modify
 // the user's working tree, real index, branch, or HEAD.
-import { execFileSync } from "./process.js";
+import { execFileSync, addUntrustedDir } from "./process.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -307,6 +307,7 @@ export function rebaseJob(jobs, id, { artifacts = [], onImages } = {}) {
 
   const suffix = `rb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
   const newCwd = path.join(jobs.home, "worktrees", `${id}-${suffix}`);
+  addUntrustedDir(newCwd);
   const newBranch = `tokenwise/${id}-${suffix}`;
   git(jobs.repo, ["worktree", "add", "-q", "-b", newBranch, newCwd, "HEAD"]);
 

@@ -20,8 +20,11 @@
     $tag = [string]$rel.tag_name
     $hasSums = @($rel.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' }).Count -gt 0
     if ($rel.draft -or $rel.prerelease -or $tag -notmatch '^v\d+\.\d+\.\d+$' -or -not $hasSums) { Fail 'Could not find a valid GitHub release. Retry later.' }
-    Step "Running npm install -g github:OnurSamett/tokenwise-studio#$tag"
-    & npm.cmd install -g --ignore-scripts "github:OnurSamett/tokenwise-studio#$tag"
+    $commit = Invoke-RestMethod -Uri "https://api.github.com/repos/OnurSamett/tokenwise-studio/commits/$tag" -Headers @{ 'User-Agent' = 'tokenwise-studio-installer'; 'Accept' = 'application/vnd.github+json' }
+    $sha = [string]$commit.sha
+    if ($sha -notmatch '^[0-9a-f]{40}$') { Fail 'Could not resolve the release commit. Retry later.' }
+    Step "Running npm install -g github:OnurSamett/tokenwise-studio#$sha"
+    & npm.cmd install -g --ignore-scripts "github:OnurSamett/tokenwise-studio#$sha"
     if ($LASTEXITCODE -ne 0) { Fail 'npm installation failed. Check network access and npm global prefix permissions, then retry.' }
     Step '4/4 Installation complete (Windows beta)'
     Write-Host 'Open a project folder in your terminal, then run:'

@@ -163,7 +163,7 @@ exec ${q(stableNode())} ${q(path.join(SRC, "cli.js"))} --pick >> "$LOG" 2>&1
     let r;
     if (selfContained) {
       for (const arch of ["arm64", "x86_64"]) {
-        r = run("xcrun", ["swiftc", "-O", "-target", `${arch}-apple-macos13.5`, "-module-cache-path", path.join(res, ".swift-cache"), "-Xlinker", "-no_adhoc_codesign", ...frameworks, swift, "-o", path.join(macos, `${EXE}-${arch}`)], { timeout: 240000 });
+        r = run("xcrun", ["swiftc", "-O", "-target", `${arch}-apple-macos13.3`, "-module-cache-path", path.join(res, ".swift-cache"), "-Xlinker", "-no_adhoc_codesign", ...frameworks, swift, "-o", path.join(macos, `${EXE}-${arch}`)], { timeout: 240000 });
         if (!r.ok) throw new Error(`release Swift compilation (${arch}) failed: ${r.out}`);
       }
       fs.rmSync(path.join(res, ".swift-cache"), { recursive: true, force: true });
@@ -197,7 +197,7 @@ ${hasIcon ? "  <key>CFBundleIconFile</key><string>AppIcon</string>\n" : ""}  <ke
   <key>CFBundleVersion</key><string>${pkg.version}</string>
   <key>CFBundleShortVersionString</key><string>${pkg.version}</string>
   <key>LSUIElement</key><false/>
-  <key>LSMinimumSystemVersion</key><string>${selfContained ? "13.5" : "13.0"}</string>
+  <key>LSMinimumSystemVersion</key><string>13.3</string>
 ${selfContained ? `  <key>SUFeedURL</key><string>https://tokenwise.site/appcast.xml</string>
   <key>SUPublicEDKey</key><string>${sparklePublicKey}</string>
   <key>SUEnableAutomaticChecks</key><true/>
@@ -344,7 +344,7 @@ async function doUpdate() {
   if (source === "dev") return console.log("this is a git checkout: update it with `git pull` (then `tokenwise-studio setup` to rebuild the Mac app)");
   if (!latest?.tag) { console.error("no verified release found to install; try again later or download a release from https://github.com/OnurSamett/tokenwise-studio/releases"); process.exit(1); }
   if (source === "npm") console.log("note: this copy looks like it came from the npm registry. That package name is not published by this project; installing the verified GitHub release instead.");
-  const args = installArgs(latest.tag); // GitHub release tag only, never the npm registry
+  const args = installArgs(latest.tag, latest.commit); // Verified GitHub release commit only, never the npm registry
   console.log(`\nnpm ${args.join(" ")}\n`);
   try { execFileSync("npm", args, { stdio: "inherit", cwd: os.homedir() }); }
   catch { console.error("\nupdate failed; nothing else was changed. Try the command above yourself (you may need different permissions)."); process.exit(1); }

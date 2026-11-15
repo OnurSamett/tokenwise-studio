@@ -310,6 +310,7 @@ internal static class StudioServer
             var info = new ProcessStartInfo(node) { WorkingDirectory = AppDir, UseShellExecute = false, CreateNoWindow = true };
             info.ArgumentList.Add(Path.Combine(AppDir, "src", "cli.js"));
             info.ArgumentList.Add(repo); info.ArgumentList.Add("--no-open");
+            info.Environment["NoDefaultCurrentDirectoryInExePath"] = "1";
             info.Environment["PATH"] = Path.GetDirectoryName(node) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
             // No redirected pipes: their closure on app exit must not break the persistent server.
             using var child = Process.Start(info) ?? throw new IOException("Could not start embedded Node.js.");

@@ -7,8 +7,8 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import { resolveTool } from "../src/resolve.js";
-import { installArgs, latestVersion, verifyLatestRelease, TAG_RE } from "../src/version.js";
+import { resolveTool, untrustedDirs } from "../src/resolve.js";
+import { installArgs, latestVersion, verifyLatestRelease, cachedLatest, TAG_RE } from "../src/version.js";
 import { allowed, handler, initServer } from "../src/ui.js";
 import { parseFileLineRefs } from "../ui/workspace.js";
 import { renderMarkdownHtml, parseCitations } from "../ui/citations.js";
@@ -18,7 +18,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const tmp = (p = "tw-sec-") => fs.mkdtempSync(path.join(os.tmpdir(), p));
 const readSrc = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
 
-// ---- C1 / H2: no npm registry path, tag-pinned updates ----
+// ---- C1 / H2: no npm registry path, commit-pinned updates ----
 
 test("no code path installs or queries the npm registry package", () => {
   for (const f of ["src/version.js", "src/autoupdate.js", "src/cli.js", "docs/install.sh", "docs/install.ps1"]) {
@@ -26,12 +26,13 @@ test("no code path installs or queries the npm registry package", () => {
     assert.ok(!/registry\.npmjs\.org/.test(t.replace(/^\s*(#|\/\/).*$/gm, "")), `${f} mentions the registry`);
     assert.ok(!/npm view|tokenwise-studio@latest/.test(t), `${f} queries or installs the npm package`);
   }
-  assert.ok(/#\$tag|#\$\{tag\}|#\$tag"/.test(readSrc("docs/install.ps1")) && /#\$tag/.test(readSrc("docs/install.sh")));
+  assert.ok(/#\$sha/.test(readSrc("docs/install.ps1")) && /#\$sha/.test(readSrc("docs/install.sh")));
 });
 
-test("installArgs only produces github:...#vX.Y.Z", () => {
-  assert.deepEqual(installArgs("v0.10.1"), ["install", "-g", "--ignore-scripts", "github:OnurSamett/tokenwise-studio#v0.10.1"]);
-  for (const bad of [undefined, "", "main", "latest", "0.10.1", "v1.2", "v1.2.3-beta", "v1.2.3 --foo", "../v1.2.3"]) assert.throws(() => installArgs(bad), /validated release tag/);
+test("installArgs requires a release tag and pins its verified commit", () => {
+  assert.deepEqual(installArgs("v0.10.1", SHA.toUpperCase()), ["install", "-g", "--ignore-scripts", `github:OnurSamett/tokenwise-studio#${SHA}`]);
+  for (const bad of [undefined, "", "main", "latest", "0.10.1", "v1.2", "v1.2.3-beta", "v1.2.3 --foo", "../v1.2.3"]) assert.throws(() => installArgs(bad, SHA), /validated release tag/);
+  for (const commit of [undefined, "", "main", "a".repeat(39), "g".repeat(40), SHA + ";echo x"]) assert.throws(() => installArgs("v0.10.1", commit));
   assert.ok(TAG_RE.test("v10.20.30"));
 });
 
@@ -73,11 +74,16 @@ test("latestVersion: GitHub only, caches a tag, ignores old npm-era cache entrie
     fs.writeFileSync(cache, JSON.stringify({ version: "9.9.9", source: "npm", checkedAt: Date.now() })); // fresh but from the registry
     const gh = fakeGithub();
     const r = await latestVersion({ fetchFn: gh.fn });
-    assert.deepEqual(r, { version: "0.11.0", tag: "v0.11.0", source: "github" });
+    assert.deepEqual(r, { version: "0.11.0", tag: "v0.11.0", commit: SHA, source: "github" });
     assert.ok(!gh.urls.some((u) => /npmjs/.test(u)));
     assert.equal(JSON.parse(fs.readFileSync(cache, "utf8")).tag, "v0.11.0");
     const again = await latestVersion({ fetchFn: async () => { throw new Error("must use cache"); } });
     assert.equal(again.tag, "v0.11.0");
+    assert.equal(again.commit, SHA);
+    for (const commit of [undefined, "not-a-sha", "b".repeat(39)]) {
+      fs.writeFileSync(cache, JSON.stringify({ version: "0.11.0", tag: "v0.11.0", source: "github", checkedAt: Date.now(), commit }));
+      assert.equal(cachedLatest(), null, "cache without a valid commit is a miss");
+    }
     assert.equal(await latestVersion({ force: true, fetchFn: fakeGithub({ draft: true }).fn }), null, "unverified release is not offered");
   } finally { process.env.HOME = prev; fs.rmSync(home, { recursive: true, force: true }); }
 });
@@ -148,6 +154,9 @@ test("allowed(): /api GET needs same-origin / none Sec-Fetch-Site or x-tokenwise
   assert.equal(allowed(req({ "sec-fetch-site": "cross-site" })), false);
   assert.equal(allowed(req({ "sec-fetch-site": "same-site" })), false, "another localhost port is same-site");
   assert.equal(allowed(req({ "sec-fetch-site": "same-origin" })), true);
+  assert.equal(allowed(req({ referer: "http://127.0.0.1:4790/chat" })), true);
+  for (const referer of ["http://127.0.0.1:4791/", "http://localhost:4790/", "http://evil.example/", "invalid", "file:///tmp/x"]) assert.equal(allowed(req({ referer })), false);
+  assert.equal(allowed(req({ referer: "http://127.0.0.1:4790/", "sec-fetch-site": "cross-site" })), false);
   assert.equal(allowed(req({ "sec-fetch-site": "none" })), true);
   assert.equal(allowed(req({ "x-tokenwise": "1" })), true);
   assert.equal(allowed(req({ "sec-fetch-site": "cross-site" }, "/")), true, "the page itself may be fetched");
@@ -167,10 +176,12 @@ test("handler: cross-site /api GET is refused, HTML carries frame protections", 
   process.env.HOME = home;
   try {
     initServer({ repo });
+    assert.ok(untrustedDirs().includes(repo));
     assert.equal((await call({ "sec-fetch-site": "cross-site" }, "/api/doctor")).status, 403);
     assert.equal((await call({}, "/api/models")).status, 403);
     assert.equal((await call({ "sec-fetch-site": "same-origin" }, "/api/state")).status, 200);
     assert.equal((await call({ "x-tokenwise": "1" }, "/api/state")).status, 200);
+    assert.equal((await call({ referer: "http://127.0.0.1:4790/" }, "/api/state")).status, 200);
     const page = await call({ "sec-fetch-site": "none" }, "/");
     assert.equal(page.status, 200);
     assert.equal(page.head["content-security-policy"], "frame-ancestors 'none'");
@@ -253,4 +264,18 @@ test("build scripts: npm ci ignores scripts, node version validated, stale TODO 
   assert.ok(fs.existsSync(path.join(ROOT, "npm-shrinkwrap.json")));
   assert.equal(readSrc("npm-shrinkwrap.json"), readSrc("package-lock.json"), "regenerate: cp package-lock.json npm-shrinkwrap.json");
   assert.equal(JSON.parse(readSrc("package.json")).dependencies.zod, "4.6.7");
+});
+
+
+test("Mac app and Sparkle builds require macOS 13.3", () => {
+  assert.match(readSrc("src/cli.js"), /<key>LSMinimumSystemVersion<\/key><string>13\.3<\/string>/);
+  assert.match(readSrc("scripts/build-dmg.sh"), /Print :LSMinimumSystemVersion[^\n]*13\.3/);
+  assert.match(readSrc("scripts/update-appcast.mjs"), /<sparkle:minimumSystemVersion>13\.3</);
+});
+
+test("new and restored worktrees register as untrusted", () => {
+  assert.match(readSrc("src/jobs.js"), /addUntrustedDir\(cwd\)/);
+  assert.match(readSrc("src/jobs.js"), /addUntrustedDir\(path.join\(this.home, "worktrees", root\)\)/);
+  assert.match(readSrc("src/conflicts.js"), /addUntrustedDir\(newCwd\)/);
+  assert.match(readSrc("windows/TokenwiseStudio/Program.cs"), /info.Environment\["NoDefaultCurrentDirectoryInExePath"\] = "1"/);
 });

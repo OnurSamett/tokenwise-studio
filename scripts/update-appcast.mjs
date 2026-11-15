@@ -39,7 +39,7 @@ export function updateAppcast({ version, dmg, signature, publicKeyFile, appcast,
       <pubDate>${xml(now.toUTCString())}</pubDate>
       <sparkle:version>${xml(version)}</sparkle:version>
       <sparkle:shortVersionString>${xml(version)}</sparkle:shortVersionString>
-      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <sparkle:minimumSystemVersion>13.3</sparkle:minimumSystemVersion>
       <sparkle:releaseNotesLink>${xml(`${base}/blob/v${version}/CHANGELOG.md#${anchor}`)}</sparkle:releaseNotesLink>
       <enclosure url="${xml(`${base}/releases/download/v${version}/tokenwise-studio-${version}.dmg`)}" sparkle:edSignature="${xml(signature)}" length="${bytes.length}" type="application/octet-stream" />
     </item>

@@ -325,14 +325,29 @@ export async function selectReady(p, models, { forced = null, timeoutMs = probeT
  * and stray "<channel|>" / "<|channel|>" markers (text before the last one is reasoning). Returns { content, reasoning }.
  */
 export function splitReasoning(raw) {
-  let text = String(raw ?? "");
+  let text = String(raw ?? "").slice(0, 512 * 1024);
   const think = [];
   if (!text) return { content: "", reasoning: "" };
-  text = text.replace(/<think>([\s\S]*?)<\/think>/gi, (_, r) => { if (r.trim()) think.push(r.trim()); return ""; });
+  // Scan once; repeated unclosed tags must not trigger repeated suffix searches.
+  // Lower only ASCII so Unicode case expansion cannot shift tag offsets.
+  const lower = text.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  const parts = [];
+  let pos = 0;
+  for (;;) {
+    const open = lower.indexOf("<think>", pos);
+    if (open < 0) break;
+    const end = lower.indexOf("</think>", open + 7);
+    if (end < 0) break;
+    parts.push(text.slice(pos, open));
+    const body = text.slice(open + 7, end).trim();
+    if (body) think.push(body);
+    pos = end + 8;
+  }
+  text = parts.join("") + text.slice(pos);
   const close = text.search(/<\/think>/i); // opening tag omitted by the model
   if (close >= 0) { if (text.slice(0, close).trim()) think.push(text.slice(0, close).trim()); text = text.slice(close + 8); }
   if (/<\|channel\|>/.test(text)) {
-    const re = /(?:<\|start\|>\s*assistant\s*)?<\|channel\|>\s*([A-Za-z_]+)[^<]*?(?:<\|constrain\|>[^<]*?)?<\|message\|>([\s\S]*?)(?=<\|end\|>|<\|return\|>|<\|call\|>|<\|start\|>|<\|channel\|>|$)/g;
+    const re = /(?:<\|start\|>\s*assistant\s*)?<\|channel\|>\s*([A-Za-z_]{1,32})[^<]{0,200}?(?:<\|constrain\|>[^<]*?)?<\|message\|>([\s\S]*?)(?=<\|end\|>|<\|return\|>|<\|call\|>|<\|start\|>|<\|channel\|>|$)/g;
     const finals = [];
     let m, any = false;
     while ((m = re.exec(text))) { any = true; const body = m[2].trim(); if (body) (m[1].toLowerCase() === "final" ? finals : think).push(body); }
@@ -399,21 +414,28 @@ export async function chatCompletion(p, { model, messages, tools = null, extra =
     const dec = new TextDecoder();
     const msg = { role: "assistant", content: "" };
     const calls = [];
-    let usage = null, buf = "", firstMs = null;
+    let usage = null, buf = "", firstMs = null, accumulated = 0;
+    const count = (s) => {
+      if (typeof s === "string") accumulated += Buffer.byteLength(s, "utf8");
+      if (accumulated > 4 * 1024 * 1024) throw new Error("streamed completion exceeds 4 MB");
+    };
     const onData = (json) => {
       if (json?.error) throw Object.assign(new Error(String(json.error?.message || json.error).slice(0, 200)), { status: Number(json.error?.code) || 0 });
       if (json?.usage) usage = json.usage;
       const d = json?.choices?.[0]?.delta;
       if (!d) return;
       if (firstMs === null) firstMs = Date.now() - t0;
+      count(d.content);
       if (typeof d.content === "string") msg.content += d.content;
       const think = d.reasoning_content ?? d.reasoning;
+      count(think);
       if (typeof think === "string") msg.reasoning_content = (msg.reasoning_content || "") + think;
       for (const tc of d.tool_calls || []) {
         const i = Number.isInteger(tc.index) ? tc.index : calls.length;
         const c = calls[i] || (calls[i] = { id: tc.id || null, type: "function", function: { name: "", arguments: "" } });
         if (tc.id) c.id = tc.id;
         if (tc.function?.name) c.function.name += tc.function.name;
+        count(tc.function?.arguments);
         if (typeof tc.function?.arguments === "string") c.function.arguments += tc.function.arguments;
       }
     };
@@ -430,6 +452,7 @@ export async function chatCompletion(p, { model, messages, tools = null, extra =
       if (done) break;
       arm(idleMs, "no data for " + Math.round(idleMs / 1000) + "s");
       buf += dec.decode(value, { stream: true });
+      if (Buffer.byteLength(buf, "utf8") > 1024 * 1024) throw new Error("SSE buffer exceeds 1 MB");
       let nl;
       while ((nl = buf.indexOf("\n")) >= 0) { line(buf.slice(0, nl)); buf = buf.slice(nl + 1); }
     }
@@ -439,6 +462,7 @@ export async function chatCompletion(p, { model, messages, tools = null, extra =
     if (!msg.content) msg.content = calls2.length ? null : "";
     return { choices: [{ message: normalizeMessage(msg) }], usage: usage || undefined, _latency: { firstMs: firstMs ?? Date.now() - t0, totalMs: Date.now() - t0 } };
   } catch (e) {
+    ac.abort();
     throw timedOut(e);
   } finally {
     clearTimeout(timer);
@@ -512,7 +536,7 @@ export async function runFreeChat(task, { emit = out, probeTimeout } = {}) {
         recordModelHealth(p.name, model, true, "ok");
         const m0 = normalizeMessage(data?.choices?.[0]?.message || {});
         const text = m0.content ?? "";
-        if (m0.reasoning_content) emit({ type: "free.think", text: m0.reasoning_content });
+        if (m0.reasoning_content) emit({ type: "free.think", text: m0.reasoning_content.slice(0, 64 * 1024) });
         const usage = { prompt_tokens: data?.usage?.prompt_tokens ?? 0, completion_tokens: data?.usage?.completion_tokens ?? 0 };
         if (data?._latency) emit({ type: "free.latency", provider: p.name, model, ms: data._latency.firstMs });
         emit({ type: "free.message", text });

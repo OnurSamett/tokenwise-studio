@@ -56,7 +56,7 @@ export function decideAutoUpdate({ mode, updateCheck = true, source, current, la
   if (ready?.version && compareVersions(ready.version, latest.version) >= 0) return { action: "skip", reason: "already installed", retry: false };
   if (busy) return { action: "skip", reason: "busy", retry: true };
   let args;
-  try { args = installArgs(latest.tag); } catch { return { action: "skip", reason: "no verified release tag", retry: false }; }
+  try { args = installArgs(latest.tag, latest.commit); } catch { return { action: "skip", reason: "no verified release tag", retry: false }; }
   return { action: "install", args };
 }
 

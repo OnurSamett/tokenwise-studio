@@ -1,7 +1,7 @@
 // Job store: each delegated task runs as a child process, optionally in its own git worktree.
 import { gitCommonDir } from "./platform.js";
 import { validateImages } from "./uploads.js";
-import { spawn, execFileSync } from "./process.js";
+import { spawn, execFileSync, addUntrustedDir } from "./process.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -234,8 +234,10 @@ function buildFixRoundTask({ task, jobs, prev, matchedFiles, failingOutput }) {
 export class Jobs {
   constructor(repo, { proxyScript = null, playtestDir = null, playtestDiscardGraceMs = 3000 } = {}) {
     this.repo = path.resolve(repo);
+    addUntrustedDir(this.repo);
     this.home = path.join(this.repo, ".tokenwise-studio");
     for (const d of ["jobs", "logs", "worktrees"]) fs.mkdirSync(path.join(this.home, d), { recursive: true });
+    for (const root of fs.readdirSync(path.join(this.home, "worktrees"))) addUntrustedDir(path.join(this.home, "worktrees", root));
     this.running = new Map(); // id -> { child, done: Promise, discardTimer? }
     this.testing = new Map(); // id -> test-run child process (see testrun.js)
     this.combinedChecking = null; // { active, child } for main-tree combined check
@@ -333,6 +335,7 @@ export class Jobs {
     if (write) {
       if (!this.isGit()) throw new Error("write mode needs the project to be a git repository");
       cwd = path.join(this.home, "worktrees", id);
+      addUntrustedDir(cwd);
       branch = `tokenwise/${id}`;
       git(this.repo, "worktree", "add", "-q", "-b", branch, cwd, "HEAD");
     }

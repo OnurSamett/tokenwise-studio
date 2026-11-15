@@ -19,19 +19,20 @@ function withHome(fn) {
   return Promise.resolve().then(() => fn(home)).finally(done);
 }
 
-const base = { mode: "auto", updateCheck: true, source: "github", current: "0.8.0", latest: { version: "0.9.0", tag: "v0.9.0", source: "github" }, busy: false, lastAttemptAt: 0, ready: null, now: 1_000_000_000_000 };
+const SHA = "a".repeat(40);
+const base = { mode: "auto", updateCheck: true, source: "github", current: "0.8.0", latest: { version: "0.9.0", tag: "v0.9.0", commit: SHA, source: "github" }, busy: false, lastAttemptAt: 0, ready: null, now: 1_000_000_000_000 };
 
-test("decideAutoUpdate: installs a newer version pinned to the verified release tag, never from npm", () => {
+test("decideAutoUpdate: installs a newer version pinned to the verified release commit, never from npm", () => {
   const d = decideAutoUpdate(base);
   assert.equal(d.action, "install");
-  assert.deepEqual(d.args, ["install", "-g", "--ignore-scripts", "github:OnurSamett/tokenwise-studio#v0.9.0"]);
+  assert.deepEqual(d.args, ["install", "-g", "--ignore-scripts", `github:OnurSamett/tokenwise-studio#${SHA}`]);
   assert.ok(!d.args.some((a) => /^tokenwise-studio(@|$)/.test(a)), "no registry package spec");
   // A latest without a validated tag (e.g. an old cache entry from the npm registry) is never installed.
   assert.equal(decideAutoUpdate({ ...base, latest: { version: "0.9.0", source: "npm" } }).action, "skip");
   assert.equal(decideAutoUpdate({ ...base, latest: { version: "0.9.0", tag: "main", source: "github" } }).action, "skip");
   assert.throws(() => installArgs("latest"));
   assert.throws(() => installArgs("v1.2.3; rm -rf"));
-  assert.deepEqual(installArgs("v1.2.3"), ["install", "-g", "--ignore-scripts", "github:OnurSamett/tokenwise-studio#v1.2.3"]);
+  assert.deepEqual(installArgs("v1.2.3", SHA), ["install", "-g", "--ignore-scripts", `github:OnurSamett/tokenwise-studio#${SHA}`]);
 });
 
 test("decideAutoUpdate: skips for mode, dev checkout, update check off, up to date, already installed", () => {
@@ -57,7 +58,7 @@ function harness(over = {}) {
   const state = {};
   const deps = {
     mode: () => "auto", updateCheck: () => true, source: () => "github", current: () => "0.8.0",
-    latest: async () => ({ version: "0.9.0", tag: "v0.9.0", source: "github" }), busy: () => false,
+    latest: async () => ({ version: "0.9.0", tag: "v0.9.0", commit: SHA, source: "github" }), busy: () => false,
     install: async (args) => { calls.install.push(args); return { ok: true, out: "" }; },
     now: () => 5_000_000_000_000, readState: () => state, writeState: (p) => Object.assign(state, p),
     log: (m) => calls.log.push(m), lock: async (fn) => ({ locked: false, value: await fn() }),

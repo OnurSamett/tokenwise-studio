@@ -26,7 +26,7 @@ test('Sparkle feed records verified stapled bytes, version, date and released CH
   updateAppcast(f);
   const feed = fs.readFileSync(f.appcast, 'utf8');
   assert.match(feed, /<pubDate>Sun, 15 Nov 2026 12:00:00 GMT<\/pubDate>/);
-  assert.match(feed, /<sparkle:minimumSystemVersion>13\.0<\/sparkle:minimumSystemVersion>/);
+  assert.match(feed, /<sparkle:minimumSystemVersion>13\.3<\/sparkle:minimumSystemVersion>/);
   assert.ok(feed.includes(`/download/v1.2.3/tokenwise-studio-1.2.3.dmg" sparkle:edSignature="${f.signature}" length="${fs.statSync(f.dmg).size}"`));
   assert.ok(feed.includes('/blob/v1.2.3/CHANGELOG.md#123-2026-11-15'));
   assert.throws(() => updateAppcast(f), /already contains/);

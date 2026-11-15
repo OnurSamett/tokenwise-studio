@@ -1,6 +1,6 @@
 {
   "name": "tokenwise-studio",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Let one agent orchestrate others: Claude Opus delegates to Codex Sol, Claude Haiku/Sonnet or Gemini workers in isolated git worktrees, with a live web UI.",
   "keywords": [
     "mcp",

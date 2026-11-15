@@ -8,7 +8,7 @@ import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "./process.js";
+import { execFileSync, addUntrustedDir } from "./process.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { saveUpload, resolveUpload, UPLOAD_BODY_LIMIT } from "./uploads.js";
 import { Jobs, gitSetupPreview, setupGit } from "./jobs.js";
@@ -82,6 +82,7 @@ function maybePruneShootouts(force = false) {
   try { pruneExpiredShootouts(jobs, { now }); } catch {}
 }
 function openProject(p) {
+  addUntrustedDir(p);
   repo = p; jobs = new Jobs(repo, serverJobsOpts); chats = new Chats(jobs, serverChatOpts);
   lastPrunedAt = 0;
   maybePruneShootouts(true);
@@ -191,7 +192,14 @@ export function allowed(req) {
     if (!String(req.url || "").startsWith("/api/")) return true;
     if (req.headers["x-tokenwise"] === "1") return true;
     const site = req.headers["sec-fetch-site"];
-    return site === "same-origin" || site === "none";
+    if (site === "same-origin" || site === "none") return true;
+    if (site === undefined && req.headers.referer) {
+      try {
+        const ref = new URL(req.headers.referer);
+        return (ref.protocol === "http:" || ref.protocol === "https:") && ref.host === req.headers.host;
+      } catch { return false; }
+    }
+    return false;
   }
   if (req.headers["x-tokenwise"] !== "1") return false;
   const origin = req.headers.origin;
