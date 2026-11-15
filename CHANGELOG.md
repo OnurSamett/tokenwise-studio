@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.0
+
+- Workspace side panel: project files, diffs and image or page previews, plus a "This chat" tab listing the files touched in the current chat. File routes are confined to the project and block secret files.
+- Pull request from applied changes: a confirm step in the review drawer commits to a new branch, pushes and opens a PR with `gh` (or returns a compare link). UI only; the orchestrator has no tool for it.
+- Conflict check before Apply, so overlapping edits from different workers are flagged first.
+- Model shootout: on request, the same task goes to two or three models as parallel write jobs and you compare them. Allowed only when you ask for it in the current turn.
+- Dictation: a microphone button in the composer of the Mac app.
+- Quota pacing and provider cooldowns: reset times parsed from limit errors, providers in cooldown skipped, Gemini 5-hour and daily counters, pacing settings.
+- Free models: availability probe, down models skipped for 4 hours, fallbacks kept, tool-use ranking. Codex orchestrator model choices.
+- Rojo-aware project map for Roblox projects (`project_map` tool, cached).
+- Mac app: open a folder from the app, lighter UI, restore of last projects, welcome window instead of a folder dialog. Notifications only from the app, one limit notice per window.
+- Fixes: repeated compaction, git setup offered in non-git folders. Benchmarks: Claude Haiku 5.5 (TB 4.0 40.0) and GPT-6.1 Terra (51.8) added.
+- Website: https://tokenwise.site, with canonical URL, sitemap and structured data. New README and screenshots.
+
 ## 0.8.0
 
 - Undo Apply: every Apply records a git snapshot of the index and working tree under `refs/tokenwise/pre-apply/` (last 30 kept, no change to your branch or `HEAD`). Undo restores only the files the Apply touched and refuses, naming the files, if they changed since.

@@ -2,7 +2,7 @@
 
 *Living document — updated with every release.*
 
-A NolienLabs project. Landing page: https://tokenwise.nolienlabs.com
+A NolienLabs project. Landing page: https://tokenwise.site
 
 ## 1. Pitch and problem
 
@@ -42,10 +42,17 @@ A NolienLabs project. Landing page: https://tokenwise.nolienlabs.com
 - **Undo Apply.** A git snapshot before every Apply; Undo restores only the files it touched and refuses if they changed since. Why: applying is never a one-way door, and your own edits are never lost.
 - **Combined check.** Tests plus optional lint on the applied result, run without a shell and with a timeout. Why: two workers' changes can pass alone and fail together.
 - **Roblox Studio error import.** Paste Studio Output; errors and stacks are deduplicated and mapped to files through Rojo, then sent to the orchestrator. Why: the loop from a playtest error to a fix is one paste.
+- **Conflict check before Apply.** Overlapping edits from different workers are flagged before anything is staged. Why: you find out about a clash before it reaches your tree.
+- **Open a pull request.** After Apply, a confirm step in the review drawer commits to a new branch, pushes and opens the PR with `gh` (or gives a compare link). It is a UI action only, never an orchestrator tool. Why: shipping is one step, and only you trigger it.
+- **Model shootout.** On request, the same task goes to two or three models as parallel write jobs and you compare the results side by side. Only allowed when you ask for it in that turn, because it multiplies token use. Why: pick the best answer instead of trusting one model.
+- **Quota pacing and provider cooldowns.** Reset times are parsed from limit errors, a provider in cooldown is skipped until it resets, and pacing settings spread usage across the window. Why: no worker is started just to fail on a known limit.
+- **Rojo-aware project map.** For Roblox projects, a cached map of scripts and project files is given to the orchestrator and workers as a `project_map` tool and slices. Why: less exploring, fewer wasted tokens.
 - **Permission modes.** `ask`, `auto-apply`, `plan-only`, enforced inside the MCP tools. Why: the rule holds even if the model ignores a prompt.
 - **Per-turn token budget.** 50k–500k covering orchestrator and workers; a notice at 80%, no new jobs at 100%. Why: a runaway turn cannot drain a plan.
 
 ### Models and benchmarks
+- **Free-model probe and fallbacks.** Free hosted models are probed with a tiny request; a model that is down is skipped for a few hours and the next ranked one is used. Free models are ranked for tool use. Why: a dead free model does not stall a run.
+- **Codex orchestrator choices.** Pick the Codex model for the orchestrator when Claude is not in use. Why: the same choice logic on both sides.
 - **Model guide.** Strengths per model, plus a benchmarks table led by the official Terminal-Bench 4.0 board. Why: choose with data, not brand names.
 - **Free models ranked by TB 4.0 of the served version.** Why: vendor numbers on older benchmarks can mislead (see section 5).
 - **Ladders per agent.** Fast, balanced and frontier models for Codex, Claude, Gemini and free NVIDIA. Why: the same choice logic everywhere.
@@ -54,11 +61,17 @@ A NolienLabs project. Landing page: https://tokenwise.nolienlabs.com
 ### The Mac app
 - **Native window** (Swift, WKWebView): one window per project, Dock icon, ⌘O, Open Recent, `tokenwise-studio://` URL scheme. Why: it behaves like an app, not a browser tab.
 - **Desktop notifications.** Ready for review, finished, failed, one per orchestrator turn, and a Codex takeover. Clicking opens that project's window. Why: you can leave long runs alone.
+- **Open folder in the app, and a lighter UI.** Choose a project from the app itself.
+- **Restore and welcome window.** The app reopens your last projects; with none, a welcome window lists recent projects instead of a folder dialog. Why: you land where you left off.
+- **App-only notifications.** Notifications come only from the tokenwise studio app (no script fallback), with one limit notice per window. Why: quieter, and clicks open the right project.
 - **Downloads** go to `~/Downloads` without overwriting files, and the file is shown in Finder. Why: exports work in the app window.
 - **Servers outlive the window.** Why: terminal and app share the same state.
 - **Stale-server protection.** Each server reports the version it started with; the app replaces a server from an older version, shows a clear banner if a page cannot load, and restarts a vanished server once. Why: an upgrade never leaves a dead window.
 
 ### Chat and workflow
+- **Workspace side panel.** Project files, diffs, image and page previews, and a "This chat" tab with the files touched in the current chat. Paths are confined to the project and secret files are blocked. Why: look around without leaving the studio.
+- **Dictation.** A microphone button in the composer (Mac app, macOS speech recognition). Why: talk instead of typing long briefs.
+- **Compaction fix.** Compaction no longer repeats on every turn, and non-git folders offer a one-click git setup. Why: long chats and new projects just work.
 - **Images in chat.** Paste, drag or attach; forwarded to Claude and Codex workers. Why: show a bug instead of describing it.
 - **Generated images inline.** Thumbnails, lightbox, applied like any file. Why: icons and banners go through the same review.
 - **Collapsible thinking steps.** Why: a calm transcript with the reasoning one click away.
@@ -127,7 +140,7 @@ The studio was built with tokenwise. The main Claude session acted only as orche
 - **Computer control through Roblox Studio's MCP:** let an agent look at the screen and playtest, with the rule that nothing changes without the user seeing it and being able to stop it.
 - **Mobile access:** an opt-in remote view of the existing UI over Tailscale, with pairing by QR code, device revocation and read-only by default. Not a native app, and never exposed to the public internet.
 
-**Later, from the roadmap:** workspace panel with file view and sandboxed preview, PR creation after Apply, voice input, session replay, multi-project queue, Linux and Windows, chat search.
+**Later, from the roadmap:** session replay, multi-project queue, Linux and Windows, chat search.
 
 ## 8. Version history
 
@@ -139,3 +152,4 @@ The studio was built with tokenwise. The main Claude session acted only as orche
 - **0.6:** Chat export and backup, project instructions, turn budget, Usage screen, inline generated images, test runner.
 - **0.7:** Turkish UI, chat compaction, research role with citations.
 - **0.8:** Undo Apply, combined check after Apply, Roblox Output error import, automatic updates, stale-server protection, worker fixes.
+- **0.9:** Workspace side panel, pull requests from the review drawer, conflict check, dictation, model shootout, quota pacing and cooldowns, free-model probe, Rojo project map, welcome window and restore, app-only notifications.

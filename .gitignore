@@ -1,2 +1,6 @@
 node_modules/
 .tokenwise-studio/
+
+# internal planning notes, never published
+design/
+docs/masaustu-urun-notlari.md
