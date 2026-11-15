@@ -1249,6 +1249,12 @@ async function saveSetting(patch) {
 }
 async function toggleNotif() {
   if (appSettings?.envLocked?.notifications) return toast(t("notif.envLocked"), true);
+  if (!isMac && "Notification" in window && Notification.permission === "default") {
+    if (await Notification.requestPermission() !== "granted") return;
+    try { await saveSetting({ notifications: true }); toast(t("notif.toastOn")); }
+    catch (e) { toast(String(e.message || e), true); }
+    return;
+  }
   try { await saveSetting({ notifications: !notifOn }); toast(t(notifOn ? "notif.toastOn" : "notif.toastOff")); }
   catch (e) { toast(String(e.message || e), true); }
 }
@@ -3258,10 +3264,10 @@ async function renderDrawer(full) {
             h("span", {}, [t("settings.checkUpdates"), envBadge("updateCheck")], h("small", {}, t("settings.checkUpdatesDesc")))),
           h("div", { class: "shead", style: "margin-top:14px" }, h("h4", {}, t("settings.updates"))),
           h("p", { class: "shelp" }, t("settings.updatesHelp")),
-          h("div", { class: "seg three" }, [["auto", "settings.upd.auto", "settings.upd.autoDesc"], ["notify", "settings.upd.notify", "settings.upd.notifyDesc"], ["off", "settings.upd.off", "settings.upd.offDesc"]].map(([val, tk, dk]) =>
+          window.__tokenwiseWindows ? h("p", { class: "shelp" }, h("a", { href: "https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip", target: "_blank", rel: "noopener" }, "Download the latest Windows beta zip to update.")) : h("div", { class: "seg three" }, [["auto", "settings.upd.auto", "settings.upd.autoDesc"], ["notify", "settings.upd.notify", "settings.upd.notifyDesc"], ["off", "settings.upd.off", "settings.upd.offDesc"]].map(([val, tk, dk]) =>
             h("button", { class: (s.autoUpdate || "auto") === val ? "on" : "", onclick: () => applyPatch({ autoUpdate: val }) },
               h("b", {}, t(tk)), h("span", {}, t(dk)))))),
-        h("div", { class: "section" },
+        isMac ? h("div", { class: "section" },
           secHead(t("settings.robloxTitle"), "playtestEnabled"),
           h("p", { class: "shelp" }, t("settings.robloxHelp")),
           h("label", { class: "toggle" + (lock.playtestEnabled ? " disabled" : "") },
@@ -3291,7 +3297,7 @@ async function renderDrawer(full) {
                 onchange: (e) => applyPatch({ playtestMaxMinutes: Number(e.target.value) }) }))),
           h("label", { class: "toggle" + (lock.playtestAllowInput ? " disabled" : ""), style: "margin-top:12px" },
             h("input", { type: "checkbox", checked: s.playtestAllowInput ? true : null, disabled: !!lock.playtestAllowInput, onchange: (e) => applyPatch({ playtestAllowInput: e.target.checked }) }),
-            h("span", {}, [t("settings.robloxAllowInput"), envBadge("playtestAllowInput")], h("small", {}, t("settings.robloxAllowInputDesc"))))));
+            h("span", {}, [t("settings.robloxAllowInput"), envBadge("playtestAllowInput")], h("small", {}, t("settings.robloxAllowInputDesc"))))) : null);
     };
     draw();
     set(d,
@@ -3933,6 +3939,7 @@ function projectMenu() {
   const open = async (path) => {
     if (sending) return;
     closePop();
+    if (window.__tokenwiseWindows) { window.chrome.webview.postMessage({ type: "project", path }); return; }
     try {
       S = await api("project", { path });
       studioDraft = { raw: "", result: null, selected: new Set() };
@@ -3948,13 +3955,13 @@ function projectMenu() {
   inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && inp.value.trim()) open(inp.value.trim()); });
   const rec = (S.recents || []).filter((p) => p !== S.repo);
   popover($("#project"),
-    window.__tokenwiseNative ? [
+    window.__tokenwiseWindows ? h("button", { onclick: () => { closePop(); window.chrome.webview.postMessage({ type: "browse" }); } }, t("project.browse")) : window.__tokenwiseNative ? [
       h("button", { onclick: () => { closePop(); window.location.href = "tokenwise-native://choose-project"; } }, t("project.browse")),
       h("button", { onclick: () => { if (sending) return; closePop(); window.location.href = "tokenwise-native://switch-project"; } }, t("project.switchInWindow")),
     ] : null,
     h("div", { class: "ph" }, t("project.current")), h("button", { disabled: true, style: "opacity:1;cursor:default" }, S.project?.name, h("span", { class: "path" }, S.repo)),
     rec.length ? [h("div", { class: "sep" }), h("div", { class: "ph" }, t("project.recent"))] : null,
-    rec.map((p) => h("button", { onclick: () => open(p) }, p.split("/").filter(Boolean).pop(), h("span", { class: "path" }, p))),
+    rec.map((p) => h("button", { onclick: () => open(p) }, p.split(/[\\/]/).filter(Boolean).pop(), h("span", { class: "path" }, p))),
     h("div", { class: "sep" }), inp);
   setTimeout(() => inp.focus(), 30);
 }
@@ -4994,11 +5001,32 @@ window.__twComposerRefresh = () => { renderModelBtn(); renderTeamChip(); renderC
 renderModelBtn(); renderTeamChip(); renderChips();
 
 // ---------- loop ----------
+let seenBrowserNotices = null;
+function browserNotifications(state) {
+  if (!state.features?.browserNotifications) return;
+  const notices = state.notifications || [];
+  if (seenBrowserNotices === null) { seenBrowserNotices = new Set(notices.map(n => n.id)); return; }
+  for (const n of notices) {
+    if (seenBrowserNotices.has(n.id)) continue;
+    seenBrowserNotices.add(n.id);
+    if (!notifOn || Date.now() - n.at > 60000 || !("Notification" in window) || Notification.permission !== "granted") continue;
+    try {
+      // Storage deduplicates notices when the same project is open in multiple tabs.
+      const key = `tw-notice:${state.repo}:${n.id}:${n.at}`;
+      if (localStorage.getItem(key)) continue;
+      localStorage.setItem(key, "1");
+      const notice = new Notification(n.title, { body: [n.subtitle, n.message].filter(Boolean).join("\n"), tag: key });
+      notice.onclick = () => { window.focus(); notice.close(); };
+    } catch {}
+  }
+  seenBrowserNotices = new Set(notices.map(n => n.id));
+}
 async function refresh() {
   const fSeq = folderMutSeq;
   const nextState = await api("state");
   if (folderMutSeq !== fSeq && S.folders) nextState.folders = S.folders;
   S = nextState;
+  browserNotifications(S);
   await pollStaged();
   renderSide(); renderTop(); renderBanner(); renderTurnChrome();
   if (drawer) renderDrawer(false);
@@ -5020,7 +5048,7 @@ $("#input").addEventListener("input", mentionInput);
 $("#input").addEventListener("click", () => { if (mOpen) renderMentionMenu(); });
 $("#attach").onclick = (e) => {
   if (sending) return;
-  const playtestOn = (appSettings?.settings ? !!appSettings.settings.playtestEnabled : !!S.roblox?.enabled)
+  const playtestOn = isMac && (appSettings?.settings ? !!appSettings.settings.playtestEnabled : !!S.roblox?.enabled)
     && S.roblox?.rojo && S.roblox?.studioMcpFound;
   if (playtestOn) {
     e.stopPropagation();
@@ -5032,7 +5060,7 @@ $("#attach").onclick = (e) => {
   }
   $("#imagefiles").click();
 };
-dictation = createDictationController({
+dictation = isMac ? createDictationController({
   win: window,
   input: $("#input"),
   button: $("#mic"),
@@ -5041,8 +5069,9 @@ dictation = createDictationController({
   getLang: () => (langSetting === "auto" ? undefined : uiLocale()),
   onError: (msg) => { $("#cerr").textContent = msg; toast(msg, true); },
   onChange: () => { autosize(); updateSend(); },
-});
-$("#mic").onclick = () => { if (!sending) { $("#cerr").textContent = ""; dictation.toggle(); } };
+}) : null;
+$("#mic").hidden = !isMac;
+$("#mic").onclick = () => { if (!sending) { $("#cerr").textContent = ""; dictation?.toggle(); } };
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && dictation?.isActive()) {
     e.preventDefault();
@@ -5437,7 +5466,7 @@ function renderVersion() {
   if (ready) set(r, h("div", {}, t("side.updateReady", { version: ready.version })),
     h("button", { class: "btn primary", disabled: restarting ? true : null, onclick: restartNow }, restarting ? t("side.restarting") : t("side.restartNow")));
   if (!ver || ver.disabled || ready) { b.hidden = true; return; }
-  b.hidden = !ver.updateAvailable || (ver.autoUpdate === "auto" && ver.source !== "dev" && !ver.autoFailed);
+  b.hidden = !ver.updateAvailable || (ver.autoUpdate === "auto" && !["dev", "dmg", "windows"].includes(ver.source) && !ver.autoFailed);
 
   if (ver.updateAvailable) set(b, [t("side.newVersion", { version: ver.latest }), h("b", {}, t("side.update"))]);
 }
@@ -5448,6 +5477,10 @@ async function checkVersion() {
 }
 $("#newver").onclick = (e) => {
   e.stopPropagation();
+  if (ver?.source === "windows") {
+    window.open("https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip", "_blank");
+    return;
+  }
   const copy = h("button", { onclick: () => { navigator.clipboard?.writeText("tokenwise-studio update").then(() => { copy.textContent = t("side.copied"); setTimeout(() => (copy.textContent = t("side.copy")), 1500); }).catch(() => {}); } }, t("side.copy"));
   const pop = popover(e.currentTarget, h("div", {}, t("side.updateAvailable", { latest: ver.latest, current: ver.current })),
     h("div", { class: "cmd" }, h("code", {}, "tokenwise-studio update"), copy),

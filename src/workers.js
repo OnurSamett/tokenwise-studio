@@ -1,6 +1,6 @@
 // Worker adapters: turn {agent, model, effort, write} into a headless CLI command.
 import { imageNote } from "./uploads.js";
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "./process.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -236,11 +236,10 @@ export function command({ agent, model, effort, via, hint: specHint, provider: s
     if (role === "playtest" && playtest) {
       const mcpTools = (playtest.allowedTools || ALL_PLAYTEST_ALLOWLIST).map((n) => `mcp__roblox-playtest__${n}`);
       const repoRoot = cwd || playtest.repo || process.cwd();
-      const readScopes = [
-        `Read(${repoRoot}/**)`,
-        ...(playtest.playtestDir ? [`Read(${playtest.playtestDir}/**)`] : []),
-      ];
-      const allowed = [...readScopes, "Glob", "Grep", ...mcpTools];
+      // Claude uses // for filesystem-absolute permission patterns (a single / is project-relative).
+      const roots = [path.resolve(repoRoot), ...(playtest.playtestDir ? [path.resolve(playtest.playtestDir)] : [])];
+      const readScopes = roots.flatMap(root => ["Read", "Glob", "Grep"].map(tool => `${tool}(/${root}/**)`));
+      const allowed = [...readScopes, ...mcpTools];
       const maxCalls = Number(playtest.maxCalls ?? playtest.limits?.maxCalls ?? 40) || 40;
       const maxTurns = String(maxCalls + 10);
       const addDirs = [...images.map((p) => path.dirname(p)), ...(playtest.playtestDir ? [playtest.playtestDir] : [])];

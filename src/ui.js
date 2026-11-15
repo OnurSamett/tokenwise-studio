@@ -2,6 +2,8 @@
 // tokenwise studio web UI + API. Usage: tokenwise-studio-ui [repo-path] [--port 4777]
 // Binds to 127.0.0.1 only.
 import "./env-init.js"; // must stay first: loads API keys / PATH from the login shell
+import { platformFeatures } from "./platform.js";
+import { pendingBrowserNotices } from "./notify.js";
 import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
@@ -94,14 +96,15 @@ function combinedCheckInfo() {
   return { ...c, status, tail };
 }
 function robloxInfo() {
+  if (process.platform !== "darwin") return { enabled: false, rojo: false, projectFile: null, studioMcpFound: false };
   const rojo = findRojoProject(repo);
   const bin = serverStudioOpts.studioMcpPath || locateStudioMcp().found;
-  return { enabled: !!loadSettings().playtestEnabled, rojo: !!rojo, projectFile: rojo?.file || null, studioMcpFound: !!bin };
+  return { enabled: process.platform === "darwin" && !!loadSettings().playtestEnabled, rojo: !!rojo, projectFile: rojo?.file || null, studioMcpFound: !!bin };
 }
 const state = () => {
   maybePruneShootouts(false);
   return {
-    version: LOADED_VERSION, repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit() }, recents: recents(), chats: chats.list(),
+    version: LOADED_VERSION, platform: process.platform, features: platformFeatures(), notifications: pendingBrowserNotices(repo), repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit() }, recents: recents(), chats: chats.list(),
     folders: loadFolders(jobs.home),
     jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
     shootouts: listShootouts(jobs),
@@ -582,6 +585,7 @@ export const handler = async (req, res) => {
         return send(res, 200, jobs.start(safe));
       }
       if (what === "playtest") {
+        if (process.platform !== "darwin") throw new Error("Roblox playtest is available only on macOS");
         if (!loadSettings().playtestEnabled) {
           throw new Error("Roblox playtest is disabled in Settings (enable it under Settings → Roblox)");
         }

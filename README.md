@@ -6,6 +6,7 @@
 A Mac app that lets Claude Opus orchestrate Codex, Claude and Gemini workers in isolated git worktrees. You review every diff before it lands.</p>
 
 <p align="center">
+  <a href="https://github.com/OnurSamett/tokenwise-studio/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/OnurSamett/tokenwise-studio?style=social"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-lightgrey.svg">
   <img alt="Node 20 or newer" src="https://img.shields.io/badge/node-%E2%89%A520-339933.svg">
@@ -75,6 +76,38 @@ The full feature list is in [FEATURES.md](FEATURES.md).
 
 ## Install
 
+### Download for Mac
+
+[**Download for Mac**](https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg)
+
+Open the DMG and drag **tokenwise studio.app** to **Applications**. The signed, notarized release includes Node.js for Apple Silicon and Intel Macs (macOS 13.5+); you still need git and a signed-in worker CLI. Updates use Sparkle: choose **tokenwise studio > Check for Updates…**, or wait for the daily check.
+
+### macOS CLI installer
+
+With Node.js 20+ installed, run:
+
+```sh
+curl -fsSL https://tokenwise.site/install.sh | sh
+```
+
+The script checks Node, installs the latest CLI from npm if published (otherwise GitHub), runs `tokenwise-studio setup`, and opens the Mac app. It never installs Node silently and never uses sudo. Install Node from [nodejs.org](https://nodejs.org) or with `brew install node` first.
+
+### Windows (beta)
+
+[Download for Windows (beta)](https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip). Extract the entire zip to a writable folder, then run `TokenwiseStudio.exe`. Node.js and .NET are bundled; install [git](https://git-scm.com/download/win) and at least one signed-in worker CLI separately. The app restores your last projects or shows recent projects and **Open folder…**, with one WebView2 window per project. If WebView2 is missing, the app links to Microsoft's Evergreen runtime installer.
+
+**Unsigned beta:** SmartScreen may require **More info → Run anyway**. This app has **not yet been tested on real Windows hardware**. Native dictation, Roblox playtest and Sparkle automatic updates are Mac-only and hidden on Windows. Notifications use the browser Notification API: click the bell to grant permission and enable notifications. Keep the app open to receive them. Update the beta by downloading and extracting the latest zip.
+
+Alternatively, install the browser CLI with Node.js 20+ and git already installed, using PowerShell:
+
+```powershell
+irm https://tokenwise.site/install.ps1 | iex
+```
+
+Then run `tokenwise-studio.cmd --browser` in a project folder. This one-liner installs the CLI; the desktop zip above bundles its own runtime. Worker CLI/shim behavior, process-tree cancellation and project test commands still need Windows validation. See [release and platform notes](docs/releasing.md).
+
+### Manual CLI install
+
 Requirements:
 
 - Node 20+, git
@@ -141,7 +174,7 @@ The orchestrator cannot edit files itself. Every change comes from a worker whos
 
 **Does it work without the tokenwise skill?** Yes. The skill picks models and effort inside Claude Code, Codex CLI and Gemini CLI. studio adds the app, the worktrees and the review.
 
-**Linux or Windows?** The web UI and the MCP server are Node and git, so they may run elsewhere, but the Mac app and notifications are macOS only, and only macOS is tested.
+**Linux or Windows?** Windows has an unsigned WebView2 desktop beta and a browser CLI (see Install above). Native dictation, Roblox playtest and Sparkle updates are Mac-only. Only macOS is tested end to end; Linux is not tested.
 
 **Which workers are best tested?** Codex and Claude are tested end to end. Gemini is wired up but less tested.
 
@@ -152,7 +185,9 @@ Details for the features above. Each section opens on click.
 <details>
 <summary><b>Updating</b></summary>
 
-By default the studio keeps itself current. Settings > **Updates** has three modes: **Automatic (default)**, **Notify only** and **Off**.
+**DMG installs (Mac):** Sparkle checks for updates once a day. Choose **tokenwise studio > Check for Updates…** to check manually and install an update. Updates replace the signed app; npm is not used.
+
+**CLI/npm installs:** use `tokenwise-studio update` or the existing automatic updater. Settings > **Updates** has three modes: **Automatic (default)**, **Notify only** and **Off**.
 
 - **Automatic**: at most once every 24 hours the studio checks for a newer version and, if there is one, installs it in the background (`npm install -g`, from the npm registry if the package is published there, otherwise from GitHub, the same rule as `update`). It never installs while a job, test run or chat turn is running (it retries later), and never over a git checkout. When it is done the sidebar shows "Updated to vX — restart to use it" with a **Restart now** button. Progress is logged in `~/.tokenwise-studio/update.log`.
 - **Restart now** stops the studio servers gracefully and the Mac app reloads its windows with the new version. If the app's Swift launcher changed in the new version, the app is rebuilt first (`tokenwise-studio setup --no-mcp`, no prompts).
@@ -185,7 +220,9 @@ Each turn's **Thinking** section starts collapsed above its replies. Expand it t
 
 On macOS, tokenwise studio shows a desktop notification when a direct worker finishes or fails (not those started by a studio chat), and when an orchestrator turn finishes, needs you, or moves from Claude to Codex. Jobs ready for review are called out. Toggle them with the bell button in the studio sidebar, or set `TOKENWISE_NOTIFY=0` to turn them off entirely. The setting is stored in `~/.tokenwise-studio/settings.json`.
 
-After `tokenwise-studio setup`, notifications come from the tokenwise studio app in `~/Applications` (the first one asks for permission), and clicking one opens that project's studio. Without the Xcode command line tools (no Swift compiler) setup falls back to a plain launcher and notifications come via Script Editor.
+On Windows and Linux, notifications use the browser Notification API while the UI is open; click the bell to allow them.
+
+After `tokenwise-studio setup` on macOS, notifications come from the tokenwise studio app in `~/Applications` (the first one asks for permission), and clicking one opens that project's studio. Without the Xcode command line tools (no Swift compiler) setup falls back to a plain launcher and notifications come via Script Editor.
 
 </details>
 

@@ -1,6 +1,7 @@
 // Job store: each delegated task runs as a child process, optionally in its own git worktree.
+import { gitCommonDir } from "./platform.js";
 import { validateImages } from "./uploads.js";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, execFileSync } from "./process.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -76,8 +77,7 @@ export function isGitRepo(repo) {
 
 function ensureGitExclude(repo) {
   try {
-    const ex = path.join(git(repo, "rev-parse", "--git-common-dir").trim(), "info", "exclude");
-    const abs = path.isAbsolute(ex) ? ex : path.join(repo, ex);
+    const abs = path.join(gitCommonDir(repo, git(repo, "rev-parse", "--git-common-dir")), "info", "exclude");
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     const cur = fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : "";
     if (!cur.includes(".tokenwise-studio/")) fs.appendFileSync(abs, (cur.endsWith("\n") || !cur ? "" : "\n") + ".tokenwise-studio/\n");
@@ -279,6 +279,7 @@ export class Jobs {
     if (role === "playtest" && write) throw new Error("playtest jobs must be read-only (write=false)");
     const settings = loadSettings();
     if (role === "playtest") {
+      if (process.platform !== "darwin") throw new Error("Roblox playtest is available only on macOS");
       if (!settings.playtestEnabled) {
         throw new Error("Roblox playtest is disabled in Settings (enable it under Settings → Roblox)");
       }

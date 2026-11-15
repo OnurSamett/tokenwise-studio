@@ -1,5 +1,5 @@
 // Environment check for the UI: which CLIs are installed and signed in. Cached for 60s, never throws.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./process.js";
 import { findAgy, agyModels } from "./antigravity.js";
 import { freeProviders } from "./freechat.js";
 import { loadSettings } from "./settings.js";

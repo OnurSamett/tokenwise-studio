@@ -1,4 +1,4 @@
-// Desktop notifications (macOS, via the native tokenwise studio.app). Fire-and-forget: never throws, never uses a shell.
+// Desktop notifications: native Mac app, or a queue delivered to the browser Notification API. Never throws.
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -18,9 +18,13 @@ const trunc = (s, n) => { s = String(s ?? "").replace(/\s+/g, " ").trim(); retur
 
 const seen = new Set();
 let loggedMissingApp = false;
+const browserNotices = [];
+let noticeId = 0;
+export const pendingBrowserNotices = (repo) => browserNotices.filter(n => !n.repo || n.repo === repo);
 
 export function resetNotifyState() {
   seen.clear();
+  browserNotices.length = 0;
   loggedMissingApp = false;
 }
 
@@ -39,12 +43,18 @@ export function nativeNotifier(deps = {}) {
   } catch { return null; }
 }
 
-/** deps (for tests): { exec, execFileSync, fs, home, native, platform, settings, log }. Returns true when handed to the native app. */
+/** deps (for tests): { exec, execFileSync, fs, home, native, platform, settings, log }. Returns true when handed to the native app or queued for the browser. */
 export function notify({ title, message, subtitle, key, repo } = {}, deps = {}) {
   try {
-    if ((deps.platform || process.platform) !== "darwin") return false;
     if (process.env.TOKENWISE_NOTIFY === "0") return false;
     if (!(deps.settings || loadSettings()).notifications) return false;
+    if ((deps.platform || process.platform) !== "darwin") {
+      if (key && seen.has(key)) return false;
+      if (key) seen.add(key);
+      browserNotices.push({ id: ++noticeId, title: trunc(title || "tokenwise studio", 60), message: trunc(message, 180), subtitle: trunc(subtitle, 60), repo, at: Date.now() });
+      if (browserNotices.length > 40) browserNotices.shift();
+      return true;
+    }
     const bin = deps.native !== undefined
       ? deps.native
       : nativeNotifier({ ...deps, exec: deps.execFileSync });

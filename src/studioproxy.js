@@ -74,7 +74,7 @@ export function allowedToolSet({ allowInput = false } = {}) {
 /** Return true if tool arguments contain cmd/ctrl/meta/alt modifier keys or chords. */
 export function hasForbiddenModifier(val) {
   if (typeof val === "string") {
-    return MODIFIER_TOKEN_RE.test(val);
+    return /(Left|Right)?(Control|Ctrl|Alt|Option|Meta|Super|Command|Cmd)/i.test(val) || MODIFIER_TOKEN_RE.test(val);
   }
   if (Array.isArray(val)) {
     return val.some(hasForbiddenModifier);

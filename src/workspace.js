@@ -337,13 +337,14 @@ export function worktreeDiff(repo) {
 
 function stripBasePrefix(absPath, base) {
   if (!base) return null;
-  const cleanBase = String(base).replace(/[\\/]+$/, "");
+  const cleanBase = String(base).replace(/\\/g, "/").replace(/\/+$/, "");
+  absPath = String(absPath).replace(/\\/g, "/");
   if (!cleanBase) return null;
-  if (absPath === cleanBase) return "";
-  const sep = cleanBase.includes("\\") ? "\\" : "/";
-  if (absPath.startsWith(cleanBase + "/") || absPath.startsWith(cleanBase + sep)) {
-    return absPath.slice(cleanBase.length + 1);
-  }
+  const windowsPath = /^[a-z]:\//i.test(cleanBase) || cleanBase.startsWith("//");
+  const compared = windowsPath ? absPath.toLowerCase() : absPath;
+  const prefix = windowsPath ? cleanBase.toLowerCase() : cleanBase;
+  if (compared === prefix) return "";
+  if (compared.startsWith(prefix + "/")) return absPath.slice(cleanBase.length + 1);
   return null;
 }
 
@@ -357,7 +358,7 @@ export function normalizeChatFilePath(rawPath, { repo, realRepo, cwd, realCwd } 
   const wt = fwd.match(/\.tokenwise-studio\/worktrees\/[^/]+\/(.*)$/);
   if (wt) {
     s = wt[1];
-  } else if (path.isAbsolute(s) || /^[\\/]/.test(s)) {
+  } else if (path.isAbsolute(s) || path.win32.isAbsolute(s) || /^[\\/]/.test(s)) {
     let stripped = null;
     for (const base of [cwd, realCwd, repo, realRepo]) {
       stripped = stripBasePrefix(s, base);

@@ -2,10 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const SYSTEM_DIRS = new Set(["/", "/Library", "/System", "/usr", "/bin", "/sbin", "/etc", "/var", "/private", "/Applications", "/Volumes"]);
+import { systemProjectPath, withinPath } from "./platform.js";
 
 const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
-const within = (p, root) => p === root || p.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+const within = (p, root) => withinPath(p, root);
 
 export function tempRoots() {
   return [...new Set(["/tmp", "/private/tmp", "/var/folders", "/private/var/folders", os.tmpdir(), real(os.tmpdir())])];
@@ -19,7 +19,7 @@ export function projectProblem(p, { allowTemp = false } = {}) {
   try { st = fs.statSync(abs); } catch { return `the folder does not exist: ${abs}`; }
   if (!st.isDirectory()) return `not a folder: ${abs}`;
   const r = real(abs);
-  if (SYSTEM_DIRS.has(abs) || SYSTEM_DIRS.has(r) || abs.startsWith("/Library/") || abs.startsWith("/System/")) return `this is a system folder, not a project: ${abs}`;
+  if (systemProjectPath(abs) || systemProjectPath(r)) return `this is a system folder, not a project: ${abs}`;
   if (!allowTemp && tempRoots().some((t) => within(abs, t) || within(r, t))) return `temporary folders are not used as projects: ${abs}`;
   try { fs.accessSync(abs, fs.constants.W_OK); } catch { return `tokenwise studio cannot write to this folder: ${abs}`; }
   return null;

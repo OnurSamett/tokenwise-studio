@@ -3,13 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tokenwise · Make your AI limits last longer</title>
-<meta name="description" content="tokenwise routes every piece of AI coding work to the right model and effort across Claude, ChatGPT Codex, Gemini, free NVIDIA and local Ollama workers. Isolated git worktrees, per-file review, Undo Apply, and Roblox Rojo support. Open source, by NolienLabs.">
-<meta property="og:title" content="tokenwise · Make your AI limits last longer">
+<title>tokenwise studio · Make your AI limits last longer</title>
+<meta name="description" content="tokenwise studio routes every piece of AI coding work to the right model and effort across Claude, ChatGPT Codex, Gemini, free NVIDIA and local Ollama workers. Isolated git worktrees, per-file review, Undo Apply, and Roblox Rojo support. Open source, by NolienLabs.">
+<meta property="og:title" content="tokenwise studio · Make your AI limits last longer">
 <meta property="og:description" content="Right model. Right effort. Longer limits. One orchestrator, many workers: Claude, Codex, Gemini, free and local models.">
-<meta property="og:image" content="https://tokenwise.site/assets/tokenwise-cover.png">
+<meta property="og:image" content="https://tokenwise.site/assets/chat-ready.jpg">
+<meta property="og:image:alt" content="tokenwise studio: a worker team with changes ready for review">
 <meta property="og:url" content="https://tokenwise.site/">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://tokenwise.site/assets/chat-ready.jpg">
+<meta name="twitter:image:alt" content="tokenwise studio: a worker team with changes ready for review">
 <link rel="canonical" href="https://tokenwise.site/">
 <script type="application/ld+json">
 {
@@ -17,14 +20,15 @@
   "@type": "SoftwareApplication",
   "name": "tokenwise studio",
   "applicationCategory": "DeveloperApplication",
-  "operatingSystem": "macOS",
+  "operatingSystem": "macOS, Windows (beta)",
   "description": "Mac app that lets Claude Opus orchestrate Codex, Claude, Gemini, free and local workers in isolated git worktrees. You review every diff before it lands.",
   "url": "https://tokenwise.site/",
-  "image": "https://tokenwise.site/assets/tokenwise-cover.png",
+  "image": "https://tokenwise.site/assets/chat-ready.jpg",
   "downloadUrl": "https://github.com/OnurSamett/tokenwise-studio",
   "license": "https://opensource.org/licenses/MIT",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "author": { "@type": "Organization", "name": "NolienLabs" }
+  "author": { "@type": "Organization", "name": "NolienLabs", "url": "https://nolienlabs.com" },
+  "publisher": { "@type": "Organization", "name": "NolienLabs", "url": "https://nolienlabs.com" }
 }
 </script>
 <link rel="icon" type="image/png" href="assets/logo.png">
@@ -38,7 +42,11 @@
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+  [id] { scroll-margin-top: 80px; }
+  .skip { position: absolute; left: 16px; top: -80px; z-index: 20; background: var(--s2); padding: 8px 14px; border-radius: 8px; }
+  .skip:focus { top: 10px; }
   a { color: inherit; text-decoration: none; }
   img { max-width: 100%; height: auto; display: block; }
   .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
@@ -49,6 +57,9 @@
   nav { position: sticky; top: 0; z-index: 10; background: rgba(10,10,12,.78); backdrop-filter: saturate(160%) blur(12px); -webkit-backdrop-filter: saturate(160%) blur(12px); border-bottom: 1px solid var(--line); }
   nav .wrap { display: flex; align-items: center; gap: 22px; height: 60px; }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -.3px; font-size: 17px; }
+  .brand-group { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .byline { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .byline:hover { color: var(--text); }
   .brand img { width: 26px; height: 26px; border-radius: 7px; }
   nav .links { display: flex; gap: 22px; margin-left: auto; font-size: 14.5px; color: var(--muted); }
   nav .links a:hover { color: var(--text); }
@@ -57,6 +68,13 @@
   .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
   .btn.primary:hover { opacity: .88; }
   .btn.sm { padding: 7px 12px; font-size: 14px; }
+
+  .install-tabs { display: flex; gap: 8px; margin-top: 20px; }
+  .install-tabs button { cursor: pointer; color: var(--muted); }
+  .install-tabs [aria-selected="true"] { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+  [role="tabpanel"][hidden] { display: none; }
+  [data-star-count]:empty { display: none; }
+  [data-star-count] { color: var(--muted); font-variant-numeric: tabular-nums; }
 
   /* hero */
   .hero { padding: 96px 0 48px; text-align: center; position: relative; overflow: hidden; }
@@ -68,12 +86,16 @@
   .lede { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 720px; margin: 0 auto 30px; }
   .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .install-line { margin: 22px auto 0; display: inline-flex; align-items: center; gap: 10px; background: var(--s1); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 14px; font: 14px var(--mono); color: var(--muted); max-width: 100%; }
-  .install-line span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .install-line span { min-width: 0; overflow-wrap: anywhere; white-space: normal; text-align: left; }
   .install-line span b { color: var(--text); font-weight: 500; }
   .copy { flex-shrink: 0; border: 1px solid var(--line2); background: var(--s2); color: var(--muted); border-radius: 7px; padding: 4px 10px; font: 12.5px -apple-system, sans-serif; cursor: pointer; }
   .copy:hover { color: var(--text); }
 
   .shot { margin: 56px auto 0; max-width: 1040px; border-radius: 14px; border: 1px solid var(--line2); overflow: hidden; background: var(--s1); box-shadow: 0 40px 120px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.02); }
+  .shot img { width: 100%; }
+  .shot a, .gallery figure > a { display: block; }
+  .release-note { color: var(--muted); font-size: 13px; margin: 18px auto 0; max-width: 680px; }
+  .release-note a { color: var(--accent); text-decoration: underline; }
   .shot .bar { height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid var(--line); background: var(--s2); }
   .shot .bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a3a42; flex-shrink: 0; }
   .shot .bar span { margin-left: 10px; font: 12px var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -138,7 +160,7 @@
   .card p { margin: 0; color: var(--muted); }
   .card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 15px; }
   .card li { margin: 4px 0; }
-  .code { position: relative; max-width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; font: 13.5px/1.7 var(--mono); color: var(--text); overflow-x: auto; white-space: pre; }
+  .code { position: relative; max-width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 46px 16px 16px; font: 13.5px/1.7 var(--mono); color: var(--text); overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   .code .c { color: var(--dim); }
   .code .copy { position: absolute; top: 8px; right: 8px; }
   .card .foot { margin-top: auto; display: flex; gap: 10px; flex-wrap: wrap; }
@@ -185,10 +207,11 @@
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
-<nav>
+<nav aria-label="Main navigation">
   <div class="wrap">
-    <a class="brand" href="#"><img src="assets/logo.png" alt="">tokenwise</a>
+    <div class="brand-group"><a class="brand" href="#"><img src="assets/logo.png" alt="">tokenwise studio</a><a class="byline" href="https://nolienlabs.com">by NolienLabs</a></div>
     <div class="links">
       <a href="#how">How it works</a>
       <a href="#features">Features</a>
@@ -201,6 +224,7 @@
   </div>
 </nav>
 
+<main id="main">
 <header class="hero">
   <div class="wrap">
     <span class="eyebrow">Open source · <b>A NolienLabs project</b></span>
@@ -212,9 +236,10 @@
     </div>
     <div class="install-line"><span>$ <b>npm install -g github:OnurSamett/tokenwise-studio</b></span><button class="copy" data-copy="npm install -g github:OnurSamett/tokenwise-studio">Copy</button></div>
 
+    <p class="release-note">v0.9.0 released · Composer pickers, folders, @mentions and ⌘K are part of the upcoming 0.10.0 UI. <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/CHANGELOG.md">Read the changelog</a>.</p>
     <div class="shot">
       <div class="bar"><i></i><i></i><i></i><span>tokenwise studio — web-app</span></div>
-      <img src="assets/chat-ready.jpg" alt="tokenwise studio splitting a task between a Codex Sol worker and a Claude Haiku worker with 3 files ready for review" width="800" height="514">
+      <a href="assets/chat-ready.jpg" aria-label="Open full screenshot"><img src="assets/chat-ready.jpg" alt="tokenwise studio with the new composer picker, mention chips, sidebar folders, plan limits and a 72k of 100k turn budget" width="1440" height="900"></a>
     </div>
   </div>
 </header>
@@ -235,10 +260,10 @@
   <div class="wrap">
     <div class="kicker">How it works</div>
     <h2>One orchestrator. A whole team of models.</h2>
-    <p class="sub">Grepping a repo doesn't need your strongest model. Debugging a race condition does. tokenwise makes that call for every piece of the job.</p>
+    <p class="sub">Grepping a repo doesn't need your strongest model. Debugging a race condition does. tokenwise studio makes that call for every piece of the job.</p>
     <div class="steps">
       <div class="step"><div class="n">01</div><h3>Describe or dictate the task</h3><p>Type or dictate in the composer, pick an orchestrator or team preset, or steer a single message with <code>@codex</code>, <code>@sol</code>, or <code>@gemini</code>.</p></div>
-      <div class="step"><div class="n">02</div><h3>Right model, right effort</h3><p>Each piece runs in its own git worktree with the model and effort it needs—or as a parallel model shootout when you ask for one.</p>
+      <div class="step"><div class="n">02</div><h3>Right model, right effort</h3><p>Each writing worker runs in its own git worktree with the model and effort it needs—or as a parallel model shootout when you ask for one.</p>
         <div class="route"><div><span>search · summaries</span><b>Haiku · low</b></div><div><span>routine code</span><b>Codex Sol · medium</b></div><div><span>hard bugs · design</span><b>Opus · high</b></div></div></div>
       <div class="step"><div class="n">03</div><h3>Check conflicts, then apply</h3><p>Review per-file diffs with conflict detection, run tests in the worktree, stage with one-click Undo Apply, or open a PR.</p></div>
     </div>
@@ -251,11 +276,11 @@
     <h2>Built for long sessions and shared plans.</h2>
     <div class="grid">
       <div class="feat"><div class="ic">⇄</div><h3>Composer pickers &amp; @mentions</h3><p>Switch orchestrator model and effort (<code>⌘/</code>) with live limit hints, tune roles in the Team popover, or route one turn with <code>@mentions</code>.</p></div>
-      <div class="feat"><div class="ic">↪</div><h3>Quota pacing &amp; fallback</h3><p>Cooldowns track reset times so limited providers are skipped. Workers fall back along <code>codex → gemini → claude → free → local</code>, and Codex takes over when Claude runs low.</p></div>
+      <div class="feat"><div class="ic">↪</div><h3>Quota pacing &amp; fallback</h3><p>Cooldowns track reset times so limited providers are skipped. Workers fall back along <code>codex → gemini → claude → free → local</code>, while the orchestrator can fall back along <code>claude → codex → gemini → free → local</code>.</p></div>
       <div class="feat"><div class="ic">◫</div><h3>Workspace side panel</h3><p>Browse project files, inspect diffs, preview images and pages, and view the <strong>This chat</strong> tab for files touched in the current conversation.</p></div>
       <div class="feat"><div class="ic">✓</div><h3>Conflict check, Undo &amp; PRs</h3><p>Overlapping edits are flagged before Apply. Snapshots power one-click <strong>Undo Apply</strong>, and a confirm step opens a pull request via <code>gh</code>.</p></div>
       <div class="feat"><div class="ic">⚔</div><h3>Model shootout</h3><p>When you ask for a comparison, the same task goes to two or three models in parallel worktrees so you can pick the best diff.</p></div>
-      <div class="feat"><div class="ic">$0</div><h3>Free &amp; local workers</h3><p>Opt-in free NVIDIA models are probed for health and ranked by Terminal-Bench 4.0; local Ollama runs unlimited in Codex <code>--oss</code> mode.</p></div>
+      <div class="feat"><div class="ic">$0</div><h3>Free &amp; local workers</h3><p>Free mode runs the orchestrator and workers on free or local models. Opt-in NVIDIA models are ranked by Terminal-Bench 4.0; local Ollama runs on your hardware in Codex <code>--oss</code> mode.</p></div>
       <div class="feat"><div class="ic">⌘</div><h3>Chat folders &amp; ⌘K palette</h3><p>Pin and organize chats into folders with date groups. Press <code>⌘K</code> to jump across chats, folders, files, and actions, or <code>?</code> for shortcuts.</p></div>
       <div class="feat"><div class="ic">🎙</div><h3>Mac app, restore &amp; dictation</h3><p>Restores your last projects or shows a welcome window, sends app-only notifications straight to the right project, and includes composer dictation.</p></div>
       <div class="feat"><div class="ic">▤</div><h3>Usage, tests &amp; Turkish UI</h3><p>14-day token and API-equivalent cost charts, worktree and combined post-apply checks, turn budgets, and English or Türkçe (<code>Auto</code>) across UI and alerts.</p></div>
@@ -287,14 +312,14 @@
   <div class="wrap">
     <div class="kicker">Free can be enough</div>
     <h2>Free models, ranked on a board you can check.</h2>
-    <p class="sub">We rank free models by Terminal-Bench 4.0, the official, independently run board, using the score of the version actually served. Vendor-reported numbers can overstate: Kimi K3 is listed at 88.3 on Terminal-Bench 2.1 and scores 22.4 on 4.0.</p>
+    <p class="sub">We rank free models by Terminal-Bench 4.0, the official, independently run board, using the score of the version actually served. Scores are a snapshot, not a guarantee for your code. Compare models on the same benchmark; results from different versions are not directly comparable.</p>
     <div class="bench">
       <div class="n free"><b>40.0</b><span>DeepSeek V4.1 Flash, free. Ties Claude Haiku 5.5 (40.0).</span></div>
       <div class="n free"><b>36.7</b><span>GLM-5.3 Flash, free.</span></div>
       <div class="n free"><b>27.9</b><span>Mistral Large 4, free.</span></div>
-      <div class="n"><b>64.8</b><span>Top of the board: Opus 5.5. Then Sonnet 5.5 at 61.8 and GPT-6.1 Sol at 58.2.</span></div>
+      <div class="n"><b>64.8</b><span>Opus 5.5 in this snapshot. Then Sonnet 5.5 at 61.8 and GPT-6.1 Sol at 58.2.</span></div>
     </div>
-    <p class="bench-note">GPT-6.1 Sol scores the same 58.2 as GPT-6 Astra at about a fifth of the cost in the leaderboard runs ($634 vs $3.3k). <a href="https://hub.harborframework.com/datasets/terminal-bench/terminal-bench/4?tab=leaderboard&amp;leaderboard=4-0-0">See the official Terminal-Bench 4.0 board</a></p>
+    <p class="bench-note">In the benchmark snapshot recorded for v0.9.0, GPT-6.1 Sol scores the same 58.2 as GPT-6 Astra at about a fifth of the cost in the leaderboard runs ($634 vs $3.3k). <a href="https://hub.harborframework.com/datasets/terminal-bench/terminal-bench/4?tab=leaderboard&amp;leaderboard=4-0-0">See the official Terminal-Bench 4.0 board</a></p>
   </div>
 </section>
 
@@ -303,12 +328,17 @@
     <div class="kicker">Inside the studio</div>
     <h2>See who does what, and why.</h2>
     <div class="gallery">
-      <figure><img src="assets/home-working.jpg" alt="A turn in progress with a team card showing Claude Haiku ready and Codex Sol working" loading="lazy" width="800" height="514"><figcaption><b>Team cards.</b> Live progress, model, and effort for each worker during a turn.</figcaption></figure>
-      <figure><img src="assets/review-drawer.jpg" alt="Review drawer showing no conflicts detected, Run tests button, and per-file diffs with checkboxes" loading="lazy" width="800" height="514"><figcaption><b>Per-file review.</b> Conflict check, worktree tests, one-click Undo Apply, and PR creation.</figcaption></figure>
-      <figure><img src="assets/side-panel.jpg" alt="Workspace side panel showing the This chat tab with unapplied changes" loading="lazy" width="800" height="514"><figcaption><b>Workspace side panel.</b> Project files, unapplied diffs, previews, and the This chat tab.</figcaption></figure>
-      <figure><img src="assets/model-guide-benchmarks.jpg" alt="Model guide benchmarks table with Terminal-Bench 4.0 scores" loading="lazy" width="800" height="514"><figcaption><b>Model guide.</b> Terminal-Bench 4.0 scores across paid and free models.</figcaption></figure>
-      <figure><img src="assets/usage.jpg" alt="Usage screen with 14-day token chart, cost breakdown by agent and model, and live plan limits" loading="lazy" width="800" height="514"><figcaption><b>Usage.</b> Daily tokens and API-equivalent cost split by orchestrator and workers.</figcaption></figure>
-      <figure><img src="assets/settings.jpg" alt="Settings drawer with Language selector including Türkçe, permission modes, orchestrator defaults, and fallback options" loading="lazy" width="800" height="514"><figcaption><b>Settings.</b> Language (Auto, English, Türkçe), permission modes, fallback, and turn budgets.</figcaption></figure>
+      <figure><a href="assets/home-working.jpg" aria-label="Open full screenshot"><img src="assets/home-working.jpg" alt="A turn in progress with effort-aware animation, sidebar folders, plan meters and a worker team card" loading="lazy" width="1440" height="900"></a><figcaption><b>Team cards.</b> Live progress, model, and effort for each worker during a turn.</figcaption></figure>
+      <figure><a href="assets/review-drawer.jpg" aria-label="Open full screenshot"><img src="assets/review-drawer.jpg" alt="Review drawer showing no conflicts detected, Run tests button, and per-file diffs with checkboxes" loading="lazy" width="1440" height="900"></a><figcaption><b>Per-file review.</b> Conflict check, worktree tests, one-click Undo Apply, and PR creation.</figcaption></figure>
+      <figure><a href="assets/side-panel.jpg" aria-label="Open full screenshot"><img src="assets/side-panel.jpg" alt="Workspace side panel showing the This chat tab with unapplied changes" loading="lazy" width="1440" height="900"></a><figcaption><b>Workspace side panel.</b> Project files, unapplied diffs, previews, and the This chat tab.</figcaption></figure>
+      <figure><a href="assets/model-guide-benchmarks.jpg" aria-label="Open full screenshot"><img src="assets/model-guide-benchmarks.jpg" alt="Model guide benchmarks table with Terminal-Bench 4.0 scores" loading="lazy" width="1440" height="900"></a><figcaption><b>Model guide.</b> Terminal-Bench 4.0 scores across paid and free models.</figcaption></figure>
+      <figure><a href="assets/usage.jpg" aria-label="Open full screenshot"><img src="assets/usage.jpg" alt="Usage screen with 14-day token chart, cost breakdown by agent and model, and live plan limits" loading="lazy" width="1440" height="900"></a><figcaption><b>Usage.</b> Daily tokens and API-equivalent cost split by orchestrator and workers.</figcaption></figure>
+      <figure><a href="assets/settings.jpg" aria-label="Open full screenshot"><img src="assets/settings.jpg" alt="Settings drawer with language choices, permission modes, orchestrator defaults, and fallback options" loading="lazy" width="1440" height="900"></a><figcaption><b>Settings.</b> Language (Auto, English, Türkçe), permission modes, fallback, and turn budgets.</figcaption></figure>
+      <figure><a href="assets/model-picker.jpg" aria-label="Open full screenshot"><img src="assets/model-picker.jpg" alt="Composer model and effort picker with a provider logo and live plan limits" loading="lazy" width="1440" height="900"></a><figcaption><b>Composer model picker.</b> Demo data from the upcoming 0.10.0 UI.</figcaption></figure>
+      <figure><a href="assets/team-picker.jpg" aria-label="Open full screenshot"><img src="assets/team-picker.jpg" alt="Team popover with role cards, model scores and plan limits" loading="lazy" width="1440" height="900"></a><figcaption><b>Team presets and roles.</b> Demo data from the upcoming 0.10.0 UI.</figcaption></figure>
+      <figure><a href="assets/thinking-sources.jpg" aria-label="Open full screenshot"><img src="assets/thinking-sources.jpg" alt="Research turn with expanded Thinking and numbered Sources" loading="lazy" width="1440" height="900"></a><figcaption><b>Thinking and sources.</b> Demo data from the upcoming 0.10.0 UI.</figcaption></figure>
+      <figure><a href="assets/usage-cost.jpg" aria-label="Open full screenshot"><img src="assets/usage-cost.jpg" alt="Daily API-equivalent cost chart and token and cost totals by model" loading="lazy" width="1440" height="900"></a><figcaption><b>Daily cost and model breakdown.</b> Demo data from the upcoming 0.10.0 UI.</figcaption></figure>
+      <figure><a href="assets/home-light.jpg" aria-label="Open full screenshot"><img src="assets/home-light.jpg" alt="The current studio UI in light theme" loading="lazy" width="1440" height="900"></a><figcaption><b>A light theme, too.</b> Demo data from the upcoming 0.10.0 UI.</figcaption></figure>
     </div>
   </div>
 </section>
@@ -323,11 +353,27 @@
         <span class="tag">App</span>
         <h3>tokenwise studio</h3>
         <p>A Mac app and local web UI: one orchestrator, many workers, side panel, per-file review, and live plan limits.</p>
-        <div class="code"><button class="copy" data-copy="npm install -g github:OnurSamett/tokenwise-studio&#10;tokenwise-studio setup&#10;cd your-project &amp;&amp; tokenwise-studio">Copy</button>npm install -g github:OnurSamett/tokenwise-studio
-tokenwise-studio setup   <span class="c"># Claude Code MCP + Mac app, once</span>
-cd your-project &amp;&amp; tokenwise-studio   <span class="c"># opens app (or --browser)</span></div>
-        <ul><li>Needs Node 20+, git and at least one of Claude Code, Codex CLI or Antigravity.</li><li><code>setup</code> builds the Mac app in <code>~/Applications</code> with welcome/restore and app notifications. <code>doctor</code> checks workers; <code>update</code> keeps the app current; <code>uninstall</code> removes setup files.</li><li>Free &amp; local workers: add an NVIDIA API key (opt-in) or Ollama (<code>gpt-oss:20b</code>).</li></ul>
-        <div class="foot"><a class="btn primary sm" href="https://github.com/OnurSamett/tokenwise-studio">View on GitHub</a></div>
+        <div class="install-tabs" role="tablist" aria-label="Operating system">
+          <button class="btn sm" id="tab-macos" type="button" role="tab" aria-selected="true" aria-controls="install-macos" tabindex="0">macOS</button>
+          <button class="btn sm" id="tab-windows" type="button" role="tab" aria-selected="false" aria-controls="install-windows" tabindex="-1">Windows (beta)</button>
+        </div>
+        <div id="install-macos" role="tabpanel" aria-labelledby="tab-macos" tabindex="0">
+          <p><a class="btn primary" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg">Download for Mac</a></p>
+          <p>Drag the app to Applications. Includes Node.js for Apple Silicon and Intel Macs (macOS 13.5+). Needs git and a signed-in worker CLI.</p>
+          <p>Or install the CLI with Node.js 20+ already installed:</p>
+          <div class="code"><button class="copy" data-copy="curl -fsSL https://tokenwise.site/install.sh | sh">Copy</button>curl -fsSL https://tokenwise.site/install.sh | sh</div>
+          <p>The installer checks Node, installs the CLI, runs <code>setup</code>, and opens the app. It never installs Node automatically.</p>
+        </div>
+        <div id="install-windows" role="tabpanel" aria-labelledby="tab-windows" tabindex="0" hidden>
+          <p><a class="btn" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip">Download for Windows (beta)</a></p>
+          <p>Extract the entire zip to a writable folder and run <code>TokenwiseStudio.exe</code>. Node.js and .NET are included. Install git and a signed-in worker CLI separately. If WebView2 is missing, the app links to Microsoft's Evergreen installer.</p>
+          <p><strong>Unsigned beta:</strong> SmartScreen: <strong>More info → Run anyway</strong>. <strong>Not yet tested on real Windows hardware.</strong> Native dictation, Roblox playtest and Sparkle automatic updates are Mac-only and hidden on Windows. Notifications use the browser Notification API; click the bell to grant permission and enable them. Keep the app open to receive them. To update, download the latest zip.</p>
+          <p>Alternative browser CLI installer (requires Node.js 20+ and git), in PowerShell:</p>
+          <div class="code"><button class="copy" data-copy="irm https://tokenwise.site/install.ps1 | iex">Copy</button>irm https://tokenwise.site/install.ps1 | iex</div>
+          <p>Then run <code>tokenwise-studio.cmd --browser</code> in a project folder. This one-liner installs the CLI; the desktop download bundles its own runtime.</p>
+        </div>
+        <ul><li>Sign in to Claude Code, Codex CLI, Antigravity, or Gemini CLI with an API key. <code>tokenwise-studio doctor</code> checks workers.</li><li>Free &amp; local workers: add an NVIDIA API key (opt-in) or Ollama (<code>gpt-oss:20b</code>).</li></ul>
+        <div class="foot"><a class="btn sm" href="https://github.com/OnurSamett/tokenwise-studio">View on GitHub</a></div>
       </div>
       <div class="card">
         <span class="tag">Skill</span>
@@ -348,12 +394,12 @@ cd your-project &amp;&amp; tokenwise-studio   <span class="c"># opens app (or --
     <h2>Questions</h2>
     <div class="faq">
       <details><summary>Is it free?</summary><p>Yes. tokenwise and tokenwise studio are open source (MIT). They run on your machine and use the plans and CLIs you already have; there is no tokenwise account or server.</p></details>
-      <details><summary>Does it save usage, really?</summary><p>On small tasks the overhead is about even; the savings come from long sessions with lots of reading, where mechanical work goes to cheaper models and other plans. We publish our benchmark harness so you can measure it on your own work.</p></details>
-      <details><summary>Will my code be sent to free providers?</summary><p>Only if you opt in. Free models are off until you add a key and set <code>TOKENWISE_ALLOW_FREE=1</code>, because free tiers may use prompts for training. They also never see secrets like <code>.env</code> files or keys.</p></details>
+      <details><summary>Does it save usage, really?</summary><p>On small tasks the overhead is about even; the savings come from long sessions with lots of reading, where mechanical work goes to cheaper models and other plans. The Model guide links to benchmark data; the Usage screen helps you compare tokens and API-equivalent costs on your own work. Subscription plans are not billed by those estimates.</p></details>
+      <details><summary>Will my code be sent to free providers?</summary><p>Only if you opt in. Hosted free models require a provider key and opt-in through Settings or <code>TOKENWISE_ALLOW_FREE=1</code>, because free tiers may use prompts for training. Their file tools block secret files such as <code>.env</code>. Prompts and text you paste are still sent to the provider you choose.</p></details>
       <details><summary>Can a worker break my project?</summary><p>Writing workers stay in their own git worktree. Before Apply, studio checks for overlapping edits between workers; Apply stages only ticked files without committing, and every Apply records a snapshot for one-click Undo Apply.</p></details>
-      <details><summary>What happens when Claude runs out?</summary><p>When Claude is at 90% or more of its 5-hour or weekly limit, or hits it mid-turn, Codex takes over the same message. It is read-only, has the same studio tools and sees the conversation so far. Cooldowns also pause limited providers until their reset time. Turn orchestrator fallback off with <code>TOKENWISE_ORCH_FALLBACK=0</code>.</p></details>
-      <details><summary>Do notifications need anything?</summary><p>macOS only. After <code>tokenwise-studio setup</code>, notifications come directly from the tokenwise studio app (with one limit notice per window). Clicking a notification opens that project's window, and the sidebar bell toggles them off.</p></details>
-      <details><summary>What do I need?</summary><p>Node 20+, git, and at least one of Claude Code, the Codex CLI or Google Antigravity, signed in. macOS is the primary platform: the app restores your last projects on launch or shows a welcome window. Other platforms run the web UI with <code>--browser</code>.</p></details>
+      <details><summary>What happens when Claude runs out?</summary><p>At the configured limit threshold (90% by default), or on a mid-turn limit, the orchestrator can continue on the next available provider: <code>claude → codex → gemini → free → local</code>. It keeps the conversation and review tools. Settings lets you switch automatically, ask first, or turn switching off. Free providers require opt-in and credentials; local models require Ollama. Cooldowns also pause limited providers until their reset time. Turn orchestrator fallback off with <code>TOKENWISE_ORCH_FALLBACK=0</code>.</p></details>
+      <details><summary>Do notifications need anything?</summary><p>On macOS, notifications come directly from the tokenwise studio app after <code>tokenwise-studio setup</code>. On Windows, click the sidebar bell to allow browser notifications and keep the UI open. The bell toggles notifications; clicking one focuses its project.</p></details>
+      <details><summary>What do I need?</summary><p>Node 20+, git, and at least one of Claude Code, the Codex CLI or Google Antigravity (or Gemini CLI with <code>GEMINI_API_KEY</code>), signed in. macOS is the primary platform: the app restores your last projects on launch or shows a welcome window. Windows has an unsigned WebView2 desktop beta with bundled Node.js and .NET, plus a browser CLI. Native dictation, Roblox playtest and Sparkle updates are Mac-only. Windows has not yet been tested on real hardware.</p></details>
     </div>
   </div>
 </section>
@@ -362,14 +408,16 @@ cd your-project &amp;&amp; tokenwise-studio   <span class="c"># opens app (or --
   <div class="wrap">
     <h2>Right model. Right effort. Longer limits.</h2>
     <p class="sub" style="margin:0 auto 26px">Install it in a minute and let your plans go further.</p>
-    <div class="cta"><a class="btn primary" href="#get">Install tokenwise studio</a><a class="btn" href="https://github.com/OnurSamett/tokenwise-studio">Star on GitHub</a></div>
+    <div class="cta"><a class="btn primary" href="#get">Install tokenwise studio</a><a class="btn" href="https://github.com/OnurSamett/tokenwise-studio">⭐ Star on GitHub <span data-star-count aria-label="GitHub stars"></span></a></div>
   </div>
 </div>
+
+</main>
 
 <footer>
   <div class="wrap">
     <div class="top">
-      <span class="made">A <b>NolienLabs</b> project</span>
+      <a class="made" href="https://nolienlabs.com">A <b>NolienLabs</b> project</a>
       <span>MIT licensed</span>
       <div class="links">
         <a href="https://github.com/OnurSamett/tokenwise-studio">Studio</a>
@@ -382,6 +430,32 @@ cd your-project &amp;&amp; tokenwise-studio   <span class="c"># opens app (or --
 </footer>
 
 <script>
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  function selectTab(tab) {
+    tabs.forEach(t => {
+      const selected = t === tab;
+      t.setAttribute('aria-selected', String(selected));
+      t.tabIndex = selected ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !selected;
+    });
+  }
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => selectTab(tab));
+    tab.addEventListener('keydown', event => {
+      const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+        : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+      if (next === null) return;
+      event.preventDefault(); selectTab(tabs[next]); tabs[next].focus();
+    });
+  });
+  // A blocked network, rate limit or missing count leaves the GitHub link fully usable.
+  Promise.resolve().then(() => fetch('https://api.github.com/repos/OnurSamett/tokenwise-studio', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(5000) }))
+    .then(response => { if (!response.ok) throw new Error('GitHub unavailable'); return response.json(); })
+    .then(repo => {
+      if (!Number.isSafeInteger(repo.stargazers_count) || repo.stargazers_count < 0) return;
+      document.querySelectorAll('[data-star-count]').forEach(el => { el.textContent = repo.stargazers_count.toLocaleString(); });
+    }).catch(() => {});
   document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; } catch { b.textContent = "Select & copy"; }
     setTimeout(() => (b.textContent = "Copy"), 1600);

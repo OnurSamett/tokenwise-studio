@@ -1,6 +1,6 @@
 // Test runner for write jobs and combined main-tree checks: detect a project's test command,
 // support optional override and lint command in Settings, and run without a shell.
-import { spawn } from "node:child_process";
+import { spawn } from "./process.js";
 import fs from "node:fs";
 import path from "node:path";
 

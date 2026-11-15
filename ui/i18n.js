@@ -618,7 +618,7 @@ export const DICT = {
 
     "settings.notifUpdates": "Notifications & updates",
     "settings.desktopNotif": "Desktop notifications ",
-    "settings.desktopNotifDesc": "Show macOS notifications when turns or direct workers finish.",
+    "settings.desktopNotifDesc": "Show notifications when turns or direct workers finish. Outside macOS, allow browser notifications using the bell button.",
     "settings.checkUpdates": "Check for updates ",
     "settings.checkUpdatesDesc": "Check npm/GitHub periodically for newer tokenwise studio versions.",
 

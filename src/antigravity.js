@@ -1,6 +1,6 @@
 // Google Antigravity CLI ("agy"): the way to run Gemini with a personal Google account now that
 // Gemini CLI's Google sign-in no longer works for individuals. Ships inside Gemini.app on macOS.
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "./process.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

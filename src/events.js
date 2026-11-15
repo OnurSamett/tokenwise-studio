@@ -8,6 +8,8 @@ const short = (s, n = 300) => { s = String(s ?? ""); return s.length > n ? s.sli
 /** Make worker paths readable: strip the worktree / repo prefix. */
 export function rel(p, base) {
   if (!p) return p;
+  p = String(p).replace(/\\/g, "/");
+  base = base && String(base).replace(/\\/g, "/").replace(/\/$/, "");
   const wt = p.match(/\.tokenwise-studio\/worktrees\/[^/]+\/(.*)$/);
   if (wt) return wt[1];
   if (base && p.startsWith(base + "/")) return p.slice(base.length + 1);

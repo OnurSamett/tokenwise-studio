@@ -1,6 +1,6 @@
 // Compaction of long orchestrator chats: threshold detection, Claude Haiku summarization,
 // deterministic fallback from stored turns + job list, and output capping.
-import { spawn } from "node:child_process";
+import { spawn } from "./process.js";
 import { available } from "./fallback.js";
 import { scrub } from "./export.js";
 

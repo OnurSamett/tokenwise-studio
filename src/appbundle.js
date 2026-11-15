@@ -88,7 +88,7 @@ function mdfindLookup({ exec: runExec, home, fs: fsys, requireExecutable, now, c
  *  (c) ~/Applications/tokenwise studio.app
  */
 export function findAppBundle(deps = {}) {
-  if (deps.platform && deps.platform !== "darwin") return null;
+  if ((deps.platform || process.platform) !== "darwin") return null;
   const home = typeof deps.home === "function" ? deps.home() : (deps.home || os.homedir());
   const fsys = deps.fs || fs;
   const requireExecutable = deps.requireExecutable !== false;
@@ -117,6 +117,7 @@ export function findAppBundle(deps = {}) {
 
 /** Find all unique owned tokenwise studio.app bundles (moved or default), for uninstall. */
 export function findOwnedAppBundles(deps = {}) {
+  if ((deps.platform || process.platform) !== "darwin") return [];
   const home = typeof deps.home === "function" ? deps.home() : (deps.home || os.homedir());
   const fsys = deps.fs || fs;
   const runExec = deps.exec || deps.execFileSync || execFileSync;

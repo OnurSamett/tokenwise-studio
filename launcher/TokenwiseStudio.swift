@@ -10,6 +10,9 @@ import WebKit
 import UserNotifications
 import Speech
 import AVFoundation
+#if canImport(Sparkle)
+import Sparkle
+#endif
 
 let resources = Bundle.main.resourcePath ?? ""
 let homeDirURL: URL = {
@@ -296,7 +299,13 @@ func registeredServer(for repo: String) -> URL? {
 func spawnServer(repo: String) -> Bool {
     guard let data = try? Data(contentsOf: URL(fileURLWithPath: resources + "/config.json")),
           let cfg = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-          let node = cfg["node"], let cli = cfg["cli"] else { return false }
+          let nodeConfig = cfg["node"], let cliConfig = cfg["cli"] else { return false }
+    // CLI setup uses absolute paths; DMGs resolve paths relative to Resources at launch.
+    // This survives moving the app and App Translocation. State stays in the user's home.
+    func resourcePath(_ value: String) -> String {
+        (value as NSString).isAbsolutePath ? value : (resources as NSString).appendingPathComponent(value)
+    }
+    let node = resourcePath(nodeConfig), cli = resourcePath(cliConfig)
     try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -1764,9 +1773,18 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
     var panelOpen = false
     var isTerminating = false
     let recentMenu = NSMenu(title: "Open Recent")
+#if canImport(Sparkle)
+    // Retained for the app lifetime. CLI/npm launchers never create a Sparkle updater.
+    var updaterController: SPUStandardUpdaterController?
+#endif
 
     func applicationWillFinishLaunching(_ n: Notification) {
         UNUserNotificationCenter.current().delegate = self
+#if canImport(Sparkle)
+        if isExistingDirectory((resources as NSString).appendingPathComponent("app")) {
+            updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        }
+#endif
         buildMenu()
     }
 
@@ -2051,6 +2069,11 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         }
         let appM = add(name)
         item(appM, "About \(name)", "orderFrontStandardAboutPanel:")
+#if canImport(Sparkle)
+        if let controller = updaterController {
+            item(appM, "Check for Updates…", "checkForUpdates:", target: controller)
+        }
+#endif
         appM.addItem(.separator())
         item(appM, "Hide \(name)", "hide:", "h")
         item(appM, "Hide Others", "hideOtherApplications:", "h", [.command, .option])

@@ -1,7 +1,7 @@
 // Orchestrator chats: each message runs the main agent (Claude Code headless) with the
 // tokenwise-studio MCP tools, so it can delegate to workers. Follow-ups resume the session.
 import { validateImages, imageNote } from "./uploads.js";
-import { spawn } from "node:child_process";
+import { spawn } from "./process.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

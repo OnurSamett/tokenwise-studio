@@ -18,6 +18,7 @@ export const currentVersion = (root = ROOT) => readJson(path.join(root, "package
 // hidden lockfile (node_modules/.package-lock.json) and legacy _resolved/_from fields. With no evidence at
 // all, assume "github" (the way it was first distributed); updating that way is harmless.
 export function installSource(root = ROOT) {
+  if (fs.existsSync(path.join(root, ".bundled"))) return fs.readFileSync(path.join(root, ".bundled"), "utf8").trim() === "windows" ? "windows" : "dmg";
   if (fs.existsSync(path.join(root, ".git"))) return "dev";
   const pkg = readJson(path.join(root, "package.json")) || {};
   const refs = [pkg._resolved, pkg._from];

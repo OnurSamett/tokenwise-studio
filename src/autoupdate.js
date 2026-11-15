@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "./process.js";
 import { fileURLToPath } from "node:url";
 import { cacheFile, compareVersions, currentVersion, installArgs, installSource, latestVersion } from "./version.js";
 import { loadSettings } from "./settings.js";
@@ -47,6 +47,8 @@ export function logUpdate(msg) {
 export function decideAutoUpdate({ mode, updateCheck = true, source, current, latest, busy, lastAttemptAt = 0, ready = null, now = Date.now() }) {
   if (mode !== "auto") return { action: "skip", reason: "mode", retry: false };
   if (updateCheck === false) return { action: "skip", reason: "update check is off", retry: false };
+  if (source === "windows") return { action: "skip", reason: "download a new Windows zip to update the beta", retry: false };
+  if (source === "dmg") return { action: "skip", reason: "download a new DMG to update the signed app", retry: false };
   if (source === "dev") return { action: "skip", reason: "dev checkout", retry: false };
   if (lastAttemptAt && now - lastAttemptAt < DAY_MS) return { action: "skip", reason: "tried within 24h", retry: false };
   if (!latest || !latest.version) return { action: "skip", reason: "no latest version", retry: true };
@@ -71,10 +73,15 @@ async function withLock(fn) {
 /** Run `npm <args>` without a shell. Resolves { ok, out } with the tail of the output. */
 export function npmInstall(args, { timeoutMs = 5 * 60 * 1000 } = {}) {
   return new Promise((resolve) => {
-    execFile("npm", args, { encoding: "utf8", timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
-      const out = `${stdout || ""}${stderr || ""}`.trim().slice(-2000);
-      resolve({ ok: !err, out: err && !out ? String(err.message) : out });
-    });
+    let child;
+    try { child = spawn("npm", args, { timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"] }); }
+    catch (err) { resolve({ ok: false, out: err.message }); return; }
+    let out = "";
+    const capture = chunk => { out = (out + chunk).slice(-2000); };
+    child.stdout.on("data", capture);
+    child.stderr.on("data", capture);
+    child.on("error", err => resolve({ ok: false, out: out.trim() || err.message }));
+    child.on("close", code => resolve({ ok: code === 0, out: out.trim() }));
   });
 }
 
@@ -150,6 +157,7 @@ export function appLauncherHash(app = appBundlePath()) {
 /** Does the Mac app need rebuilding (installed app was compiled from different Swift source)? */
 export function needsAppSetup({ platform = process.platform, root = ROOT, app = appBundlePath() } = {}) {
   if (platform !== "darwin") return false;
+  if (fs.existsSync(path.join(app, "Contents", "Resources", "app", ".bundled"))) return false;
   try {
     const plist = fs.readFileSync(path.join(app, "Contents", "Info.plist"), "utf8");
     if (!plist.includes(`<string>${BUNDLE_ID}</string>`)) return false; // not ours: setup would refuse anyway

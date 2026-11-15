@@ -4,3 +4,11 @@ node_modules/
 # internal planning notes, never published
 design/
 docs/masaustu-urun-notlari.md
+
+dist/
+.cache/
+
+# Windows desktop build intermediates
+windows/**/bin/
+windows/**/obj/
+windows/**/app.ico

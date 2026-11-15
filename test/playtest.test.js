@@ -656,9 +656,13 @@ test("playtest.js, settings.js, workers.js, fallback.js, and orchestrator guide 
   for (const tool of ["Edit", "Bash", "WebFetch", "WebSearch", "Task", "Agent"]) {
     assert.ok(claudeCmd.args.includes(tool), `expected ${tool} in --disallowedTools`);
   }
-  assert.ok(claudeCmd.args.includes(`Read(${REPO_ROOT}/**)`));
-  assert.ok(claudeCmd.args.includes("Read(/tmp/pt/**)"));
-  assert.ok(!claudeCmd.args.includes("Read"), "unscoped Read must not be in --allowedTools");
+  for (const tool of ["Read", "Glob", "Grep"]) {
+    for (const root of [REPO_ROOT, "/tmp/pt"]) {
+      assert.ok(claudeCmd.args.includes(`${tool}(/${root}/**)`));
+      assert.ok(!claudeCmd.args.includes(`${tool}(${root}/**)`), "single-slash paths are project-relative");
+    }
+    assert.ok(!claudeCmd.args.includes(tool), `unscoped ${tool} must not be allowed`);
+  }
   const maxTurnsIdx = claudeCmd.args.indexOf("--max-turns");
   assert.ok(maxTurnsIdx !== -1);
   assert.equal(claudeCmd.args[maxTurnsIdx + 1], "50");
@@ -783,6 +787,23 @@ test("Jobs playtest runner & HTTP routes enforce read-only, scrub base64 logs, s
 if (process.argv[2] === "auth") {
   console.log(JSON.stringify({ loggedIn: true }));
   process.exit(0);
+}
+// Keep the first worker alive until this test writes the simulated proxy stop state.
+// Without this barrier it can finish while the delegate checks run, caching a report
+// before stoppedByUser exists and making the assertion depend on machine speed.
+if (process.argv.some(arg => arg.includes("Start play and test shop"))) {
+  const fs = require("node:fs"), path = require("node:path");
+  const config = JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf("--mcp-config") + 1], "utf8"));
+  const proxyArgs = config.mcpServers["roblox-playtest"].args;
+  const dir = proxyArgs[proxyArgs.indexOf("--playtest-dir") + 1];
+  const deadline = Date.now() + 10000;
+  let stopped = false;
+  while (Date.now() < deadline) {
+    try { stopped = JSON.parse(fs.readFileSync(path.join(dir, "state.json"), "utf8")).stoppedByUser; } catch {}
+    if (stopped) break;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
+  if (!stopped) throw new Error("test did not provide stop state");
 }
 const line = JSON.stringify({
   type: "assistant",
@@ -1047,9 +1068,9 @@ test("studioproxy: input tools denied in edit mode, allowed in play mode, and re
 
     for (const badArgs of [
       { key: "cmd+q" },
-      { key: "w", modifiers: ["ctrl"] },
-      { key: "e", altKey: true },
-      { key: "r", meta: "true" },
+      { keys: ["LeftControl"] },
+      { key: "Enum.KeyCode.LeftAlt" },
+      { keys: ["RightMeta"] },
     ]) {
       const modDenied = await proxy.callTool({ name: "user_keyboard_input", arguments: badArgs });
       assert.equal(modDenied.isError, true);
