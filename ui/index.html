@@ -807,13 +807,140 @@
   .mchip.sent { height: 20px; padding: 0 8px; font-size: 11.5px; margin: 6px 4px 0 0; }
   .mrow .lgl { width: 18px; height: 18px; border-radius: 5px; background: var(--s3); color: var(--muted); font: 600 11px/18px var(--mono); text-align: center; flex: none; }
   @media (max-width: 640px) { .roles { grid-template-columns: 1fr; } .crow .hint { display: none; } }
+
+  /* Sidebar search, folders, date groups, drag & drop */
+  .side-search { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--s1); color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
+  .side-search:hover { border-color: var(--accent); color: var(--text); }
+  .side-search .kbd { margin-left: auto; font: 500 11px/1 var(--mono); padding: 2px 5px; border-radius: 4px; background: var(--s2); border: 1px solid var(--line); color: var(--muted); }
+  .sechead { display: flex; align-items: center; justify-content: space-between; padding: 8px 6px 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  .sechead .add { width: 20px; height: 20px; border: 0; border-radius: 5px; background: none; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .sechead .add:hover { background: var(--s2); color: var(--text); }
+  .folder { border-radius: 8px; margin-bottom: 3px; border: 1px solid transparent; transition: background .12s, border-color .12s; }
+  .folder.dragover { background: var(--accent-soft); border-color: var(--accent); }
+  .fhead { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px 6px; border: 0; border-radius: 7px; background: none; color: var(--text); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; text-align: left; }
+  .fhead:hover { background: var(--s2); }
+  .fhead .fchev { width: 14px; text-align: center; color: var(--muted); font-size: 11px; transition: transform .12s; flex: none; }
+  .folder.open > .fhead .fchev { transform: rotate(90deg); }
+  .fhead .fic { font-size: 13px; color: var(--muted); flex: none; }
+  .fhead .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fhead .fpin { font-size: 10px; color: var(--accent); flex: none; }
+  .fhead .fcnt { font: 500 11px/1 var(--mono); color: var(--muted); padding: 0 3px; flex: none; }
+  .fhead .fmore { opacity: 0; border: 0; background: none; color: var(--muted); font-size: 13px; padding: 0 4px; border-radius: 4px; cursor: pointer; flex: none; }
+  .fhead:hover .fmore, .fhead:focus-within .fmore { opacity: 1; }
+  .fhead .fmore:hover { background: var(--s3); color: var(--text); }
+  .fhead .fin { flex: 1; min-width: 0; height: 22px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 5px; background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; outline: none; }
+  .fbody { padding-left: 10px; margin: 1px 0 4px; border-left: 1px solid var(--line); margin-left: 11px; }
+  .dgroup { padding: 7px 8px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: .03em; color: var(--dim); }
+  .chats-drop { min-height: 28px; border-radius: 8px; border: 1px solid transparent; padding-bottom: 4px; }
+  .chats-drop.dragover { background: var(--accent-soft); border-color: var(--accent); }
+  .chatitem[draggable="true"] { cursor: grab; }
+  .chatitem.dragging { opacity: .45; }
+  .chatitem .pin { font-size: 10px; color: var(--accent); flex: none; margin-right: 2px; }
+  .chatitem .st { width: 7px; height: 7px; border-radius: 50%; flex: none; margin-right: 2px; }
+  .chatitem .st.run { background: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); animation: tw-breathe 1.6s ease-in-out infinite; }
+  .chatitem .st.rev { background: var(--ok); }
+
+  /* Effort-aware thinking indicator & sticky working banner */
+  .think { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); padding: 2px 0; }
+  .think .orb { position: relative; width: 14px; height: 14px; border-radius: 50%; background: var(--accent-soft); flex: none; display: inline-flex; align-items: center; justify-content: center; }
+  .think .orb::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: tw-breathe 1.8s ease-in-out infinite; }
+  .think .orb::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 1.5px solid transparent; border-top-color: var(--accent); opacity: 0; }
+  .think .lab { background: linear-gradient(90deg, var(--muted) 0%, var(--text) 45%, var(--muted) 90%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: tw-shimmer 2.4s linear infinite; font-weight: 500; }
+  .think .eff { font: 500 10.5px/1 var(--mono); padding: 2px 6px; border-radius: 99px; background: var(--s2); border: 1px solid var(--line); color: var(--muted); }
+  [data-eff="low"] .think .orb::before { animation-duration: 2.6s; opacity: .75; }
+  [data-eff="low"] .think .lab { animation-duration: 3.2s; }
+  [data-eff="medium"] .think .orb::before { animation-duration: 1.7s; }
+  [data-eff="medium"] .think .lab { animation-duration: 2.2s; }
+  [data-eff="high"] .think .orb::before { animation-duration: 1.2s; }
+  [data-eff="high"] .think .orb::after { opacity: .85; animation: tw-ring 1.6s ease-out infinite; }
+  [data-eff="high"] .think .lab { animation-duration: 1.6s; }
+  [data-eff="xhigh"] .think .orb::before { animation-duration: .85s; box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent); }
+  [data-eff="xhigh"] .think .orb::after { opacity: 1; border-right-color: color-mix(in srgb, var(--accent) 55%, transparent); animation: tw-orbit .9s linear infinite; }
+  [data-eff="xhigh"] .think .lab { animation-duration: 1.1s; }
+  @keyframes tw-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  @keyframes tw-breathe { 0%, 100% { transform: scale(.82); opacity: .72; } 50% { transform: scale(1.12); opacity: 1; } }
+  @keyframes tw-ring { 0% { transform: scale(.7); opacity: .9; } 100% { transform: scale(1.45); opacity: 0; } }
+  @keyframes tw-orbit { to { transform: rotate(360deg); } }
+
+  /* Per-worker effort progress animation */
+  .worker { position: relative; }
+  .worker.running::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 3px; background: var(--accent); animation: tw-breathe 1.5s ease-in-out infinite; }
+  .worker[data-eff="low"] { --eff-dur: 2.8s; }
+  .worker[data-eff="medium"] { --eff-dur: 1.8s; }
+  .worker[data-eff="high"] { --eff-dur: 1.2s; }
+  .worker[data-eff="xhigh"] { --eff-dur: .85s; }
+  .worker .bar.running i { animation-duration: var(--eff-dur, 1.8s); }
+  .worker.running[data-eff="xhigh"]::before { animation-duration: .85s; }
+  .worker.running[data-eff="high"]::before { animation-duration: 1.15s; }
+  .worker.running[data-eff="low"]::before { animation-duration: 2.5s; }
+
+  /* Sticky working banner */
+  .workbanner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 18px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--s1) 92%, var(--accent) 8%); font-size: 12.5px; z-index: 4; flex: none; }
+  .workbanner[hidden] { display: none; }
+  .workbanner-l { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .workbanner-r { display: flex; align-items: center; gap: 10px; flex: none; }
+  .wb-meta { font: 500 11.5px/1 var(--mono); color: var(--muted); white-space: nowrap; }
+  .wb-stop { height: 26px; padding: 0 11px; border-radius: 7px; border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--line)); background: color-mix(in srgb, var(--bad) 10%, var(--bg)); color: var(--bad); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+  .wb-stop:hover { background: var(--bad); color: #fff; border-color: var(--bad); }
+
+  /* Reduced motion & Settings animation toggle */
+  body.no-anim .think .orb::before, body.no-anim .think .orb::after, body.no-anim .think .lab,
+  body.no-anim .worker.running::before, body.no-anim .worker .bar.running i, body.no-anim .chatitem .st.run,
+  body.no-anim .spin, body.no-anim .live { animation: none !important; }
+  body.no-anim .think .lab { background: none; color: var(--text); -webkit-text-fill-color: currentColor; }
+  body.no-anim .think .orb::after { display: none; }
+  body.no-anim .bar.running i { width: 55%; background: var(--accent); opacity: .75; }
+  @media (prefers-reduced-motion: reduce) {
+    .think .orb::before, .think .orb::after, .think .lab,
+    .worker.running::before, .worker .bar.running i, .chatitem .st.run,
+    .spin, .live { animation: none !important; }
+    .think .lab { background: none; color: var(--text); -webkit-text-fill-color: currentColor; }
+    .think .orb::after { display: none; }
+    .bar.running i { width: 55%; background: var(--accent); opacity: .75; }
+  }
+
+  /* Centered modal overlay for Command Palette & Shortcuts sheet */
+  .overlay { position: fixed; inset: 0; z-index: 90; background: rgba(10, 12, 18, .54); backdrop-filter: blur(3px); display: flex; align-items: flex-start; justify-content: center; padding: clamp(32px, 10vh, 96px) 16px 24px; }
+  .overlay[hidden] { display: none; }
+  .palette { width: min(600px, 100%); max-height: min(520px, 78vh); display: flex; flex-direction: column; background: var(--s1); border: 1px solid var(--line); border-radius: 13px; box-shadow: 0 22px 60px var(--shadow); overflow: hidden; }
+  .pal-top { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  .pal-top svg { color: var(--muted); flex: none; }
+  .pal-in { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 14px; outline: none; }
+  .pal-esc { font: 500 11px/1 var(--mono); padding: 3px 6px; border-radius: 5px; background: var(--s2); border: 1px solid var(--line); color: var(--muted); }
+  .pal-list { overflow-y: auto; padding: 6px; flex: 1; }
+  .pal-grp { padding: 8px 10px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  .pal-it { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+  .pal-it.sel, .pal-it:hover { background: var(--accent-soft); }
+  .pal-ic { width: 22px; height: 22px; border-radius: 6px; background: var(--s2); border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); flex: none; }
+  .pal-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .pal-lb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pal-sub { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pal-hl { color: var(--accent); font-weight: 600; }
+  .pal-cat { font: 500 10.5px/1 var(--mono); padding: 2px 6px; border-radius: 99px; background: var(--s2); color: var(--muted); flex: none; }
+  .pal-kbd { display: inline-flex; gap: 3px; flex: none; }
+  .pal-kbd kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border-radius: 4px; background: var(--s2); border: 1px solid var(--line); color: var(--muted); }
+  .pal-empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  .sheet { width: min(640px, 100%); max-height: min(620px, 82vh); display: flex; flex-direction: column; background: var(--s1); border: 1px solid var(--line); border-radius: 13px; box-shadow: 0 22px 60px var(--shadow); overflow: hidden; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+  .sheet-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .sheet-head .x { width: 28px; height: 28px; border: 0; border-radius: 7px; background: none; color: var(--muted); font-size: 18px; cursor: pointer; }
+  .sheet-head .x:hover { background: var(--s2); color: var(--text); }
+  .sheet-body { overflow-y: auto; padding: 14px 16px 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .keys-sec h4 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  .keys-list { display: flex; flex-direction: column; gap: 6px; }
+  .keys-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 4px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+  .keys-row:last-child { border-bottom: 0; }
+  .keys-row .desc { color: var(--text); }
+  .keys-row .kd { display: inline-flex; gap: 3px; flex: none; }
+  .keys-row kbd { font: 500 11px/1 var(--mono); padding: 3px 6px; border-radius: 5px; background: var(--s2); border: 1px solid var(--line); color: var(--muted); }
 </style>
 </head>
 <body>
 <aside class="side" id="side">
   <div class="brand"><img src="/logo.png" alt="">tokenwise <span>studio</span></div>
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> <span id="newtasklbl">New task</span></button>
-  <div class="label" id="recentlbl">Recent</div>
+  <button class="side-search" id="searchbtn" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span id="searchlbl">Search chats…</span><span class="kbd" id="searchkbd">⌘K</span></button>
   <div class="chats" id="chats"></div>
   <div class="sidefoot"><div class="updready" id="updready" hidden></div><button class="newver" id="newver" hidden></button><div class="label" id="limitslbl">Plan limits</div><div class="usage" id="usage"></div><button class="ghost" id="modelsbtn">Model guide</button><button class="ghost" id="usagebtn">Usage</button><div class="footrow"><button class="ghost" id="directbtn">Run a single worker…</button><button class="icon-btn" id="settingsbtn" title="Settings" aria-label="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><button class="icon-btn" id="notifbtn" title="Notifications"></button><button class="icon-btn" id="keysbtn" title="Keyboard shortcuts (?)">⌨</button><button class="icon-btn" id="themebtn" title="Theme"></button></div></div>
 </aside>
@@ -825,6 +952,7 @@
     <span class="sub" id="chattitle"></span>
     <button class="ws-toggle" id="wstoggle" title="Toggle workspace panel (⌘\)" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg><span id="wstogglelbl">Workspace</span></button>
   </div>
+  <div class="workbanner" id="workbanner" hidden></div>
   <div class="scroll" id="scroll"><div class="col" id="col"></div></div>
   <div class="dock"><div class="dock-in">
     <button class="jump" id="jump" hidden>↓ Latest</button>
@@ -876,6 +1004,8 @@
 <div class="toasts" id="toasts"></div>
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
+<div class="overlay" id="pal-overlay" hidden></div>
+<div class="overlay" id="keys-overlay" hidden></div>
 
 <script>
 // Plain (non-module) fallback: if the app script did not start, say so instead of leaving a dead page.
@@ -898,6 +1028,10 @@ import { parseCitations, renderMarkdownHtml } from "/citations.js";
 import { detectLanguage, renderHighlightedLinesHtml } from "/workspace.js";
 import { createDictationController } from "/dictation.js";
 import { MENTIONS, mentionInfo } from "/mentions.js";
+import { DATE_GROUPS, dateGroupKey, sortChatsByActivity, sortFolders, groupChatsByDate, partitionChatsByFolders } from "/sidebar.js";
+import { filterPaletteItems, formatShortcut } from "/palette.js";
+
+const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || "");
 
 // ---------- i18n ----------
 let langSetting = "auto";
@@ -912,7 +1046,8 @@ const effortLabel = (e) => t(`effort.${e}`) || e;
 function applyStaticI18n() {
   document.documentElement.lang = lang;
   $("#newtasklbl").textContent = t("side.newTask");
-  $("#recentlbl").textContent = t("side.recent");
+  $("#searchlbl").textContent = t("side.searchChats");
+  $("#searchkbd").textContent = isMac ? "⌘K" : "Ctrl+K";
   $("#limitslbl").textContent = t("side.planLimits");
   $("#modelsbtn").textContent = t("side.modelGuide");
   $("#usagebtn").textContent = t("side.usage");
@@ -1077,6 +1212,7 @@ function syncFromSettings(data, { applyComposer = false } = {}) {
   const s = data?.settings || {};
   notifOn = s.notifications !== false;
   applyNotif();
+  document.body.classList.toggle("no-anim", s.animations === false);
   applyLanguage(s.language || "auto");
   if (applyComposer) {
     if (s.defaultModel) $("#omodel").value = s.defaultModel;
@@ -1160,8 +1296,9 @@ const PRESET_ROLES = {
 };
 
 // ---------- state ----------
-let S = { repo: "", chats: [], jobs: [], shootouts: [] };
+let S = { repo: "", chats: [], jobs: [], shootouts: [], folders: { folders: [], chatFolder: {}, pinnedChats: [] } };
 let chatId = null, chatFrom = 0, turns = [], drawer = null;
+let pendingFolderForNewChat = null, editingFolderId = null, creatingFolder = false, dragChatId = null, folderMutSeq = 0;
 
 let attachments = [], sending = false, composerShootout = false;
 function renderComposerShootout() {
@@ -1249,16 +1386,285 @@ function testPanel(j) {
   return box;
 }
 
-// ---------- sidebar ----------
+// ---------- sidebar & folders ----------
 const drawn = {};
 const changed = (k, v) => { const j = JSON.stringify(v); if (drawn[k] === j) return false; drawn[k] = j; return true; };
+const folderState = () => S.folders || { folders: [], chatFolder: {}, pinnedChats: [] };
+const dateGroupLabel = (k) => ({
+  pinned: t("side.date.pinned"),
+  today: t("side.date.today"),
+  yesterday: t("side.date.yesterday"),
+  week: t("side.date.week"),
+  older: t("side.date.older"),
+}[k] || k);
+
+async function folderApi(payload) {
+  const seq = ++folderMutSeq;
+  try {
+    const next = await api("folders", payload);
+    if (seq === folderMutSeq) S.folders = next;
+    delete drawn.side;
+    renderSide();
+    return next;
+  } catch (e) {
+    toast(e.message || String(e), true);
+    throw e;
+  }
+}
+
+async function moveChatToFolder(c, folderId, folderName = "") {
+  const cur = folderState().chatFolder?.[c.id] || null;
+  if (cur === (folderId || null)) return;
+  await folderApi({ action: "moveChat", chatId: c.id, folderId: folderId || null });
+  toast(folderId
+    ? t("side.movedToFolder", { title: c.title, folder: folderName })
+    : t("side.movedOutOfFolder", { title: c.title }));
+}
+
+function startCreateFolder(onCreated = null) {
+  creatingFolder = true;
+  editingFolderId = null;
+  delete drawn.side;
+  renderSide();
+  const inp = $("#newfolderin");
+  if (!inp) return;
+  let settled = false;
+  const finish = async (save) => {
+    if (settled) return;
+    settled = true;
+    const name = inp.value.trim();
+    creatingFolder = false;
+    delete drawn.side;
+    if (save && name) {
+      const before = new Set(folderState().folders.map((f) => f.id));
+      const next = await folderApi({ action: "create", name }).catch(() => null);
+      if (next && onCreated) {
+        const added = next.folders.find((f) => !before.has(f.id)) || next.folders.at(-1);
+        if (added) await onCreated(added);
+      }
+    } else {
+      renderSide();
+    }
+  };
+  inp.onkeydown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  };
+  inp.onblur = () => finish(false);
+  inp.focus();
+}
+
+function startRenameFolder(f) {
+  editingFolderId = f.id;
+  creatingFolder = false;
+  delete drawn.side;
+  renderSide();
+  const inp = $(`.fhead .fin[data-fid="${f.id}"]`);
+  if (!inp) return;
+  let settled = false;
+  const finish = async (save) => {
+    if (settled) return;
+    settled = true;
+    const name = inp.value.trim();
+    editingFolderId = null;
+    delete drawn.side;
+    if (save && name && name !== f.name) await folderApi({ action: "rename", id: f.id, name }).catch(() => {});
+    else renderSide();
+  };
+  inp.onkeydown = (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  };
+  inp.onblur = () => finish(true);
+  inp.focus();
+  inp.select();
+}
+
+function folderMenu(anchor, f) {
+  popover(anchor,
+    h("button", { onclick: () => { closePop(); startRenameFolder(f); } }, t("side.renameFolder")),
+    h("button", { onclick: () => { closePop(); folderApi({ action: "pinFolder", id: f.id, pinned: !f.pinned }); } }, f.pinned ? t("side.unpinFolder") : t("side.pinFolder")),
+    h("button", { onclick: () => { closePop(); newTask(f.id); } }, t("side.newChatInFolder")),
+    h("div", { class: "sep" }),
+    h("button", { class: "danger", style: "color:var(--bad)", onclick: async () => {
+      closePop();
+      await folderApi({ action: "delete", id: f.id }).catch(() => {});
+      toast(t("side.folderDeleted"));
+    } }, t("side.deleteFolder")));
+}
+
+function openMoveFolderMenu(anchor, c) {
+  const fs = folderState();
+  const curFid = fs.chatFolder?.[c.id] || null;
+  const sorted = sortFolders(fs.folders || []);
+  const items = [
+    h("div", { class: "label", style: "padding:4px 10px 6px" }, t("chat.moveFolderTitle")),
+    h("button", { onclick: () => { closePop(); moveChatToFolder(c, null); } }, `${!curFid ? "✓ " : ""}${t("chat.unfiled")}`),
+    ...sorted.map((f) => h("button", { onclick: () => { closePop(); moveChatToFolder(c, f.id, f.name); } }, `${curFid === f.id ? "✓ " : "📁 "}${f.name}`)),
+    h("div", { class: "sep" }),
+    h("button", { onclick: () => {
+      closePop();
+      startCreateFolder((added) => moveChatToFolder(c, added.id, added.name));
+    } }, t("chat.createFolderAndMove")),
+  ];
+  const pop = popover(anchor, ...items);
+  const btns = [...pop.querySelectorAll("button")];
+  btns[0]?.focus();
+  pop.addEventListener("keydown", (e) => {
+    const idx = btns.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); btns[(idx + 1) % btns.length]?.focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); btns[(idx - 1 + btns.length) % btns.length]?.focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); closePop(); }
+  });
+}
+
 function renderSide() {
   const rev = (c) => S.jobs.filter((j) => j.parent === c.id && j.write && j.status === "done" && (j.files || []).length).length;
   const ago = (tm) => { const m = Math.round((Date.now() - new Date(tm)) / 60000); return m < 1 ? t("side.ago.now") : m < 60 ? t("side.ago.m", { n: m }) : m < 1440 ? t("side.ago.h", { n: Math.round(m / 60) }) : t("side.ago.d", { n: Math.round(m / 1440) }); };
-  if (!changed("side", [chatId, Math.floor(Date.now() / 60000), S.chats.map((c) => [c.id, c.title, c.status, rev(c)])])) return;
-  set($("#chats"), S.chats.length ? S.chats.map((c) => h("button", { class: "chatitem" + (c.id === chatId ? " on" : ""), onclick: () => { openChat(c.id); document.body.classList.remove("side-open"); } },
-    h("span", { class: "t" }, c.title), c.status === "running" ? h("span", { class: "live", title: t("side.working") }) : rev(c) ? h("span", { class: "rv" }, t("side.toReview", { n: rev(c) })) : h("span", { class: "when" }, ago(c.turns?.at(-1)?.started || c.created)),
-    h("span", { class: "more", role: "button", title: t("side.more"), onclick: (e) => { e.stopPropagation(); chatMenu(e.currentTarget, c); } }, "⋯"))) : h("div", { class: "label" }, t("side.noTasks")));
+  const fs = folderState();
+  if (!changed("side", [
+    chatId,
+    lang,
+    creatingFolder,
+    editingFolderId,
+    Math.floor(Date.now() / 60000),
+    fs,
+    S.chats.map((c) => [c.id, c.title, c.status, c.turns?.at(-1)?.started || c.created, rev(c)]),
+  ])) return;
+
+  const pinnedSet = new Set(fs.pinnedChats || []);
+  const chatRow = (c) => {
+    const r = rev(c);
+    const isPinned = pinnedSet.has(c.id);
+    return h("button", {
+      class: "chatitem" + (c.id === chatId ? " on" : ""),
+      draggable: "true",
+      ondragstart: (e) => {
+        dragChatId = c.id;
+        e.currentTarget.classList.add("dragging");
+        try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.id); } catch {}
+      },
+      ondragend: (e) => { dragChatId = null; e.currentTarget.classList.remove("dragging"); },
+      onclick: () => { openChat(c.id); document.body.classList.remove("side-open"); },
+    },
+      c.status === "running"
+        ? h("span", { class: "st run", title: t("side.working") })
+        : r > 0 ? h("span", { class: "st rev", title: t("side.toReview", { n: r }) }) : null,
+      isPinned ? h("span", { class: "pin", "aria-hidden": "true" }, "★") : null,
+      h("span", { class: "t" }, c.title),
+      c.status === "running"
+        ? h("span", { class: "live", title: t("side.working") })
+        : r ? h("span", { class: "rv" }, t("side.toReview", { n: r })) : h("span", { class: "when" }, ago(c.turns?.at(-1)?.started || c.created)),
+      h("span", {
+        class: "more",
+        role: "button",
+        title: t("side.more"),
+        onclick: (e) => { e.stopPropagation(); chatMenu(e.currentTarget, c); },
+      }, "⋯"));
+  };
+
+  const renderDateBuckets = (list) => {
+    const { pinned, groups } = groupChatsByDate(list, { pinnedIds: fs.pinnedChats || [] });
+    const out = [];
+    if (pinned.length) {
+      out.push(h("div", { class: "dgroup" }, dateGroupLabel("pinned")));
+      for (const c of pinned) out.push(chatRow(c));
+    }
+    for (const g of groups) {
+      out.push(h("div", { class: "dgroup" }, dateGroupLabel(g.key)));
+      for (const c of g.chats) out.push(chatRow(c));
+    }
+    return out;
+  };
+
+  const { folders, byFolder, unfiled } = partitionChatsByFolders(S.chats, fs);
+  const children = [];
+
+  children.push(h("div", { class: "sechead" },
+    h("span", {}, t("side.folders")),
+    h("button", { class: "add", type: "button", title: t("side.newFolder"), "aria-label": t("side.newFolder"), onclick: () => startCreateFolder() }, "+")));
+
+  if (creatingFolder) {
+    children.push(h("div", { class: "folder open" },
+      h("div", { class: "fhead" },
+        h("span", { class: "fchev" }, "›"),
+        h("span", { class: "fic" }, "📁"),
+        h("input", { id: "newfolderin", class: "fin", type: "text", maxlength: "80", placeholder: t("side.folderNamePlaceholder") }))));
+  }
+
+  for (const f of folders) {
+    const list = byFolder[f.id] || [];
+    const isOpen = !f.collapsed;
+    const isEdit = editingFolderId === f.id;
+    const dropProps = {
+      ondragover: (e) => {
+        if (!dragChatId && !e.dataTransfer?.types?.includes("text/plain")) return;
+        e.preventDefault();
+        e.currentTarget.classList.add("dragover");
+      },
+      ondragleave: (e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove("dragover");
+      },
+      ondrop: (e) => {
+        e.preventDefault();
+        e.currentTarget.classList.remove("dragover");
+        const id = dragChatId || e.dataTransfer?.getData("text/plain");
+        dragChatId = null;
+        const ch = S.chats.find((x) => x.id === id);
+        if (ch) moveChatToFolder(ch, f.id, f.name);
+      },
+    };
+    const head = h("button", {
+      class: "fhead",
+      type: "button",
+      "aria-expanded": isOpen ? "true" : "false",
+      "aria-label": t("side.toggleFolder", { name: f.name }),
+      onclick: () => { if (!isEdit) folderApi({ action: "collapse", id: f.id, collapsed: !f.collapsed }); },
+    },
+      h("span", { class: "fchev" }, "›"),
+      h("span", { class: "fic" }, isOpen ? "📂" : "📁"),
+      f.pinned ? h("span", { class: "fpin", "aria-hidden": "true" }, "★") : null,
+      isEdit
+        ? h("input", { class: "fin", type: "text", maxlength: "80", value: f.name, "data-fid": f.id, onclick: (e) => e.stopPropagation() })
+        : h("span", { class: "fname" }, f.name),
+      h("span", { class: "fcnt" }, String(list.length)),
+      h("span", {
+        class: "fmore",
+        role: "button",
+        title: t("side.folderMenu"),
+        onclick: (e) => { e.stopPropagation(); folderMenu(e.currentTarget, f); },
+      }, "⋯"));
+    children.push(h("div", { class: "folder" + (isOpen ? " open" : ""), "data-folder": f.id, ...dropProps },
+      head,
+      isOpen && list.length ? h("div", { class: "fbody" }, ...renderDateBuckets(list)) : null));
+  }
+
+  children.push(h("div", { class: "sechead" }, h("span", {}, t("side.chats"))));
+  const unfiledDrop = h("div", {
+    class: "chats-drop",
+    ondragover: (e) => {
+      if (!dragChatId && !e.dataTransfer?.types?.includes("text/plain")) return;
+      e.preventDefault();
+      e.currentTarget.classList.add("dragover");
+    },
+    ondragleave: (e) => {
+      if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove("dragover");
+    },
+    ondrop: (e) => {
+      e.preventDefault();
+      e.currentTarget.classList.remove("dragover");
+      const id = dragChatId || e.dataTransfer?.getData("text/plain");
+      dragChatId = null;
+      const ch = S.chats.find((x) => x.id === id);
+      if (ch) moveChatToFolder(ch, null);
+    },
+  }, S.chats.length
+    ? (unfiled.length ? renderDateBuckets(unfiled) : [h("div", { class: "label" }, "—")])
+    : [h("div", { class: "label" }, t("side.noTasks"))]);
+  children.push(unfiledDrop);
+
+  set($("#chats"), children);
 }
 
 // Fetch the export and save it as a file (a blob link works in the browser and in the app window).
@@ -1285,9 +1691,13 @@ async function compactChatNow(c) {
 }
 
 function chatMenu(anchor, c) {
+  const fs = folderState();
+  const isPinned = (fs.pinnedChats || []).includes(c.id);
   const alreadyCompacted = !!(c.compaction && (c.compaction.throughTurn ?? 0) >= (c.turns?.length || 0) && !c.sessionId && !c.codexThread);
   const canCompact = c.status !== "running" && (c.turns?.length || 0) > 0 && !alreadyCompacted;
   popover(anchor,
+    h("button", { onclick: () => { closePop(); folderApi({ action: "pinChat", chatId: c.id, pinned: !isPinned }); } }, isPinned ? t("chat.unpin") : t("chat.pin")),
+    h("button", { onclick: (e) => { e.stopPropagation(); openMoveFolderMenu(anchor, c); } }, t("chat.moveToFolder")),
     h("button", { onclick: () => { closePop(); openDrawer("rename", c.id); } }, t("chat.rename")),
     h("button", { disabled: !canCompact, onclick: () => { closePop(); compactChatNow(c); } }, t("chat.compact")),
     h("button", { onclick: () => { closePop(); exportChat(c, "md"); } }, t("chat.exportMd")),
@@ -1327,6 +1737,18 @@ function doctorRow() {
   return row;
 }
 
+const effPhaseLabel = (e) => ({
+  low: t("work.eff.low"),
+  medium: t("work.eff.medium"),
+  high: t("work.eff.high"),
+  xhigh: t("work.eff.xhigh"),
+}[e] || t("work.eff.medium"));
+
+const thinkIndicator = (eff) => h("div", { class: "think" },
+  h("span", { class: "orb", "aria-hidden": "true" }),
+  h("span", { class: "lab" }, effPhaseLabel(eff)),
+  h("span", { class: "eff" }, effortLabel(eff || "medium")));
+
 // One DOM block per turn: user bubble, then orchestrator body (activity, team, replies).
 function turnBlock(i) {
   if (turns[i]) return turns[i];
@@ -1335,15 +1757,16 @@ function turnBlock(i) {
   const activity = h("details", { class: "activity", hidden: true }, h("summary", {}, h("span", { class: "chev" }, "›"), label), steps);
   const thinkingText = h("div", { class: "thinking-text" });
   const thinking = h("details", { class: "thinking", hidden: true }, h("summary", {}, t("turn.thinking")), thinkingText);
+  const thinkWrap = h("div", { hidden: true });
   const team = h("div", {});
   const replies = h("div", { class: "orch-body-replies", style: "display:flex;flex-direction:column;gap:12px" });
   const meta = h("div", { class: "orch-meta" });
   const cost = h("div", { class: "cost", hidden: true });
   const user = h("div", { class: "you" });
   // The team card is inserted into the reply flow at the moment the first task is delegated.
-  const el = h("div", { class: "turn" }, user, h("div", { class: "orch" }, h("div", { class: "avatar" }, "✦"), h("div", { class: "orch-body" }, meta, activity, thinking, replies, cost)));
+  const el = h("div", { class: "turn" }, user, h("div", { class: "orch" }, h("div", { class: "avatar" }, "✦"), h("div", { class: "orch-body" }, meta, activity, thinking, thinkWrap, replies, cost)));
   $("#col").append(el);
-  return (turns[i] = { el, user, activity, label, steps, thinking, thinkingText, team, replies, meta, cost, n: 0 });
+  return (turns[i] = { el, user, activity, label, steps, thinking, thinkingText, thinkWrap, team, replies, meta, cost, n: 0 });
 }
 
 // Turn a timeline event into a short human sentence.
@@ -1406,8 +1829,17 @@ function renderTurnChrome() {
       set(tb.meta, agentLogo(ag), h("b", {}, ag === "claude" ? modelName(tr.model || c.model) : `${AGENT[ag]} ${modelName(tr.model)}`), " · ", new Date(tr.started).toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit" }));
     }
     const running = c.status === "running" && i === c.turns.length - 1;
+    const eff = tr.effort || "medium";
+    tb.el.dataset.eff = eff;
     set(tb.label, running ? [h("span", { class: "spin" }), " ", tp("turn.workingSteps", tb.n)] : tp("turn.steps", tb.n));
-    if (running) tb.activity.hidden = false;
+    if (running) {
+      tb.activity.hidden = false;
+      tb.thinkWrap.hidden = false;
+      if (changed("think" + chatId + i, [eff, lang])) set(tb.thinkWrap, thinkIndicator(eff));
+    } else if (!tb.thinkWrap.hidden) {
+      tb.thinkWrap.hidden = true;
+      set(tb.thinkWrap);
+    }
     const end = c.turns[i + 1]?.started;
     const mine = jobs.filter((j) => j.created >= tr.started && (!end || j.created < end));
     if (changed("team" + chatId + i, mine.map((j) => [j.id, j.status, j.finished, j.status === "running" ? Math.floor(Date.now() / 1000) : 0]))) set(tb.team, mine.length ? teamCard(mine) : null);
@@ -1430,7 +1862,8 @@ function renderTurnChrome() {
 
 function renderWorkerRow(j) {
   const movedWhy = j.movedFrom ? translateReason(j.movedFrom.reason, lang) : "";
-  return h("div", { class: "wk" }, h("button", { class: "worker", onclick: () => openJob(j.id) },
+  const isRun = j.status === "running";
+  return h("div", { class: "wk" }, h("button", { class: "worker" + (isRun ? " running" : ""), "data-eff": j.effort || "medium", onclick: () => openJob(j.id) },
     (() => { const lg = j.agent === "free" ? makerLogo(j.model) || logoImg("nvidia") : agentLogo(j.agent); return h("span", { class: "badge " + j.agent + (lg ? " has-logo" : "") }, lg || BADGE[j.agent] || "?"); })(),
     h("span", {}, h("div", { class: "w-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort), h("span", { class: "w-state " + j.status }, stateLabel(j.status))), h("div", { class: "w-task" }, j.title),
       j.movedFrom ? h("div", { class: "moved", title: movedWhy }, t("teamCard.tookOver", { agent: AGENT[j.movedFrom.agent] || j.movedFrom.agent, reason: movedWhy })) : null),
@@ -1640,6 +2073,40 @@ function renderBanner() {
   if (pre) pre.scrollTop = pre.scrollHeight;
 }
 
+function renderWorkBanner() {
+  const b = $("#workbanner");
+  if (!b) return;
+  const c = curChat();
+  const running = c?.status === "running";
+  if (!running) {
+    if (!b.hidden) { b.hidden = true; set(b); }
+    delete drawn.workbanner;
+    return;
+  }
+  const tr = c.turns?.[c.turns.length - 1] || {};
+  const eff = tr.effort || "medium";
+  const jobs = chatJobs().filter((j) => !tr.started || j.created >= tr.started);
+  const liveWorkers = jobs.filter((j) => j.status === "running").length;
+  const wTok = jobs.reduce((n, j) => n + (j.tokens ? (j.tokens.input || 0) + (j.tokens.output || 0) : 0), 0);
+  const oTok = tr.tokens ? (tr.tokens.input || 0) + (tr.tokens.output || 0) : 0;
+  const total = oTok + wTok;
+  const budget = appSettings?.settings?.turnBudget || 0;
+  const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
+  b.hidden = false;
+  b.dataset.eff = eff;
+  if (!changed("workbanner", [c.id, eff, liveWorkers, total, budget, lang])) return;
+  const metaText = total > 0
+    ? (budget ? t("work.tokensBudget", { used: fmt(total), budget: fmt(budget) }) : t("work.tokensCount", { used: fmt(total) }))
+    : "";
+  set(b,
+    h("div", { class: "workbanner-l" },
+      thinkIndicator(eff),
+      liveWorkers > 0 ? h("span", { class: "wb-meta" }, "· " + tp("work.workers", liveWorkers)) : null),
+    h("div", { class: "workbanner-r" },
+      metaText ? h("span", { class: "wb-meta" }, metaText) : null,
+      h("button", { class: "wb-stop", type: "button", onclick: () => api(`stop/${c.id}`, {}).then(refresh) }, t("work.stop"))));
+}
+
 function renderTop() {
   $("#projname").textContent = S.project?.name || S.repo.split("/").filter(Boolean).pop() || t("top.defaultProject");
   $("#project").title = S.repo || t("top.switchProject");
@@ -1649,6 +2116,7 @@ function renderTop() {
   $("#modelbtn").dataset.lastAgent = last?.agent || "";
   const running = c?.status === "running";
   $("#stop").hidden = !running; $("#send").hidden = running;
+  renderWorkBanner();
   renderTeamChip();
   const busy = S.chats.some((x) => x.status === "running") || S.jobs.some((j) => j.status === "running");
   const nrev = S.jobs.filter((j) => j.write && j.status === "done" && (j.files || []).length).length;
@@ -1678,8 +2146,9 @@ function openChat(id) {
   resetWsChatFiles(id);
   renderSide(); renderTop(); renderBanner(); pollChat();
 }
-function newTask() {
+function newTask(folderId = null) {
   if (sending) return;
+  pendingFolderForNewChat = typeof folderId === "string" ? folderId : null;
   clearAttachments(); chatId = null; turns = []; chatGen++; chatBusy = false;
   for (const k in drawn) delete drawn[k];
   resetWsChatFiles(null);
@@ -1688,7 +2157,7 @@ function newTask() {
     if (appSettings.settings.defaultEffort) $("#oeffort").value = appSettings.settings.defaultEffort;
   }
   mchips = []; msgTeam = {}; closePickers(); closeMentionMenu(); renderChips(); renderTeamChip(); renderModelBtn();
-  set($("#col"), welcome()); renderSide(); renderTop(); renderBanner(); $("#input").focus();
+  set($("#col"), welcome()); renderSide(); renderTop(); renderWorkBanner(); renderBanner(); $("#input").focus();
 }
 
 function askLimitChoice(o) {
@@ -1748,7 +2217,14 @@ async function sendChatMessage(message, { withAttachments = false } = {}) {
       clearAttachments();
       $("#input").value = ""; autosize(); $("#send").disabled = true;
     }
-    if (!chatId) { chatId = c.id; chatFrom = 0; turns = []; chatGen++; chatBusy = false; set($("#col")); }
+    if (!chatId) {
+      chatId = c.id; chatFrom = 0; turns = []; chatGen++; chatBusy = false; set($("#col"));
+      if (pendingFolderForNewChat) {
+        const fid = pendingFolderForNewChat;
+        pendingFolderForNewChat = null;
+        await folderApi({ action: "moveChat", chatId: c.id, folderId: fid }).catch(() => {});
+      }
+    }
     await refresh();
     return true;
   } catch (e) {
@@ -2538,6 +3014,11 @@ async function renderDrawer(full) {
             h("input", { type: "checkbox", checked: s.fastMode ? true : null, disabled: !!lock.fastMode, onchange: (e) => applyPatch({ fastMode: e.target.checked }) }),
             h("span", {}, t("settings.fastMode"), h("small", {}, t("settings.fastModeDesc"))))),
         h("div", { class: "section" },
+          secHead(t("settings.interfaceTitle"), "animations"),
+          h("label", { class: "toggle" + (lock.animations ? " disabled" : "") },
+            h("input", { type: "checkbox", checked: s.animations !== false ? true : null, disabled: !!lock.animations, onchange: (e) => applyPatch({ animations: e.target.checked }) }),
+            h("span", {}, t("settings.animations"), h("small", {}, t("settings.animationsDesc"))))),
+        h("div", { class: "section" },
           h("div", { class: "shead" }, h("h4", {}, t("settings.limitsWorkers"))),
           h("label", { class: "toggle" + (lock.saveClaudeForPlanning ? " disabled" : "") },
             h("input", { type: "checkbox", checked: s.saveClaudeForPlanning !== false ? true : null, disabled: !!lock.saveClaudeForPlanning, onchange: (e) => applyPatch({ saveClaudeForPlanning: e.target.checked }) }),
@@ -2652,10 +3133,8 @@ async function renderDrawer(full) {
     return;
   }
   if (drawer.kind === "keys") {
-    if (!full) return;
-    const rows = [["↵", t("keys.send")], ["⇧ ↵", t("keys.newLine")], ["⌘ K", t("keys.newTask")], ["⌘ \\", t("keys.toggleWorkspace")], ["⌘ /", t("keys.modelPicker")], ["@", t("keys.mention")], ["Esc", t("keys.closePanel")], ["?", t("keys.showShortcuts")]];
-    set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("keys.title"))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
-      h("div", { class: "d-body" }, h("div", { class: "keys" }, rows.map(([k, v]) => [h("span", {}, k.split(" ").map((x) => h("kbd", {}, x))), h("span", { class: "muted" }, v)]))));
+    closeDrawer();
+    openShortcutsSheet();
     return;
   }
   if (drawer.kind === "direct") {
@@ -3269,6 +3748,7 @@ function toast(text, opts = false) {
 // ---------- side workspace panel ----------
 const WS_OPEN_KEY = "tw-ws-open";
 const WS_WIDTH_KEY = "tw-ws-width";
+const WS_RECENT_KEY = "tw-ws-recent";
 const WS_MIN_W = 320;
 const WS_IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp", "gif", "svg"]);
 const WS_MD_EXT = new Set(["md", "markdown"]);
@@ -3297,7 +3777,21 @@ const ws = {
   chatFilesError: null,
   chatFilesSig: "",
   chatFilesGen: 0,
+  recentFiles: [],
 };
+function wsRecentKey() { return `${WS_RECENT_KEY}:${S.repo || ""}`; }
+function loadWsRecent() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(wsRecentKey()) || "[]");
+    return Array.isArray(raw) ? raw.filter((x) => typeof x === "string" && x) : [];
+  } catch { return []; }
+}
+function recordWsRecent(filePath) {
+  if (!filePath || typeof filePath !== "string") return;
+  const next = [filePath, ...loadWsRecent().filter((p) => p !== filePath)].slice(0, 15);
+  ws.recentFiles = next;
+  try { localStorage.setItem(wsRecentKey(), JSON.stringify(next)); } catch {}
+}
 
 try {
   ws.open = localStorage.getItem(WS_OPEN_KEY) === "1";
@@ -3335,6 +3829,7 @@ function applyWorkspaceChrome() {
 function resetWorkspace() {
   ws.expanded.clear();
   ws.tree.clear();
+  ws.recentFiles = loadWsRecent();
   ws.selectedPath = null;
   ws.fileData = null;
   ws.fileError = null;
@@ -3375,6 +3870,7 @@ async function loadWsDir(dir = "", { reset = false, append = false } = {}) {
 async function loadWsFile(filePath, { line = 0 } = {}) {
   ws.selectedPath = filePath;
   ws.targetLine = Number(line) || 0;
+  recordWsRecent(filePath);
   ws.fileError = null;
   ws.fileLoading = true;
   const ext = wsExt(filePath);
@@ -4237,7 +4733,10 @@ renderModelBtn(); renderTeamChip(); renderChips();
 
 // ---------- loop ----------
 async function refresh() {
-  S = await api("state");
+  const fSeq = folderMutSeq;
+  const nextState = await api("state");
+  if (folderMutSeq !== fSeq && S.folders) nextState.folders = S.folders;
+  S = nextState;
   await pollStaged();
   renderSide(); renderTop(); renderBanner(); renderTurnChrome();
   if (drawer) renderDrawer(false);
@@ -4287,13 +4786,343 @@ $(".composer").addEventListener("drop", (e) => { e.preventDefault(); $(".compose
 $("#send").disabled = true;
 $("#jump").onclick = () => { const sc = $("#scroll"); sc.scrollTo({ top: sc.scrollHeight, behavior: "smooth" }); };
 $("#scroll").addEventListener("scroll", () => { const sc = $("#scroll"); if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 60) $("#jump").hidden = true; });
-document.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); newTask(); } });
+// ---------- command palette & shortcuts sheet ----------
+let palOpen = false, palQuery = "", palSel = 0, palLastFocus = null;
+let keysOpen = false, keysLastFocus = null;
+
+const palGroupLabel = (g) => ({
+  actions: t("pal.grp.actions"),
+  chats: t("pal.grp.chats"),
+  folders: t("pal.grp.folders"),
+  files: t("pal.grp.files"),
+}[g] || g);
+
+const palBadgeLabel = (k) => ({
+  action: t("pal.badge.action"),
+  chat: t("pal.badge.chat"),
+  folder: t("pal.badge.folder"),
+  file: t("pal.badge.file"),
+}[k] || k);
+
+function renderHighlighted(text, indices = []) {
+  const s = String(text || "");
+  if (!indices || !indices.length) return [s];
+  const hit = new Set(indices);
+  const out = [];
+  let buf = "", on = false;
+  for (let i = 0; i < s.length; i++) {
+    const h0 = hit.has(i);
+    if (h0 !== on && buf) {
+      out.push(on ? h("span", { class: "pal-hl" }, buf) : buf);
+      buf = "";
+    }
+    on = h0;
+    buf += s[i];
+  }
+  if (buf) out.push(on ? h("span", { class: "pal-hl" }, buf) : buf);
+  return out;
+}
+
+function runSelectedJobTests() {
+  const activeJob = drawer?.kind === "job" ? S.jobs.find((j) => j.id === drawer.id) : null;
+  const scoped = activeJob || chatJobs().find((j) => j.write || (j.files || []).length) || chatJobs()[0] || S.jobs.find((j) => j.write || (j.files || []).length);
+  if (!scoped) { toast(t("pal.noTestableJob"), true); return; }
+  api(`test/${scoped.id}`, {}).then(() => {
+    toast(t("pal.testsStarted", { job: scoped.title || scoped.id }));
+    openJob(scoped.id);
+    refresh();
+  }).catch((e) => toast(e.message || String(e), true));
+}
+
+function openWorkspaceFileFromPalette(filePath) {
+  if (!ws.open) { ws.open = true; saveWsPrefs(); }
+  ws.tab = "files";
+  applyWorkspaceChrome();
+  renderWorkspace();
+  loadWsFile(filePath);
+}
+
+function openFolderFromPalette(f) {
+  document.body.classList.add("side-open");
+  const focusEl = () => {
+    const el = document.querySelector(`.folder[data-folder="${f.id}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  };
+  if (f.collapsed) {
+    folderApi({ action: "collapse", id: f.id, collapsed: false }).then(focusEl).catch(() => {});
+  } else {
+    focusEl();
+  }
+  toast(t("pal.folderOpenToast", { name: f.name }));
+}
+
+function buildPaletteItems() {
+  const items = [];
+  const nextTheme = THEMES[(THEMES.indexOf(theme) + 1) % 3];
+  const nextLang = lang === "tr" ? "en" : "tr";
+  const nextLangName = nextLang === "tr" ? "Türkçe" : "English";
+  const c = curChat();
+
+  if (c?.status === "running") {
+    items.push({
+      id: "act:stop", group: "actions", kind: "action", icon: "■",
+      label: t("pal.act.stopTurn"), keywords: "stop cancel abort durdur",
+      run: () => api(`stop/${c.id}`, {}).then(refresh),
+    });
+  }
+  items.push(
+    { id: "act:newTask", group: "actions", kind: "action", icon: "+", label: t("pal.act.newTask"), shortcut: "⌘ N", keywords: "new task chat gorev yeni", run: () => newTask() },
+    { id: "act:newFolder", group: "actions", kind: "action", icon: "📁", label: t("pal.act.newFolder"), shortcut: "⌘ ⇧ N", keywords: "folder klasor create new", run: () => startCreateFolder() },
+    { id: "act:openFolder", group: "actions", kind: "action", icon: "📂", label: t("pal.act.openFolder"), sub: t("pal.openFolderSub"), keywords: "project repo open folder switch proje ac", run: () => setTimeout(() => projectMenu(), 10) },
+    { id: "act:ws", group: "actions", kind: "action", icon: "◫", label: t("pal.act.toggleWorkspace"), shortcut: "⌘ \\", keywords: "workspace side panel files diff paneli", run: () => $("#wstoggle")?.click() },
+    { id: "act:team", group: "actions", kind: "action", icon: "✦", label: t("pal.act.team"), shortcut: "⌘ T", keywords: "team workers agents ekip calisan", run: () => setTimeout(() => $("#teambtn")?.click(), 10) },
+    { id: "act:teamDrawer", group: "actions", kind: "action", icon: "⚙", label: t("pal.act.teamDrawer"), keywords: "team defaults roles preset rolleri", run: () => openDrawer("team") },
+    { id: "act:model", group: "actions", kind: "action", icon: "◈", label: t("pal.act.modelPicker"), shortcut: "⌘ /", keywords: "model effort efor claude opus sonnet haiku", run: () => setTimeout(() => $("#modelbtn")?.click(), 10) },
+    { id: "act:settings", group: "actions", kind: "action", icon: "⚙", label: t("pal.act.settings"), keywords: "settings preferences ayarlar animations", run: () => openDrawer("settings") },
+    { id: "act:usage", group: "actions", kind: "action", icon: "▤", label: t("pal.act.usage"), keywords: "usage tokens cost plan limits kullanim", run: () => openDrawer("usage") },
+    { id: "act:models", group: "actions", kind: "action", icon: "☰", label: t("pal.act.modelGuide"), keywords: "model guide benchmarks rehber", run: () => openDrawer("models") },
+    { id: "act:tests", group: "actions", kind: "action", icon: "▶", label: t("pal.act.runJobTests"), keywords: "run tests job testleri calistir", run: () => runSelectedJobTests() },
+    { id: "act:theme", group: "actions", kind: "action", icon: "◐", label: t("pal.act.switchTheme", { theme: t(`theme.${nextTheme}`) }), shortcut: "⌘ ⇧ L", keywords: "theme dark light auto tema karanlik aydinlik", run: () => cycleTheme() },
+    {
+      id: "act:lang", group: "actions", kind: "action", icon: "🌐",
+      label: t("pal.act.switchLang", { lang: nextLangName }),
+      keywords: "language english turkish dil turkce ingilizce",
+      run: () => saveSetting({ language: nextLang }).then(() => toast(t("pal.langSwitched", { lang: nextLangName }))).catch((e) => toast(e.message, true)),
+    },
+    { id: "act:keys", group: "actions", kind: "action", icon: "⌨", label: t("pal.act.shortcuts"), shortcut: "?", keywords: "keyboard shortcuts kisayollar help", run: () => openShortcutsSheet() }
+  );
+
+  const fs = folderState();
+  const folderById = new Map((fs.folders || []).map((f) => [f.id, f]));
+  for (const ch of sortChatsByActivity(S.chats)) {
+    const fid = fs.chatFolder?.[ch.id];
+    const fn = fid ? folderById.get(fid)?.name : null;
+    items.push({
+      id: "chat:" + ch.id,
+      group: "chats",
+      kind: "chat",
+      icon: ch.status === "running" ? "●" : "💬",
+      label: ch.title || ch.id,
+      sub: fn ? `📁 ${fn}` : "",
+      keywords: `${ch.title || ""} ${fn || ""} ${ch.id}`,
+      run: () => { openChat(ch.id); document.body.classList.remove("side-open"); },
+    });
+  }
+
+  const { folders, byFolder } = partitionChatsByFolders(S.chats, fs);
+  for (const f of folders) {
+    const cnt = (byFolder[f.id] || []).length;
+    items.push({
+      id: "folder:" + f.id,
+      group: "folders",
+      kind: "folder",
+      icon: "📁",
+      label: f.name,
+      sub: tp("pal.folderChats", cnt),
+      keywords: f.name,
+      run: () => openFolderFromPalette(f),
+    });
+  }
+
+  const recent = ws.recentFiles?.length ? ws.recentFiles : loadWsRecent();
+  for (const fp of recent) {
+    const parts = fp.split("/");
+    const base = parts.pop() || fp;
+    items.push({
+      id: "file:" + fp,
+      group: "files",
+      kind: "file",
+      icon: "📄",
+      label: base,
+      sub: fp,
+      keywords: `${fp} ${base}`,
+      run: () => openWorkspaceFileFromPalette(fp),
+    });
+  }
+  return items;
+}
+
+let palVisible = [];
+function renderPalette() {
+  const ov = $("#pal-overlay");
+  if (!ov || !palOpen) return;
+  const results = filterPaletteItems(palQuery, buildPaletteItems());
+  palVisible = results;
+  if (palSel >= results.length) palSel = Math.max(0, results.length - 1);
+  const list = $("#pal-list");
+  if (!list) return;
+  if (!results.length) {
+    set(list, h("div", { class: "pal-empty" }, t("pal.empty")));
+    return;
+  }
+  const nodes = [];
+  let lastGrp = null;
+  results.forEach(({ item, indices }, idx) => {
+    if (!palQuery.trim() && item.group !== lastGrp) {
+      lastGrp = item.group;
+      nodes.push(h("div", { class: "pal-grp" }, palGroupLabel(item.group)));
+    }
+    const keys = item.shortcut ? formatShortcut(item.shortcut, isMac) : [];
+    const btn = h("button", {
+      type: "button",
+      class: "pal-it" + (idx === palSel ? " sel" : ""),
+      role: "option",
+      "aria-selected": idx === palSel ? "true" : "false",
+      onclick: () => runPaletteIndex(idx),
+      onmousemove: () => {
+        if (palSel === idx) return;
+        palSel = idx;
+        for (const [j, child] of [...list.querySelectorAll(".pal-it")].entries()) {
+          child.classList.toggle("sel", j === palSel);
+          child.setAttribute("aria-selected", j === palSel ? "true" : "false");
+        }
+      },
+    },
+      h("span", { class: "pal-ic" }, item.icon || "·"),
+      h("span", { class: "pal-tx" },
+        h("span", { class: "pal-lb" }, ...renderHighlighted(item.label, indices)),
+        item.sub ? h("span", { class: "pal-sub" }, item.sub) : null),
+      h("span", { class: "pal-cat" }, palBadgeLabel(item.kind)),
+      keys.length ? h("span", { class: "pal-kbd" }, keys.map((k) => h("kbd", {}, k))) : null);
+    nodes.push(btn);
+  });
+  set(list, nodes);
+  list.querySelector(".pal-it.sel")?.scrollIntoView({ block: "nearest" });
+}
+
+function runPaletteIndex(idx) {
+  const hit = palVisible[idx];
+  if (!hit) return;
+  closePalette();
+  hit.item.run?.();
+}
+
+function openPalette() {
+  if (keysOpen) closeShortcutsSheet();
+  closePop();
+  palLastFocus = document.activeElement;
+  palOpen = true;
+  palQuery = "";
+  palSel = 0;
+  const ov = $("#pal-overlay");
+  ov.hidden = false;
+  const inp = h("input", {
+    id: "pal-in",
+    class: "pal-in",
+    type: "text",
+    placeholder: t("pal.placeholder"),
+    "aria-label": t("pal.aria"),
+    autocomplete: "off",
+    spellcheck: "false",
+  });
+  const list = h("div", { id: "pal-list", class: "pal-list", role: "listbox" });
+  const box = h("div", { class: "palette", role: "dialog", "aria-modal": "true", "aria-label": t("pal.aria"), onclick: (e) => e.stopPropagation() },
+    h("div", { class: "pal-top" },
+      h("span", { style: "color:var(--muted);font-size:14px" }, "⌘"),
+      inp,
+      h("span", { class: "pal-esc" }, "Esc")),
+    list);
+  set(ov, box);
+  ov.onclick = closePalette;
+  inp.addEventListener("input", () => { palQuery = inp.value; palSel = 0; renderPalette(); });
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); if (palVisible.length) { palSel = (palSel + 1) % palVisible.length; renderPalette(); } }
+    else if (e.key === "ArrowUp") { e.preventDefault(); if (palVisible.length) { palSel = (palSel - 1 + palVisible.length) % palVisible.length; renderPalette(); } }
+    else if (e.key === "Home") { e.preventDefault(); palSel = 0; renderPalette(); }
+    else if (e.key === "End") { e.preventDefault(); if (palVisible.length) { palSel = palVisible.length - 1; renderPalette(); } }
+    else if (e.key === "Enter") { e.preventDefault(); runPaletteIndex(palSel); }
+    else if (e.key === "Escape") { e.preventDefault(); closePalette(); }
+  });
+  renderPalette();
+  inp.focus();
+}
+
+function closePalette() {
+  if (!palOpen) return;
+  palOpen = false;
+  const ov = $("#pal-overlay");
+  if (ov) { ov.hidden = true; set(ov); }
+  if (palLastFocus && palLastFocus.isConnected && typeof palLastFocus.focus === "function") palLastFocus.focus();
+  palLastFocus = null;
+}
+
+function openShortcutsSheet() {
+  if (palOpen) closePalette();
+  closePop();
+  keysLastFocus = document.activeElement;
+  keysOpen = true;
+  const ov = $("#keys-overlay");
+  ov.hidden = false;
+  const sections = [
+    {
+      title: t("keys.section.general"),
+      rows: [
+        ["⌘ K", t("keys.palette")],
+        ["⌘ N", t("keys.newTask")],
+        ["⌘ ⇧ N", t("keys.newFolder")],
+        ["⌘ ⇧ L", t("keys.switchTheme")],
+        ["?", t("keys.showShortcuts")],
+        ["Esc", t("keys.closePanel")],
+      ],
+    },
+    {
+      title: t("keys.section.composer"),
+      rows: [
+        ["↵", t("keys.send")],
+        ["⇧ ↵", t("keys.newLine")],
+        ["⌘ /", t("keys.modelPicker")],
+        ["⌘ T", t("keys.teamPicker")],
+        ["@", t("keys.mention")],
+      ],
+    },
+    {
+      title: t("keys.section.panels"),
+      rows: [
+        ["⌘ \\", t("keys.toggleWorkspace")],
+        ["↑ / ↓", t("keys.navigate")],
+      ],
+    },
+  ];
+  const sheet = h("div", { class: "sheet", role: "dialog", "aria-modal": "true", "aria-label": t("keys.title"), onclick: (e) => e.stopPropagation() },
+    h("div", { class: "sheet-head" },
+      h("h3", {}, t("keys.title")),
+      h("button", { class: "x", type: "button", "aria-label": t("drawer.close"), onclick: closeShortcutsSheet }, "×")),
+    h("div", { class: "sheet-body" }, sections.map((sec) =>
+      h("div", { class: "keys-sec" },
+        h("h4", {}, sec.title),
+        h("div", { class: "keys-list" }, sec.rows.map(([k, desc]) =>
+          h("div", { class: "keys-row" },
+            h("span", { class: "desc" }, desc),
+            h("span", { class: "kd" }, formatShortcut(k, isMac).map((p) => h("kbd", {}, p))))))))));
+  set(ov, sheet);
+  ov.onclick = closeShortcutsSheet;
+}
+
+function closeShortcutsSheet() {
+  if (!keysOpen) return;
+  keysOpen = false;
+  const ov = $("#keys-overlay");
+  if (ov) { ov.hidden = true; set(ov); }
+  if (keysLastFocus && keysLastFocus.isConnected && typeof keysLastFocus.focus === "function") keysLastFocus.focus();
+  keysLastFocus = null;
+}
+
+document.addEventListener("keydown", (e) => {
+  const mod = e.metaKey || e.ctrlKey;
+  const key = e.key.toLowerCase();
+  if (mod && key === "k") { e.preventDefault(); if (palOpen) closePalette(); else openPalette(); return; }
+  if (mod && e.shiftKey && key === "n") { e.preventDefault(); closePalette(); closeShortcutsSheet(); startCreateFolder(); return; }
+  if (mod && !e.shiftKey && key === "n") { e.preventDefault(); newTask(); return; }
+  if (mod && e.shiftKey && key === "l") { e.preventDefault(); cycleTheme(); return; }
+  if (mod && !e.shiftKey && key === "t") { e.preventDefault(); $("#teambtn")?.click(); return; }
+});
+$("#searchbtn").onclick = openPalette;
 $("#send").onclick = send;
 $("#stop").onclick = () => chatId && api(`stop/${chatId}`, {}).then(refresh);
-$("#newtask").onclick = newTask;
+$("#newtask").onclick = () => newTask();
 $("#directbtn").onclick = openDirect;
 $("#settingsbtn").onclick = () => openDrawer("settings");
-$("#keysbtn").onclick = () => openDrawer("keys");
+$("#keysbtn").onclick = openShortcutsSheet;
 $("#composer-so-off").onclick = () => { composerShootout = false; renderComposerShootout(); };
 $("#modelsbtn").onclick = () => openDrawer("models");
 $("#usagebtn").onclick = () => openDrawer("usage");
@@ -4301,14 +5130,19 @@ $("#themebtn").onclick = cycleTheme;
 $("#notifbtn").onclick = toggleNotif;
 $("#project").onclick = (e) => { e.stopPropagation(); projectMenu(); };
 document.addEventListener("keydown", (e) => {
-  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
-  if (e.key === "?" && !typing) { e.preventDefault(); openDrawer("keys"); }
-  if (e.key === "Escape") closePop();
+  const ae = document.activeElement;
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(ae?.tagName) || ae?.isContentEditable;
+  if (e.key === "?" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); if (keysOpen) closeShortcutsSheet(); else openShortcutsSheet(); return; }
+  if (e.key === "Escape") {
+    if (palOpen) { closePalette(); return; }
+    if (keysOpen) { closeShortcutsSheet(); return; }
+    closePop();
+    closeDrawer();
+  }
 });
 applyTheme();
 $("#scrim").onclick = closeDrawer;
 $("#menubtn").onclick = () => document.body.classList.toggle("side-open");
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 
 // ---------- update notice ----------
 let ver = null;

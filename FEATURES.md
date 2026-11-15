@@ -71,6 +71,9 @@ A NolienLabs project. Landing page: https://tokenwise.site
 - **Stale-server protection.** Each server reports the version it started with; the app replaces a server from an older version, shows a clear banner if a page cannot load, and restarts a vanished server once. Why: an upgrade never leaves a dead window.
 
 ### Chat and workflow
+- **Chat folders, pinning and date groups.** Create, rename, pin, collapse and delete per-project folders (stored in `.tokenwise-studio/folders.json`; deleting a folder keeps its chats unfiled). Drag chats into folders or use "Move to folder" in the chat menu for keyboard navigation, with Today, Yesterday, Previous 7 days and Older date groups inside each folder and for unfiled chats. Why: long-lived projects stay organised without hiding active tasks.
+- **Command palette and shortcuts sheet.** Press `⌘K` (`Ctrl+K` elsewhere) for fuzzy search over chats, folders, actions and recent files from the side panel, or `?` for a full keyboard-shortcuts sheet. Why: jump anywhere or trigger actions without leaving the keyboard.
+- **Effort-aware working animations.** Running turns scale indicator motion and worker card progress speed with turn/worker effort (`low` through `xhigh`), paired with a sticky "Working · Stop" banner at the top of the chat, `prefers-reduced-motion` support, and a Settings toggle (`animations`). Why: clear live progress cues without visual noise.
 - **Workspace side panel.** Project files, diffs, image and page previews, and a "This chat" tab with the files touched in the current chat. Paths are confined to the project and secret files are blocked. Why: look around without leaving the studio.
 - **Dictation.** A microphone button in the composer (Mac app, macOS speech recognition). Why: talk instead of typing long briefs.
 - **Compaction fix.** Compaction no longer repeats on every turn, and non-git folders offer a one-click git setup. Why: long chats and new projects just work.
@@ -155,4 +158,4 @@ The studio was built with tokenwise. The main Claude session acted only as orche
 - **0.7:** Turkish UI, chat compaction, research role with citations.
 - **0.8:** Undo Apply, combined check after Apply, Roblox Output error import, automatic updates, stale-server protection, worker fixes.
 - **0.9:** Workspace side panel, pull requests from the review drawer, conflict check, dictation, model shootout, quota pacing and cooldowns, free-model probe, Rojo project map, welcome window and restore, app-only notifications.
-- **0.10 (unreleased):** Composer model + effort picker with live limit hints, composer Team picker popover with per-message overrides and Free preset, and `@mentions` per-message worker routing.
+- **0.10 (unreleased):** Composer model + effort picker with live limit hints, composer Team picker popover with per-message overrides and Free preset, `@mentions` per-message worker routing, sidebar chat folders with date groups and pinning, effort-aware working animations with a sticky Stop banner and Settings toggle, and `⌘K` command palette with `?` shortcuts sheet.

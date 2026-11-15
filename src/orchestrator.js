@@ -19,6 +19,7 @@ import { COMPACT_NOTICE, clip, compactChat, lastContextTokens, shouldCompact } f
 import { listJsonCached } from "./jobs.js";
 import { getProjectMapSummary } from "./projectmap.js";
 import { writeShootoutGate, clearShootoutGate } from "./shootout.js";
+import { removeChatFromFolders } from "./folders.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard", "job_test", "project_map"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -584,6 +585,7 @@ export class Chats {
     }
     for (const ext of ["json", "jsonl", "mcp.json", "budget", "shootout"]) fs.rmSync(this.f(id, ext), { force: true });
     this._listCache.delete(`${id}.json`);
+    removeChatFromFolders(this.jobs.home, id);
     return { ok: true };
   }
 

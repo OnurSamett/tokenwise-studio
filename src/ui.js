@@ -34,6 +34,7 @@ import { projectProblem, assertNotRealHomeInTests } from "./projectpath.js";
 import { prPreconditions, commitAndOpenPr, selectAppliedJobs, formatChangesBy } from "./pr.js";
 import { notify, prNotice } from "./notify.js";
 import { startShootout, listShootouts, getShootout, pickShootout, discardShootout, pruneExpiredShootouts } from "./shootout.js";
+import { loadFolders, saveFolders, applyFolderAction } from "./folders.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
@@ -42,6 +43,8 @@ const citationsPath = path.join(path.dirname(htmlPath), "citations.js");
 const workspacePath = path.join(path.dirname(htmlPath), "workspace.js");
 const dictationPath = path.join(path.dirname(htmlPath), "dictation.js");
 const mentionsPath = path.join(path.dirname(htmlPath), "mentions.js");
+const sidebarPath = path.join(path.dirname(htmlPath), "sidebar.js");
+const palettePath = path.join(path.dirname(htmlPath), "palette.js");
 // The version this process was started with. package.json on disk changes under a long-running server
 // when it is upgraded, so the page and the app compare against this, not against the file.
 const LOADED_VERSION = currentVersion();
@@ -89,6 +92,7 @@ const state = () => {
   maybePruneShootouts(false);
   return {
     version: LOADED_VERSION, repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit() }, recents: recents(), chats: chats.list(),
+    folders: loadFolders(jobs.home),
     jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
     shootouts: listShootouts(jobs),
     combinedCheck: combinedCheckInfo(),
@@ -255,6 +259,8 @@ export const handler = async (req, res) => {
     if (url.pathname === "/workspace.js") return send(res, 200, fs.readFileSync(workspacePath, "utf8"), "application/javascript; charset=utf-8");
     if (url.pathname === "/mentions.js") return send(res, 200, fs.readFileSync(mentionsPath, "utf8"), "application/javascript; charset=utf-8");
     if (url.pathname === "/dictation.js") return send(res, 200, fs.readFileSync(dictationPath, "utf8"), "application/javascript; charset=utf-8");
+    if (url.pathname === "/sidebar.js") return send(res, 200, fs.readFileSync(sidebarPath, "utf8"), "application/javascript; charset=utf-8");
+    if (url.pathname === "/palette.js") return send(res, 200, fs.readFileSync(palettePath, "utf8"), "application/javascript; charset=utf-8");
     // Provider logos (unmodified lobe-icons SVGs, see assets/providers/NOTICE.md). Names are whitelisted by pattern.
     const lm = url.pathname.match(/^\/providers\/([a-z0-9-]{1,30})\.svg$/);
     if (lm) {
@@ -325,6 +331,7 @@ export const handler = async (req, res) => {
         });
       }
       if (what === "mentions") return send(res, 200, { mentions: MENTIONS });
+      if (what === "folders") return send(res, 200, loadFolders(jobs.home));
       if (what === "settings") return send(res, 200, settingsInfo());
       if (what === "version") return send(res, 200, versionInfo());
       if (what === "limits") return send(res, 200, limits(jobs.home));
@@ -395,6 +402,7 @@ export const handler = async (req, res) => {
         return send(res, 200, { override: loadTestOverride(jobs.home), lint: loadLintOverride(jobs.home), detected: d ? { label: d.label, source: d.source } : null });
       }
       if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
+      if (what === "folders") return send(res, 200, b && Object.hasOwn(b, "action") ? applyFolderAction(jobs.home, b) : saveFolders(jobs.home, b));
       if (what === "chat") { orchCache.clear(); return send(res, 200, chats.send(b)); }
       if (what === "stop") return send(res, 200, chats.stop(id));
       if (what === "merge") return send(res, 200, jobs.merge(id, b.files, { autoCheck: b.autoCheck !== false }));

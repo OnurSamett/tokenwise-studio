@@ -32,6 +32,7 @@ export const DEFAULTS = Object.freeze({
   turnBudget: 0, // tokens per orchestrator turn (orchestrator + its workers); 0 = off
   compactChats: true, // summarize long chats and start a fresh session when context grows past threshold
   compactThreshold: 120_000, // orchestrator context token threshold (60k–400k)
+  animations: true, // effort-aware working indicator and worker progress motion
 });
 
 const cloneDefaults = () => ({ ...DEFAULTS, fallbackOrder: [...DEFAULTS.fallbackOrder] });
@@ -60,6 +61,7 @@ const VALIDATORS = {
   turnBudget: (v) => v === 0 || (Number.isInteger(v) && v >= 10_000 && v <= 50_000_000) || "turnBudget must be 0 (off) or a token count between 10000 and 50000000",
   compactChats: (v) => typeof v === "boolean" || "compactChats must be true or false",
   compactThreshold: (v) => (Number.isInteger(v) && v >= 60_000 && v <= 400_000) || "compactThreshold must be a token count between 60000 and 400000",
+  animations: (v) => typeof v === "boolean" || "animations must be true or false",
 };
 
 /** Load raw file settings merged with defaults (no env overrides). Never throws. */
