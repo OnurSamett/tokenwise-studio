@@ -5,7 +5,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTeam, teamGuide } from "./team.js";
+import { loadTeam, teamGuide, normalizeTeamOverride, overrideGuide } from "./team.js";
+import { normalizeMentions, mentionInfo, mentionGuide } from "../ui/mentions.js";
 import { RATE_LIMIT, available, nearLimit, claudePacing, recordProviderCooldown, clearCooldown, getCooldown, formatHHMM } from "./fallback.js";
 import { limitResetTime } from "./cooldowns.js";
 import { limits } from "./limits.js";
@@ -28,7 +29,7 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(go test:*)", "Bash(cargo test:*)"];
 
 /** Orchestrator guide for a permission mode, plus (optional) project instructions, turn budget, non-git, project map, and quota pacing rules. */
-export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, projectMap = null, shootout = false } = {}) {
+export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, projectMap = null, shootout = false, mentions = [] } = {}) {
   const parts = [baseGuide(permissionMode)];
   if (!isGit) parts.push("NON-GIT PROJECT: this folder is not a git repository. Write jobs (write=true) require git and will be rejected. Only use read-only jobs (write=false) here; if the user asks for file changes, explain that they can set up git from the studio UI (or run git init and make an initial commit) first.");
   if (turnBudget > 0) parts.push(`TURN TOKEN BUDGET: each turn has about ${fmtTokens(turnBudget)} tokens for you plus all workers. Keep tasks tight. When delegate answers that the budget is spent, start no more jobs: wrap up with what is done and what remains.`);
@@ -44,6 +45,8 @@ export function buildGuide(permissionMode = "ask", { instructions = null, turnBu
   } else {
     parts.push("Model shootouts are opt-in by the user only: do NOT pass shootout to delegate.");
   }
+  const mg = mentionGuide(mentions);
+  if (mg) parts.push(mg);
   const ig = instructionsGuide(instructions);
   if (ig) parts.push(ig);
   return parts.join("\n\n");
@@ -225,7 +228,7 @@ export class Chats {
       .sort((a, b) => b.created.localeCompare(a.created));
   }
 
-  send({ id, message, model, effort, images = [], force, explicit, shootout = false } = {}) {
+  send({ id, message, model, effort, images = [], force, explicit, shootout = false, mentions, team: teamOverride } = {}) {
     const settings = loadSettings();
     model = model || settings.defaultModel;
     effort = effort || settings.defaultEffort;
@@ -238,6 +241,11 @@ export class Chats {
     if (force !== undefined && force !== null && !["codex", "claude"].includes(force)) throw new Error("force must be codex or claude");
     if (explicit !== undefined && typeof explicit !== "boolean") throw new Error("explicit must be true or false");
     if (shootout !== undefined && typeof shootout !== "boolean") throw new Error("shootout must be true or false");
+    const mentionNames = normalizeMentions(mentions);
+    if (mentionNames.some((n) => mentionInfo(n).agent === "free") && !(settings.allowFree && loadTeam(this.jobs.home).allow?.free !== false)) {
+      throw new Error("Free models are off. Turn them on in Settings (and the team options) to use @free.");
+    }
+    const roleOverride = normalizeTeamOverride(teamOverride, { allowAstra: !!loadTeam(this.jobs.home).allow?.astra });
     let c;
     if (id) {
       c = this.get(id);
@@ -265,7 +273,7 @@ export class Chats {
     } else {
       pick = pickOrchestrator(this.jobs.home, model, effort);
     }
-    const turn = { user: message, images: attachments.map((i) => i.rel), agent: pick.agent, model: pick.model, effort: pick.effort, started: new Date().toISOString(), finished: null, cost: null, ...(shootout ? { shootout: true } : {}) };
+    const turn = { user: message, images: attachments.map((i) => i.rel), agent: pick.agent, model: pick.model, effort: pick.effort, started: new Date().toISOString(), finished: null, cost: null, ...(shootout ? { shootout: true } : {}), ...(mentionNames.length ? { mentions: mentionNames } : {}), ...(roleOverride ? { teamOverride: roleOverride } : {}) };
     if (pick.reason) turn.handoff = { from: "claude", reason: pick.reason };
     c.turns.push(turn);
     this.save(c);
@@ -285,13 +293,14 @@ export class Chats {
       allowFree,
       projectMap: getProjectMapSummary(this.jobs.repo),
       shootout: !!shootout,
+      mentions: mentionNames,
     });
-    const tg = teamGuide(team, { pacing, allowFree });
+    const tg = [teamGuide(team, { pacing, allowFree }), overrideGuide(roleOverride, { allowFree })].filter(Boolean).join("\n");
     const guide = tg ? baseG + "\n\n" + tg : baseG;
     const allowedTools = settings.permissionMode === "plan-only" ? ALLOWED.filter((t) => t !== "mcp__tokenwise-studio__job_merge") : ALLOWED;
 
     const log = fs.createWriteStream(this.f(id, "jsonl"), { flags: "a" });
-    const w = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line, turn: ti, agent: turn.agent, ...(stream === "user" ? { images: turn.images } : {}) }) + "\n");
+    const w = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line, turn: ti, agent: turn.agent, ...(stream === "user" ? { images: turn.images, ...(turn.mentions ? { mentions: turn.mentions } : {}) } : {}) }) + "\n");
     w("user", message);
     if (turn.handoff) w("handoff", JSON.stringify({ from: "claude", to: "codex", reason: turn.handoff.reason }));
 

@@ -47,6 +47,14 @@ export const PRESETS = {
     research: { agent: "gemini", model: "hydrogen", effort: "low" },
     images: { agent: "codex" },
   },
+  // Free hosted models only; research has no free option, so it keeps the cheapest Gemini.
+  free: {
+    code: { agent: "free", model: "auto", effort: "medium" },
+    quick: { agent: "free", model: "auto", effort: "low" },
+    review: { agent: "free", model: "auto", effort: "medium" },
+    research: { agent: "gemini", model: "hydrogen", effort: "low" },
+    images: { agent: "codex" },
+  },
 };
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -97,6 +105,32 @@ function normalize(input) {
     roles[r] = out;
   }
   return { mode, preset, roles, allow };
+}
+
+/** Validate a per-message role override ({ code: {agent, model, effort}, ... }): only the roles given, same rules as saved teams. */
+export function normalizeTeamOverride(input, { allowAstra = false } = {}) {
+  if (input === undefined || input === null) return null;
+  if (!isObj(input)) throw new Error("team override must be an object");
+  const keys = Object.keys(input);
+  if (!keys.length) return null;
+  const checked = normalize({ mode: "manual", roles: input, allow: { astra: allowAstra } });
+  return Object.fromEntries(keys.map((k) => [k, checked.roles[k]]));
+}
+
+/** Guide text for a per-message override. */
+export function overrideGuide(roles, { allowFree = true } = {}) {
+  if (!roles) return "";
+  const lines = [];
+  for (const r of ROLES) {
+    const w = roles[r];
+    if (!w) continue;
+    if (w.agent === "free" && !allowFree) continue;
+    if (r === "images") { lines.push(`- ${WORK[r]}: ${w.agent}`); continue; }
+    const who = w.model ? (w.model === "auto" ? `${w.agent} (auto model)` : `${w.agent} ${w.model}`) : w.agent;
+    lines.push(`- ${WORK[r]}: ${who}${w.effort ? ` (${w.effort} effort)` : ""}`);
+  }
+  if (!lines.length) return "";
+  return "For this message only the user chose these workers (they replace the team settings for these roles):\n" + lines.join("\n");
 }
 
 const teamFile = (home) => path.join(home, "team.json");

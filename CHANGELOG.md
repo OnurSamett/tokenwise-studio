@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0 (unreleased)
+
+- Composer model + effort picker: compact control at the bottom-right next to Send (`⌘/`), grouping Claude (Opus, Sonnet, Haiku) and Codex (Sol, Terra, Luna) orchestrators, with effort sub-choice (`low`, `medium`, `high`, `xhigh`), fast mode switch, keyboard navigation, and live plan-limit switch hints from `/api/limits` and `/api/orchestrator`.
+- Composer Team picker popover: opened from the Team chip with Auto, Quality, Balanced, Cheap, and Free presets, per-role cards (code, quick, review, research, images) showing provider logos, TB 4.0 scores, cost hints, plan-limit bars, recommended badges, one-line "why", and "This message only" vs "Save for project" (`team.json`) scope.
+- `@mentions` routing: typing `@` in the composer opens a menu for `@codex`, `@claude`, `@gemini`, `@free`, `@local`, and models (`@sol`, `@terra`, `@luna`, `@opus`, `@sonnet`, `@haiku`, `@hydrogen`, `@argon`); mentions become chips, are validated server-side on `POST /api/chat`, and instruct the orchestrator for that message only.
+
 ## 0.9.0
 
 - Workspace side panel: project files, diffs and image or page previews, plus a "This chat" tab listing the files touched in the current chat. File routes are confined to the project and block secret files.

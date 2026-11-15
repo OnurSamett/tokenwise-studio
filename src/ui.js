@@ -17,6 +17,7 @@ import { claudePacing, getCooldown } from "./fallback.js";
 import { doctor, clearDoctorCache } from "./doctor.js";
 import { loadTeam, saveTeam, teamOptions, geminiFamilies } from "./team.js";
 import { CATALOG } from "./models.js";
+import { MENTIONS } from "../ui/mentions.js";
 import { listFreeModels } from "./freechat.js";
 import { loadSettings, saveSettings, settingsInfo } from "./settings.js";
 import { exportChat, backupAll } from "./export.js";
@@ -40,6 +41,7 @@ const i18nPath = path.join(path.dirname(htmlPath), "i18n.js");
 const citationsPath = path.join(path.dirname(htmlPath), "citations.js");
 const workspacePath = path.join(path.dirname(htmlPath), "workspace.js");
 const dictationPath = path.join(path.dirname(htmlPath), "dictation.js");
+const mentionsPath = path.join(path.dirname(htmlPath), "mentions.js");
 // The version this process was started with. package.json on disk changes under a long-running server
 // when it is upgraded, so the page and the app compare against this, not against the file.
 const LOADED_VERSION = currentVersion();
@@ -113,7 +115,7 @@ function chatTimeline(id, from = 0) {
   const { entries, next } = chats.log(id, from);
   const items = [];
   for (const e of entries) {
-    if (e.stream === "user") { items.push({ t: e.t, kind: "user", text: e.line, images: e.images || [], turn: e.turn }); continue; }
+    if (e.stream === "user") { items.push({ t: e.t, kind: "user", text: e.line, images: e.images || [], ...(e.mentions?.length ? { mentions: e.mentions } : {}), turn: e.turn }); continue; }
     for (const it of normalize(e.agent || "claude", e, repo)) items.push({ t: e.t, turn: e.turn, ...it });
   }
   return { items, next };
@@ -192,7 +194,7 @@ function orchestratorNow(model, effort) {
     base = hit.v;
   } else {
     const p = pickOrchestrator(jobs.home, model, effort);
-    base = { agent: p.agent, model: p.model, effort: p.effort, reason: p.reason || null };
+    base = { agent: p.agent, model: p.model, effort: p.effort, reason: p.reason || null, isLimit: !!p.isLimit };
     orchCache.set(key, { at: Date.now(), v: base });
   }
   const pacing = base.agent === "claude" ? claudePacing(jobs.home) : null;
@@ -251,6 +253,7 @@ export const handler = async (req, res) => {
     if (url.pathname === "/i18n.js") return send(res, 200, fs.readFileSync(i18nPath, "utf8"), "application/javascript; charset=utf-8");
     if (url.pathname === "/citations.js") return send(res, 200, fs.readFileSync(citationsPath, "utf8"), "application/javascript; charset=utf-8");
     if (url.pathname === "/workspace.js") return send(res, 200, fs.readFileSync(workspacePath, "utf8"), "application/javascript; charset=utf-8");
+    if (url.pathname === "/mentions.js") return send(res, 200, fs.readFileSync(mentionsPath, "utf8"), "application/javascript; charset=utf-8");
     if (url.pathname === "/dictation.js") return send(res, 200, fs.readFileSync(dictationPath, "utf8"), "application/javascript; charset=utf-8");
     // Provider logos (unmodified lobe-icons SVGs, see assets/providers/NOTICE.md). Names are whitelisted by pattern.
     const lm = url.pathname.match(/^\/providers\/([a-z0-9-]{1,30})\.svg$/);
@@ -321,6 +324,7 @@ export const handler = async (req, res) => {
           benchmarks: loadBenchmarks(),
         });
       }
+      if (what === "mentions") return send(res, 200, { mentions: MENTIONS });
       if (what === "settings") return send(res, 200, settingsInfo());
       if (what === "version") return send(res, 200, versionInfo());
       if (what === "limits") return send(res, 200, limits(jobs.home));

@@ -704,6 +704,109 @@
   }
   .so-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 4px; }
 
+
+  /* Composer pickers: model + effort (bottom right), team popover (left), @mention menu */
+  .composer { position: relative; }
+  .teamchip, .modelbtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px; border-radius: 9px; border: 1px solid transparent; background: none; color: var(--muted); font-size: 13.5px; white-space: nowrap; max-width: 100%; }
+  .teamchip:hover, .teamchip.open, .modelbtn:hover, .modelbtn.open { background: var(--s2); color: var(--text); }
+  .teamchip .stack { display: inline-flex; }
+  .teamchip .stack .plogo { width: 16px; height: 16px; margin-left: -4px; background: var(--s1); border-radius: 50%; padding: 1px; }
+  .teamchip .stack .plogo:first-child { margin-left: 0; }
+  .teamchip .ov { font-size: 10.5px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 0 7px; line-height: 17px; }
+  .teamchip.so-on { border-color: var(--accent); }
+  .modelbtn .plogo { width: 16px; height: 16px; }
+  .modelbtn .eff { color: var(--dim); }
+  .modelbtn .car { font-size: 9px; color: var(--dim); }
+  .modelbtn .warn { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
+  .cpop { position: absolute; z-index: 35; background: var(--s1); border: 1px solid var(--line2); border-radius: 14px; box-shadow: 0 18px 50px var(--shadow); overflow: auto; overscroll-behavior: contain; max-height: min(560px, calc(100vh - 210px)); }
+  .cpop h4 { margin: 0; font-size: 11.5px; font-weight: 600; color: var(--dim); padding: 10px 14px 4px; letter-spacing: .2px; display: flex; gap: 8px; align-items: baseline; }
+  .cpop h4 span { font-weight: 500; }
+  .cpop .sep { height: 1px; background: var(--line); margin: 6px 0; }
+  .cpop button { color: var(--text); }
+  .cpop :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .mpop { right: 8px; bottom: calc(100% + 8px); width: 360px; max-width: calc(100vw - 32px); padding-bottom: 8px; }
+  .mrow { display: flex; align-items: center; gap: 10px; padding: 5px 10px; margin: 1px 6px; border-radius: 9px; border: 0; background: none; text-align: left; width: calc(100% - 12px); cursor: pointer; }
+  .mrow:hover, .mrow.act { background: var(--s2); }
+  .mrow .plogo { width: 18px; height: 18px; }
+  .mrow .top { display: flex; align-items: center; white-space: nowrap; }
+  .mrow .nm { font-weight: 550; font-size: 13.5px; }
+  .mrow .sub { font-size: 12px; color: var(--dim); display: block; line-height: 1.3; }
+  .mrow .mtxt { min-width: 0; flex: 1; }
+  .mrow .chk { margin-left: auto; color: var(--accent); font-weight: 700; flex: none; }
+  .mrow.limit .nm { opacity: .8; }
+  .mrow .lim { font-size: 11px; color: var(--warn); border: 1px solid var(--warn); border-radius: 999px; padding: 0 7px; flex: none; }
+  .mrow .rec, .rcard .rec { font-size: 10.5px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 0 7px; margin-left: 6px; font-weight: 500; }
+  .effseg { display: flex; gap: 4px; margin: 2px 12px 6px; padding: 3px; background: var(--s2); border-radius: 10px; }
+  .effseg button { flex: 1; border: 0; background: none; border-radius: 7px; padding: 5px 0; font-size: 12.5px; color: var(--muted); }
+  .effseg button.on { background: var(--s1); color: var(--text); box-shadow: 0 1px 3px var(--shadow); }
+  .effnote { margin: 0 14px 4px; font-size: 12px; color: var(--dim); }
+  .limhint { margin: 6px 12px 2px; padding: 8px 10px; border-radius: 9px; background: var(--s2); border: 1px solid var(--line2); font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+  .limhint.warn { border-color: color-mix(in srgb, var(--warn) 55%, var(--line2)); }
+  .limhint b { color: var(--warn); font-weight: 600; }
+  .limhint .lnk { background: none; border: 0; padding: 0; margin-left: 4px; color: var(--accent); font-size: 12.5px; font-weight: 550; text-decoration: underline; text-underline-offset: 2px; }
+  .fastrow { display: flex; align-items: center; gap: 8px; padding: 6px 16px; font-size: 13px; color: var(--muted); }
+  .switch { margin-left: auto; width: 30px; height: 18px; border-radius: 99px; background: var(--s3); border: 0; position: relative; padding: 0; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform .15s; }
+  .switch.on { background: var(--accent); } .switch.on::after { transform: translateX(12px); background: #fff; }
+
+  .tpop { left: 8px; bottom: calc(100% + 8px); width: 580px; max-width: calc(100vw - 32px); padding: 0 0 12px; }
+  .tphead { display: flex; align-items: center; gap: 8px; padding: 12px 14px 4px; }
+  .tphead b { font-size: 14px; }
+  .tphead .tsub { color: var(--dim); font-size: 12.5px; }
+  .tphead .x { margin-left: auto; background: none; border: 0; color: var(--dim); font-size: 18px; border-radius: 6px; padding: 0 6px; }
+  .tpresets { display: flex; gap: 6px; padding: 6px 14px 8px; flex-wrap: wrap; }
+  .tpresets button { border: 1px solid var(--line2); background: var(--s2); border-radius: 999px; padding: 4px 12px; font-size: 12.5px; color: var(--muted); }
+  .tpresets button.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+  .tpresets button small { color: var(--dim); margin-left: 5px; font: 11px var(--mono); }
+  .whybox { margin: 0 14px 8px; font-size: 12.5px; color: var(--muted); background: var(--s2); border-radius: 10px; padding: 8px 10px; }
+  .roles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 14px; }
+  .rcard { border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; background: var(--bg); display: flex; flex-direction: column; gap: 5px; cursor: pointer; position: relative; text-align: left; min-width: 0; }
+  .rcard:hover { border-color: var(--line2); }
+  .rcard.sel { border-color: var(--accent); }
+  .rcard.rec-now { box-shadow: inset 2px 0 0 var(--accent); }
+  .rcard .rt { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--dim); flex-wrap: wrap; }
+  .rcard .rt .rec { margin-left: 2px; }
+  .rcard .rt .ovr { margin-left: auto; font-size: 10.5px; color: var(--accent); }
+  .rcard .who { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13.5px; min-width: 0; }
+  .rcard .who .plogo { width: 18px; height: 18px; }
+  .rcard .who .effbtn { font: 11.5px var(--mono); color: var(--dim); font-weight: 500; background: none; border: 1px solid transparent; border-radius: 6px; padding: 0 4px; }
+  .rcard .who .effbtn:hover { border-color: var(--line2); color: var(--text); }
+  .rcard .stat { display: flex; gap: 8px; align-items: center; font-size: 11.5px; color: var(--dim); flex-wrap: wrap; }
+  .rcard .stat .lbar { width: 60px; height: 4px; border-radius: 4px; background: var(--s3); overflow: hidden; flex: none; }
+  .rcard .stat .lbar i { display: block; height: 100%; background: var(--muted); }
+  .rcard .stat .lbar.hot i { background: var(--warn); } .rcard .stat .lbar.full i { background: var(--bad); }
+  .rcard .why { font-size: 11.5px; color: var(--dim); line-height: 1.35; }
+  .tb { font: 600 11px var(--mono); color: var(--ok); }
+  .cost { font: 11px var(--mono); color: var(--muted); }
+  .rcard .alts { display: none; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .rcard.sel .alts { display: flex; }
+  .alts button { border: 1px solid var(--line2); background: var(--s1); border-radius: 7px; padding: 2px 7px; font-size: 11.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+  .alts button .plogo { width: 13px; height: 13px; }
+  .alts button:hover { border-color: var(--accent); color: var(--text); }
+  .alts button.cur { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+  .alts button.off { opacity: .55; }
+  .tscope { display: flex; align-items: center; gap: 10px; margin: 10px 14px 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+  .tscope .seg { display: inline-flex; background: var(--s2); border-radius: 9px; padding: 2px; }
+  .tscope .seg button { border: 0; background: none; font-size: 12px; padding: 3px 10px; border-radius: 7px; color: var(--muted); }
+  .tscope .seg button.on { background: var(--s1); color: var(--text); box-shadow: 0 1px 3px var(--shadow); }
+  .tscope .sp { flex: 1; }
+  .tlinks { display: flex; gap: 14px; margin: 8px 14px 0; flex-wrap: wrap; }
+  .tlinks button, .tscope .link { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12.5px; }
+  .tlinks button:hover { text-decoration: underline; }
+  .tnote { margin: 6px 14px 0; font-size: 12px; color: var(--dim); }
+
+  .mention-menu { left: 8px; bottom: calc(100% + 8px); width: 290px; max-width: calc(100vw - 32px); padding: 4px 0 6px; max-height: 300px; }
+  .mention-menu .mrow { margin: 0 4px; width: calc(100% - 8px); padding: 5px 8px; }
+  .mention-menu .mrow[aria-disabled="true"] { opacity: .5; }
+  .mchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+  .mchip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 4px 0 8px; border-radius: 999px; font-size: 12.5px; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  .mchip .plogo, .mrow .plogo.sm { width: 13px; height: 13px; }
+  .mchip .lgl { width: 13px; height: 13px; border-radius: 4px; background: var(--s3); color: var(--muted); font: 600 9px/13px var(--mono); text-align: center; flex: none; }
+  .mchip button { width: 18px; height: 18px; border-radius: 50%; border: 0; background: none; color: inherit; padding: 0; line-height: 1; font-size: 13px; }
+  .mchip button:hover { background: var(--accent); color: var(--bg); }
+  .mchip.sent { height: 20px; padding: 0 8px; font-size: 11.5px; margin: 6px 4px 0 0; }
+  .mrow .lgl { width: 18px; height: 18px; border-radius: 5px; background: var(--s3); color: var(--muted); font: 600 11px/18px var(--mono); text-align: center; flex: none; }
+  @media (max-width: 640px) { .roles { grid-template-columns: 1fr; } .crow .hint { display: none; } }
 </style>
 </head>
 <body>
@@ -735,14 +838,19 @@
       </div>
       <div class="attachments" id="attachments"></div>
       <input type="file" id="imagefiles" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
-      <textarea id="input" rows="1" placeholder="Ask the team…"></textarea>
+      <div class="mchips" id="mchips" hidden></div>
+      <textarea id="input" rows="1" placeholder="Ask the team…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mention"></textarea>
+      <div class="cpop mention-menu" id="mention" role="listbox" hidden></div>
+      <div class="cpop mpop" id="mpop" role="dialog" hidden></div>
+      <div class="cpop tpop" id="tpop" role="dialog" hidden></div>
       <div class="crow">
         <button class="icon-btn attach" id="attach" title="Attach images" aria-label="Attach images"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m8 13 7-7a3 3 0 0 1 4 4L9 20a5 5 0 0 1-7-7L13 2m-7 12 8-8"/></svg></button>
         <button class="icon-btn mic" id="mic" type="button" title="Dictate" aria-label="Dictate" aria-pressed="false" hidden><svg class="mic-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="9" y1="21" x2="15" y2="21"/></svg><span class="mic-live" aria-hidden="true"><span class="mic-dot"></span><span class="mic-stop"></span></span></button>
-        <button class="pill" id="teambtn" title="Who does the work (team settings)" style="background-image:none;padding-right:11px">Team: Auto</button>
-        <span class="pillwrap"><img class="plogo pilllogo" id="orchlogo" src="/providers/claude.svg" alt=""><select class="pill with-logo" id="omodel" title="Orchestrator model"><optgroup label="Claude"><option value="opus">Claude Opus</option><option value="sonnet">Claude Sonnet</option><option value="haiku">Claude Haiku</option></optgroup><optgroup label="Codex"><option value="sol">Codex Sol</option><option value="terra">Codex Terra</option><option value="luna">Codex Luna</option></optgroup></select></span>
-        <select class="pill" id="oeffort" title="Orchestrator effort"><option value="medium">medium</option><option value="low">low</option><option value="high">high</option><option value="xhigh">xhigh</option></select>
+        <button class="teamchip" id="teambtn" type="button" aria-haspopup="dialog" aria-expanded="false" title="Who does the work (team settings)">Team: Auto</button>
         <span class="grow"><span class="err" id="cerr"></span><span class="hint" id="khint">↵ send · ⇧↵ new line</span></span>
+        <select id="omodel" hidden aria-hidden="true" tabindex="-1"><optgroup label="Claude"><option value="opus">Claude Opus</option><option value="sonnet">Claude Sonnet</option><option value="haiku">Claude Haiku</option></optgroup><optgroup label="Codex"><option value="sol">Codex Sol</option><option value="terra">Codex Terra</option><option value="luna">Codex Luna</option></optgroup></select>
+        <select id="oeffort" hidden aria-hidden="true" tabindex="-1"><option value="medium">medium</option><option value="low">low</option><option value="high">high</option><option value="xhigh">xhigh</option></select>
+        <button class="modelbtn" id="modelbtn" type="button" aria-haspopup="dialog" aria-expanded="false" title="Orchestrator model and effort (⌘/)"></button>
         <button class="stop" id="stop" title="Stop" hidden><i></i></button>
         <button class="send" id="send" title="Send (⌘↵)">↑</button>
       </div>
@@ -789,6 +897,7 @@ import { t as tr, tp as trp, hasKey, resolveLanguage, translateReason, translate
 import { parseCitations, renderMarkdownHtml } from "/citations.js";
 import { detectLanguage, renderHighlightedLinesHtml } from "/workspace.js";
 import { createDictationController } from "/dictation.js";
+import { MENTIONS, mentionInfo } from "/mentions.js";
 
 // ---------- i18n ----------
 let langSetting = "auto";
@@ -813,7 +922,7 @@ function applyStaticI18n() {
   $("#keysbtn").title = t("side.shortcuts");
   $("#menubtn").setAttribute("aria-label", t("top.menu"));
   $("#jump").textContent = t("composer.latest");
-  $("#input").placeholder = t("composer.placeholder");
+  $("#input").placeholder = t("composer.placeholderMention");
   $("#attach").title = t("composer.attach");
   $("#attach").setAttribute("aria-label", t("composer.attach"));
   if (dictation) dictation.updateLabels();
@@ -821,13 +930,11 @@ function applyStaticI18n() {
     $("#mic").title = t("composer.dictate");
     $("#mic").setAttribute("aria-label", t("composer.dictate"));
   }
-  $("#teambtn").title = t("composer.teamTitle");
+  window.__twComposerRefresh?.();
   $("#composer-so-pill").textContent = t("composer.shootoutPill");
   $("#composer-so-warn").textContent = t("composer.shootoutWarn");
   $("#composer-so-off").title = t("composer.shootoutOffTitle");
   $("#composer-so-off").setAttribute("aria-label", t("composer.shootoutOffTitle"));
-  $("#omodel").title = t("composer.orchModel");
-  $("#oeffort").title = t("composer.orchEffort");
   for (const opt of $("#oeffort").options) opt.textContent = effortLabel(opt.value);
   $("#khint").textContent = t("composer.hint");
   $("#stop").title = t("composer.stop");
@@ -974,6 +1081,7 @@ function syncFromSettings(data, { applyComposer = false } = {}) {
   if (applyComposer) {
     if (s.defaultModel) $("#omodel").value = s.defaultModel;
     if (s.defaultEffort) $("#oeffort").value = s.defaultEffort;
+    window.__twComposerRefresh?.();
   }
 }
 async function saveSetting(patch) {
@@ -1048,6 +1156,7 @@ const PRESET_ROLES = {
   quality: { code: { agent: "codex", model: "sol", effort: "high" }, quick: { agent: "gemini", model: "hydrogen", effort: "medium" }, review: { agent: "claude", model: "opus", effort: "high" }, research: { agent: "claude", model: "sonnet", effort: "high" }, images: { agent: "codex" } },
   balanced: { code: { agent: "codex", model: "sol", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "medium" }, review: { agent: "claude", model: "sonnet", effort: "medium" }, research: { agent: "gemini", model: "hydrogen", effort: "medium" }, images: { agent: "codex" } },
   cheap: { code: { agent: "free", model: "auto", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "low" }, review: { agent: "gemini", model: "hydrogen", effort: "low" }, research: { agent: "gemini", model: "hydrogen", effort: "low" }, images: { agent: "codex" } },
+  free: { code: { agent: "free", model: "auto", effort: "medium" }, quick: { agent: "free", model: "auto", effort: "low" }, review: { agent: "free", model: "auto", effort: "medium" }, research: { agent: "gemini", model: "hydrogen", effort: "low" }, images: { agent: "codex" } },
 };
 
 // ---------- state ----------
@@ -1091,7 +1200,7 @@ const chatImages = (images = []) => images?.length ? h("div", { class: "chat-ima
   const src = "/api/upload?path=" + encodeURIComponent(p);
   return h("a", { href: src, target: "_blank", rel: "noopener" }, h("img", { src, alt: t("composer.attachedAlt"), loading: "lazy" }));
 })) : null;
-function userContent(el, text, images) { set(el, h("div", {}, text || null, chatImages(images))); }
+function userContent(el, text, images, mentions) { set(el, h("div", {}, text || null, chatImages(images), mentionChipsFor(mentions))); }
 const thinkingRow = (text) => h("details", { class: "thinking" }, h("summary", {}, t("turn.thinking")), h("div", { class: "thinking-text" }, text));
 
 const curChat = () => S.chats.find((c) => c.id === chatId);
@@ -1258,7 +1367,7 @@ function stepRow(it) {
 
 function addItem(it) {
   const tb = turnBlock(it.turn ?? 0);
-  if (it.kind === "user") { userContent(tb.user, it.text, it.images); return; }
+  if (it.kind === "user") { userContent(tb.user, it.text, it.images, it.mentions); return; }
   if (it.kind === "think") { tb.thinking.hidden = false; tb.thinkingText.append(h("div", {}, it.text), "\n\n"); return; }
   if (it.kind === "say") { tb.replies.append(richReply(it.text)); return; }
   if (it.kind === "handoff") {
@@ -1290,7 +1399,7 @@ function renderTurnChrome() {
   const jobs = chatJobs();
   (c.turns || []).forEach((tr, i) => {
     const tb = turnBlock(i);
-    if (!tb.user.firstChild) userContent(tb.user, tr.user, tr.images);
+    if (!tb.user.firstChild) userContent(tb.user, tr.user, tr.images, tr.mentions);
     const ag = tr.agent || "claude";
     if (!tb.meta.firstChild || tb.meta.dataset.agent !== ag) {
       tb.meta.dataset.agent = ag;
@@ -1537,12 +1646,10 @@ function renderTop() {
   const c = curChat();
   $("#chattitle").textContent = c ? "· " + c.title : "";
   const last = c?.turns?.[c.turns.length - 1];
-  $("#omodel").closest(".pillwrap").title = last?.agent === "codex" ? t("top.orchCodex") : t("top.orchClaude");
+  $("#modelbtn").dataset.lastAgent = last?.agent || "";
   const running = c?.status === "running";
   $("#stop").hidden = !running; $("#send").hidden = running;
-  const tm = S.team || { mode: "auto" };
-  const teamName = tm.mode === "manual" ? (hasKey(`team.preset.${tm.preset}`, lang) ? t(`team.preset.${tm.preset}`) : t("team.preset.custom")) : t("top.teamAuto");
-  $("#teambtn").textContent = t("top.teamPrefix", { name: teamName });
+  renderTeamChip();
   const busy = S.chats.some((x) => x.status === "running") || S.jobs.some((j) => j.status === "running");
   const nrev = S.jobs.filter((j) => j.write && j.status === "done" && (j.files || []).length).length;
   document.title = (busy ? "● " : nrev ? `(${nrev}) ` : "") + "tokenwise studio";
@@ -1580,6 +1687,7 @@ function newTask() {
     if (appSettings.settings.defaultModel) $("#omodel").value = appSettings.settings.defaultModel;
     if (appSettings.settings.defaultEffort) $("#oeffort").value = appSettings.settings.defaultEffort;
   }
+  mchips = []; msgTeam = {}; closePickers(); closeMentionMenu(); renderChips(); renderTeamChip(); renderModelBtn();
   set($("#col"), welcome()); renderSide(); renderTop(); renderBanner(); $("#input").focus();
 }
 
@@ -1631,8 +1739,11 @@ async function sendChatMessage(message, { withAttachments = false } = {}) {
         images.push(a.path);
       }
     }
-    const c = await api("chat", { id: chatId, message: text, images, model: $("#omodel").value, effort: $("#oeffort").value, ...(force ? { force } : {}), ...(explicit ? { explicit } : {}), ...(composerShootout ? { shootout: true } : {}) });
+    const fromComposer = withAttachments;
+    const c = await api("chat", { id: chatId, message: text, images, model: $("#omodel").value, effort: $("#oeffort").value, ...(force ? { force } : {}), ...(explicit ? { explicit } : {}), ...(composerShootout ? { shootout: true } : {}),
+      ...(fromComposer && mchips.length ? { mentions: mchips } : {}), ...(fromComposer && msgTeamPayload() ? { team: msgTeamPayload() } : {}) });
     if (composerShootout) { composerShootout = false; renderComposerShootout(); }
+    if (fromComposer) { mchips = []; msgTeam = {}; renderChips(); renderTeamChip(); if (pickerOpen === "team") renderTeamPop(); }
     if (withAttachments) {
       clearAttachments();
       $("#input").value = ""; autosize(); $("#send").disabled = true;
@@ -2184,7 +2295,7 @@ async function renderDrawer(full) {
       h("div", { class: "d-foot" }, h("span", { class: "note" }, t("team.foot")),
         h("button", { class: "btn", onclick: closeDrawer }, t("drawer.cancel")),
         h("button", { class: "btn primary", onclick: async () => {
-          try { await api("team", tm); closeDrawer(); await refresh(); toast(tm.mode === "auto" ? t("team.toastAuto") : `${t("team.toastSaved")}${tm.preset ? " · " + t(`team.preset.${tm.preset}`) : ""}`); } catch (e) { toast(e.message, true); }
+          try { const r = await api("team", tm); tpState.team = r.team; S.team = { mode: r.team.mode, preset: r.team.preset }; closeDrawer(); await refresh(); toast(tm.mode === "auto" ? t("team.toastAuto") : `${t("team.toastSaved")}${tm.preset ? " · " + t(`team.preset.${tm.preset}`) : ""}`); } catch (e) { toast(e.message, true); }
         } }, t("drawer.save"))));
     return;
   }
@@ -2542,7 +2653,7 @@ async function renderDrawer(full) {
   }
   if (drawer.kind === "keys") {
     if (!full) return;
-    const rows = [["↵", t("keys.send")], ["⇧ ↵", t("keys.newLine")], ["⌘ K", t("keys.newTask")], ["⌘ \\", t("keys.toggleWorkspace")], ["Esc", t("keys.closePanel")], ["?", t("keys.showShortcuts")]];
+    const rows = [["↵", t("keys.send")], ["⇧ ↵", t("keys.newLine")], ["⌘ K", t("keys.newTask")], ["⌘ \\", t("keys.toggleWorkspace")], ["⌘ /", t("keys.modelPicker")], ["@", t("keys.mention")], ["Esc", t("keys.closePanel")], ["?", t("keys.showShortcuts")]];
     set(d, h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("keys.title"))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
       h("div", { class: "d-body" }, h("div", { class: "keys" }, rows.map(([k, v]) => [h("span", {}, k.split(" ").map((x) => h("kbd", {}, x))), h("span", { class: "muted" }, v)]))));
     return;
@@ -3088,7 +3199,9 @@ async function renderLimits() {
   try { O = await api(`orchestrator?model=${encodeURIComponent(model)}&effort=${encodeURIComponent($("#oeffort").value)}`); } catch {
     if (["sol", "terra", "luna"].includes(model)) O = { agent: "codex", model, reason: null, pacing: null };
   }
-  $("#orchlogo").src = `/providers/${["sol", "terra", "luna"].includes(model) ? "codex" : "claude"}.svg`;
+  pickerLimits = L; pickerOrch = O;
+  renderModelBtn();
+  if (pickerOpen === "model") renderModelPop();
   const why = O?.reason ? translateReason(O.reason, lang).replace(/^Claude\s+/i, "") : "";
   const isMoved = O?.agent === "codex" && !!why;
   const isPacing = O?.agent === "claude" && !!O?.pacing?.active;
@@ -3118,6 +3231,7 @@ function projectMenu() {
     try {
       S = await api("project", { path });
       studioDraft = { raw: "", result: null, selected: new Set() };
+      tpState.team = null; tpState.options = null;
       resetWorkspace();
       newTask();
       await refresh();
@@ -3689,6 +3803,438 @@ if (ws.open) {
   else loadWsDir("");
 }
 
+// ---------- composer: model picker, team picker, @mentions ----------
+// #omodel and #oeffort stay as hidden selects: they are the single source of truth for the orchestrator choice
+// (Settings defaults, limits, send and the team drawer all read them). The picker only drives them.
+const ORCH_ROWS = [
+  { id: "opus", p: "claude", name: "Claude Opus", rec: true },
+  { id: "sonnet", p: "claude", name: "Claude Sonnet" },
+  { id: "haiku", p: "claude", name: "Claude Haiku" },
+  { id: "sol", p: "codex", name: "Codex Sol" },
+  { id: "terra", p: "codex", name: "Codex Terra" },
+  { id: "luna", p: "codex", name: "Codex Luna" },
+];
+const PROVIDER_NAME = { claude: "Claude", codex: "ChatGPT Codex" };
+const orchProvider = (m) => (["sol", "terra", "luna"].includes(m) ? "codex" : "claude");
+const orchRow = (m) => ORCH_ROWS.find((r) => r.id === m) || ORCH_ROWS[0];
+const orchShort = (m) => orchRow(m).name.replace(/^(Claude|Codex) /, "");
+let pickerLimits = null, pickerOrch = null, pickerOpen = null; // "model" | "team" | null
+const lowerWin = (k) => t(k).toLocaleLowerCase(lang === "tr" ? "tr-TR" : "en-US");
+
+function limitInfo(provider) {
+  const L = pickerLimits?.[provider];
+  const five = L?.fiveHour?.pct, week = L?.week?.pct;
+  if (five == null && week == null) return null;
+  const useWeek = (week ?? -1) > (five ?? -1);
+  return { pct: useWeek ? week : five, window: useWeek ? "limits.weekly" : "limits.fiveHour" };
+}
+const limitThreshold = () => appSettings?.settings?.limitThreshold ?? 90;
+const nearLimit = (pct) => pct != null && pct >= Math.max(50, limitThreshold() - 15);
+function limitLevel(provider, model) {
+  const movedByLimit = provider === "claude" && pickerOrch && pickerOrch.agent === "codex" && !!pickerOrch.reason && (pickerOrch.isLimit ?? /limit|cooling|rate/i.test(pickerOrch.reason)) && orchProvider(model) === "claude";
+  if (movedByLimit) return "at";
+  const li = limitInfo(provider);
+  if (!li) return "ok";
+  if (li.pct >= limitThreshold()) return "at";
+  return nearLimit(li.pct) ? "near" : "ok";
+}
+
+function renderModelBtn() {
+  const btn = $("#modelbtn"); if (!btn) return;
+  const model = $("#omodel").value || "opus", eff = $("#oeffort").value || "medium", p = orchProvider(model);
+  const hot = limitLevel(p, model) !== "ok";
+  set(btn, logoImg(p), h("span", { class: "mname" }, orchShort(model)), h("span", { class: "eff" }, effortLabel(eff)), hot ? h("span", { class: "warn", "aria-hidden": "true" }) : null, h("span", { class: "car", "aria-hidden": "true" }, "▾"));
+  btn.setAttribute("aria-label", t("mp.btnAria", { model: orchRow(model).name, effort: effortLabel(eff) }));
+  btn.title = t("mp.title");
+  btn.classList.toggle("open", pickerOpen === "model");
+  btn.setAttribute("aria-expanded", pickerOpen === "model" ? "true" : "false");
+}
+function setOrch({ model, effort }) {
+  if (model) $("#omodel").value = model;
+  if (effort) $("#oeffort").value = effort;
+  renderModelBtn(); renderLimits();
+  if (pickerOpen === "model") renderModelPop(model ? `[data-m="${model}"]` : effort ? `[data-eff="${effort}"]` : null);
+}
+
+function limitHint(model) {
+  const p = orchProvider(model), li = limitInfo(p), lvl = limitLevel(p, model);
+  const other = p === "claude" ? "sol" : "opus", otherName = orchRow(other).name;
+  const sw = () => h("button", { type: "button", class: "lnk", "data-nav": "1", onclick: () => setOrch({ model: other }) }, t("mp.switchTo", { name: otherName }));
+  const fb = appSettings?.settings?.orchFallback !== "off";
+  const vars = { provider: PROVIDER_NAME[p].replace("ChatGPT ", ""), pct: li?.pct ?? 0, window: li ? lowerWin(li.window) : "", threshold: limitThreshold(), next: orchRow("sol").name };
+  if (p === "claude" && lvl === "at") return h("div", { class: "limhint warn", role: "status" }, t(fb ? "mp.hintAt" : "mp.hintAtOff", vars), " ", sw());
+  if (lvl === "near") return h("div", { class: "limhint warn", role: "status" }, t(p === "claude" && fb ? "mp.hintNear" : "mp.hintNearOff", vars), " ", sw());
+  if (lvl === "at") return h("div", { class: "limhint warn", role: "status" }, t("mp.hintNearOff", vars), " ", sw());
+  if (p === "codex") return h("div", { class: "limhint", role: "note" }, t("mp.codexNote"));
+  return null;
+}
+
+function renderModelPop(focusSel) {
+  const pop = $("#mpop"); if (!pop) return;
+  const model = $("#omodel").value, eff = $("#oeffort").value;
+  const rows = [];
+  for (const p of ["claude", "codex"]) {
+    const li = limitInfo(p);
+    rows.push(h("h4", { role: "presentation" }, PROVIDER_NAME[p], li ? h("span", {}, t("mp.used", { pct: li.pct, window: lowerWin(li.window) })) : null));
+    for (const r of ORCH_ROWS.filter((x) => x.p === p)) {
+      const chosen = r.id === model, hot = li && nearLimit(li.pct);
+      rows.push(h("button", { type: "button", class: "mrow" + (hot ? " limit" : ""), role: "menuitemradio", "aria-checked": chosen ? "true" : "false", "data-nav": "1", "data-m": r.id, onclick: () => setOrch({ model: r.id }) },
+        logoImg(p),
+        h("span", { class: "mtxt" }, h("span", { class: "top" }, h("span", { class: "nm" }, r.name), r.rec ? h("span", { class: "rec" }, t("mp.recommended")) : null), h("span", { class: "sub" }, t(`mp.sub.${r.id}`))),
+        chosen ? h("span", { class: "chk", "aria-hidden": "true" }, "✓") : null,
+        hot ? h("span", { class: "lim" }, t("mp.limChip", { pct: li.pct })) : null));
+    }
+  }
+  const effs = ["low", "medium", "high", "xhigh"];
+  const fast = !!appSettings?.settings?.fastMode;
+  set(pop,
+    h("h4", { role: "presentation" }, t("mp.orch")),
+    rows,
+    limitHint(model),
+    h("div", { class: "sep" }),
+    h("h4", { role: "presentation" }, t("mp.effort")),
+    h("div", { class: "effseg", role: "radiogroup", "aria-label": t("mp.effort") },
+      effs.map((e) => h("button", { type: "button", class: e === eff ? "on" : "", role: "radio", "aria-checked": e === eff ? "true" : "false", "data-nav": "1", "data-eff": e, onclick: () => setOrch({ effort: e }) }, effortLabel(e)))),
+    h("div", { class: "effnote" }, t(`mp.effNote.${eff}`)),
+    h("div", { class: "sep" }),
+    h("div", { class: "fastrow" }, h("span", {}, t("mp.fast")),
+      h("button", { type: "button", class: "switch" + (fast ? " on" : ""), role: "switch", "aria-checked": fast ? "true" : "false", "aria-label": t("mp.fastAria"), "data-nav": "1", onclick: async () => {
+        try { await saveSetting({ fastMode: !fast }); } catch (e) { toast(String(e.message || e), true); }
+        renderModelPop('[role="switch"]');
+      } })));
+  if (focusSel === undefined) return;
+  const target = (focusSel && pop.querySelector(focusSel)) || pop.querySelector(`.mrow[data-m="${model}"]`) || pop.querySelector("[data-nav]");
+  target?.focus();
+}
+
+// ---- shared popover plumbing ----
+function closePickers({ refocus = false } = {}) {
+  const was = pickerOpen; pickerOpen = null;
+  for (const id of ["mpop", "tpop"]) $("#" + id).hidden = true;
+  for (const id of ["modelbtn", "teambtn"]) { $("#" + id)?.classList.remove("open"); $("#" + id)?.setAttribute("aria-expanded", "false"); }
+  if (refocus && was) $(was === "model" ? "#modelbtn" : "#teambtn").focus();
+}
+async function openPicker(which) {
+  if (pickerOpen === which) return closePickers({ refocus: true });
+  closeMentionMenu(); closePop(); closePickers();
+  pickerOpen = which;
+  if (which === "model") {
+    $("#mpop").hidden = false; $("#modelbtn").classList.add("open"); $("#modelbtn").setAttribute("aria-expanded", "true");
+    renderModelPop(null);
+    refreshPickerData().then(() => { if (pickerOpen === "model") renderModelPop(undefined); renderModelBtn(); });
+  } else {
+    $("#tpop").hidden = false; $("#teambtn").classList.add("open"); $("#teambtn").setAttribute("aria-expanded", "true");
+    openTeamPop();
+  }
+}
+async function refreshPickerData() {
+  const model = $("#omodel").value, eff = $("#oeffort").value;
+  const [L, O] = await Promise.all([api("limits").catch(() => null), api(`orchestrator?model=${encodeURIComponent(model)}&effort=${encodeURIComponent(eff)}`).catch(() => null)]);
+  if (L) pickerLimits = L;
+  pickerOrch = O;
+}
+function navKeys(e, pop) {
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePickers({ refocus: true }); return; }
+  const items = [...pop.querySelectorAll("[data-nav]")].filter((x) => !x.disabled && x.offsetParent !== null);
+  const i = items.indexOf(document.activeElement);
+  const inSeg = document.activeElement?.closest?.(".effseg");
+  const go = (n) => { e.preventDefault(); items[(n + items.length) % items.length]?.focus(); };
+  if (e.key === "ArrowDown" || (e.key === "ArrowRight" && !inSeg)) go(i + 1);
+  else if (e.key === "ArrowUp" || (e.key === "ArrowLeft" && !inSeg)) go(i < 0 ? items.length - 1 : i - 1);
+  else if (inSeg && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+    const segItems = [...inSeg.querySelectorAll("[data-nav]")], j = segItems.indexOf(document.activeElement);
+    e.preventDefault(); const nx = segItems[(j + (e.key === "ArrowRight" ? 1 : -1) + segItems.length) % segItems.length]; nx.focus(); nx.click();
+  } else if (e.key === "Home") go(0);
+  else if (e.key === "End") go(items.length - 1);
+}
+$("#mpop").addEventListener("keydown", (e) => navKeys(e, $("#mpop")));
+$("#tpop").addEventListener("keydown", (e) => navKeys(e, $("#tpop")));
+$("#modelbtn").addEventListener("click", (e) => { e.stopPropagation(); openPicker("model"); });
+$("#teambtn").onclick = (e) => { e.stopPropagation(); openPicker("team"); };
+document.addEventListener("mousedown", (e) => {
+  if (pickerOpen && !e.target.closest("#mpop, #tpop, #modelbtn, #teambtn")) closePickers();
+  if (!e.target.closest("#mention, #input")) closeMentionMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "/") { e.preventDefault(); openPicker("model"); }
+});
+
+// ---- team picker ----
+const TEAM_ROLES = ["code", "quick", "review", "research", "images"];
+const TEAM_COST = { codex: { sol: 2, terra: 1, luna: 1, astra: 3 }, claude: { haiku: 1, sonnet: 2, opus: 3 }, gemini: { hydrogen: 1, argon: 2 }, free: { auto: 0 } };
+const COST_WEIGHT = { code: 6, quick: 14, review: 2, research: 7 };
+const REC_EFFORT = { code: "medium", quick: "low", review: "high", research: "medium" };
+const TEAM_CANDS = {
+  code: [["codex", "sol"], ["claude", "sonnet"], ["claude", "opus"], ["gemini", "argon"], ["codex", "terra"], ["free", "auto"]],
+  quick: [["claude", "haiku"], ["codex", "terra"], ["codex", "luna"], ["gemini", "hydrogen"], ["free", "auto"]],
+  review: [["claude", "opus"], ["claude", "sonnet"], ["codex", "sol"], ["gemini", "argon"]],
+  research: [["claude", "sonnet"], ["claude", "haiku"], ["gemini", "hydrogen"], ["codex", "sol"]],
+  images: [["codex", null]],
+};
+const costOf = (agent, model) => TEAM_COST[agent]?.[model ?? "auto"] ?? 2;
+const costLabel = (agent, model) => { const c = costOf(agent, model); return agent === "free" ? "$0" : "$".repeat(Math.max(1, c)); };
+function tbScore(agent, model) {
+  if (!model || model === "auto") return null;
+  const row = (CATALOG?.benchmarks?.models || []).find((r) => r.agent === agent && r.match && new RegExp(r.match, "i").test(model));
+  return typeof row?.terminalBench40 === "number" ? row.terminalBench40 : null;
+}
+const candName = (agent, model) => (agent === "free" ? (model && model !== "auto" ? describeModel("free", model)?.label || model : t("team.autoBest")) : agent === "codex" && !model ? "Codex" : describeModel(agent, model)?.label || `${AGENT[agent]} ${modelName(model)}`);
+const agentReady = (agent) => tpState.options?.agents?.[agent]?.ready !== false;
+function candAvailable(agent, model) {
+  const o = tpState.options?.agents || {};
+  if (agent === "free") return !!(appSettings?.settings?.allowFree && tpState.team?.allow?.free !== false) && !!o.free;
+  if (model === "astra") return !!tpState.team?.allow?.astra;
+  return true;
+}
+function recommend(role) {
+  if (role === "images") return { agent: "codex", model: null, effort: undefined, why: [["tp.reason.images"]] };
+  const orchP = orchProvider($("#omodel").value);
+  const list = TEAM_CANDS[role].filter(([a, m]) => candAvailable(a, m));
+  const anyReady = list.some(([a]) => agentReady(a));
+  const scored = list.filter(([a]) => !anyReady || agentReady(a)).map(([agent, model]) => {
+    const tb = tbScore(agent, model), li = (agent === "claude" || agent === "codex") ? limitInfo(agent) : null;
+    const lim = li ? (li.pct >= limitThreshold() ? 40 : nearLimit(li.pct) ? 8 : 0) : 0;
+    const spare = agent === orchP ? 4 : 0;
+    return { agent, model, tb, li, score: (tb ?? 40) - COST_WEIGHT[role] * costOf(agent, model) - lim - spare };
+  }).sort((a, b) => b.score - a.score);
+  const best = scored[0] || { agent: "codex", model: "sol", tb: null, li: null };
+  const why = [best.tb != null ? ["tp.reason.value", { tb: best.tb.toFixed(1), cost: costLabel(best.agent, best.model) }] : best.agent === "free" ? ["tp.reason.free"] : ["tp.reason.valueNoTb"]];
+  if (best.agent !== orchP && (best.agent === "claude" || best.agent === "codex")) why.push(["tp.reason.spare", { provider: AGENT[orchP] }]);
+  else if (best.agent !== orchP) { const li = limitInfo(orchP); if (li && nearLimit(li.pct)) why.push(["tp.reason.limit", { provider: AGENT[orchP], pct: li.pct }]); }
+  return { agent: best.agent, model: best.model, effort: REC_EFFORT[role], why };
+}
+const sameWorker = (a, b) => !!a && !!b && a.agent === b.agent && (a.model ?? null) === (b.model ?? null);
+
+const tpState = { team: null, options: null, scope: "project", sel: "code", note: "" };
+let msgTeam = {}; // per-message role overrides, sent with the next message and then cleared
+
+const displayedRoles = () => {
+  const tm = tpState.team; if (!tm) return {};
+  const base = {};
+  for (const r of TEAM_ROLES) {
+    if (tm.mode === "auto") { const rc = recommend(r); base[r] = { agent: rc.agent, ...(rc.model ? { model: rc.model } : {}), ...(rc.effort ? { effort: rc.effort } : {}) }; }
+    else base[r] = tm.roles[r];
+  }
+  return { ...base, ...msgTeam };
+};
+function presetKey() {
+  const tm = tpState.team; if (!tm) return "auto";
+  if (Object.keys(msgTeam).length) return "custom";
+  if (tm.mode === "auto") return "auto";
+  const same = (x, y) => ["code", "quick", "review", "research"].every((k) => x?.[k]?.agent === y?.[k]?.agent && x?.[k]?.model === y?.[k]?.model && x?.[k]?.effort === y?.[k]?.effort) && x?.images?.agent === y?.images?.agent;
+  return Object.keys(PRESET_ROLES).find((p) => same(tm.roles, PRESET_ROLES[p])) || "custom";
+}
+const presetCost = { auto: "", quality: "$$$", balanced: "$$", cheap: "$", free: "$0" };
+
+async function openTeamPop() {
+  const pop = $("#tpop");
+  if (!tpState.team) set(pop, h("div", { class: "tnote", style: "padding:14px", role: "status" }, t("tp.loading")));
+  try {
+    const [data] = await Promise.all([api(`team?orch=${encodeURIComponent($("#omodel").value)}`), loadCatalog(), refreshPickerData()]);
+    tpState.team = data.team; tpState.options = data.options;
+  } catch (e) { if (pickerOpen === "team") { closePickers(); toast(e.message, true); } return; }
+  if (pickerOpen === "team") renderTeamPop(true);
+}
+async function saveTeamNow(next, focusSel) {
+  try {
+    const r = await api("team", next);
+    tpState.team = r.team; S.team = { mode: r.team.mode, preset: r.team.preset };
+    renderTeamChip(); renderTeamPop(focusSel);
+  } catch (e) { toast(e.message, true); }
+}
+function applyPreset(p) {
+  const tm = tpState.team; if (!tm) return;
+  if (p === "free" && !appSettings?.settings?.allowFree) return toast(t("tp.freeOff"), true);
+  const focusSel = `[data-p="${p}"]`;
+  if (p === "auto") {
+    msgTeam = {};
+    if (tpState.scope === "project") return saveTeamNow({ ...tm, mode: "auto", preset: null }, focusSel);
+    renderTeamChip(); return renderTeamPop(focusSel);
+  }
+  const roles = JSON.parse(JSON.stringify(PRESET_ROLES[p]));
+  if (p === "cheap" && !tpState.options?.agents?.gemini?.ready && tpState.options?.agents?.claude?.ready) roles.research = { agent: "claude", model: "haiku", effort: "low" };
+  if (tpState.scope === "msg") {
+    const cur = tm.mode === "auto" ? displayedRolesNoMsg() : tm.roles;
+    msgTeam = Object.fromEntries(TEAM_ROLES.filter((r) => JSON.stringify(roles[r]) !== JSON.stringify(cur[r])).map((r) => [r, roles[r]]));
+    renderTeamChip(); return renderTeamPop(focusSel);
+  }
+  msgTeam = {};
+  saveTeamNow({ ...tm, mode: "manual", preset: p, roles }, focusSel);
+}
+function displayedRolesNoMsg() { const keep = msgTeam; msgTeam = {}; const d = displayedRoles(); msgTeam = keep; return d; }
+function pickWorker(role, agent, model) {
+  const tm = tpState.team; if (!tm) return;
+  const cur = displayedRoles()[role] || {};
+  const w = { agent, ...(model ? { model } : {}) };
+  if (role !== "images") w.effort = cur.effort || REC_EFFORT[role] || "medium";
+  const focusSel = `.rcard[data-role="${role}"] .alts button[data-a="${agent}:${model ?? ""}"]`;
+  if (tpState.scope === "msg") { msgTeam = { ...msgTeam, [role]: w }; renderTeamChip(); return renderTeamPop(focusSel); }
+  const roles = { ...(tm.mode === "auto" ? displayedRolesNoMsg() : tm.roles), [role]: w };
+  delete msgTeam[role];
+  saveTeamNow({ ...tm, mode: "manual", preset: null, roles }, focusSel);
+}
+function cycleEffort(role) {
+  const cur = displayedRoles()[role]; if (!cur || role === "images") return;
+  const order = ["low", "medium", "high"], nx = order[(order.indexOf(cur.effort) + 1) % order.length];
+  pickWorker2(role, { ...cur, effort: nx }, `.rcard[data-role="${role}"] .effbtn`);
+}
+function pickWorker2(role, w, focusSel) {
+  const tm = tpState.team;
+  if (tpState.scope === "msg") { msgTeam = { ...msgTeam, [role]: w }; renderTeamChip(); return renderTeamPop(focusSel); }
+  const roles = { ...(tm.mode === "auto" ? displayedRolesNoMsg() : tm.roles), [role]: w };
+  saveTeamNow({ ...tm, mode: "manual", preset: null, roles }, focusSel);
+}
+function whyLine(role, cur, rec) {
+  if (role === "images") return t("tp.reason.images");
+  if (sameWorker(cur, rec)) return rec.why.map(([k, v]) => t(k, v || {})).join(" ");
+  return t("tp.reason.chosen", { name: candName(rec.agent, rec.model) });
+}
+function roleCard(role, cur) {
+  const rec = recommend(role), isRec = sameWorker(cur, rec), over = !!msgTeam[role], sel = tpState.sel === role;
+  const model = cur.model && cur.model !== "auto" ? cur.model : (cur.agent === "free" ? "auto" : cur.model);
+  const tb = tbScore(cur.agent, model), li = (cur.agent === "claude" || cur.agent === "codex") ? limitInfo(cur.agent) : null;
+  const lbarCls = li ? (li.pct >= limitThreshold() ? " full" : nearLimit(li.pct) ? " hot" : "") : "";
+  const alts = TEAM_CANDS[role].filter(([a, m]) => candAvailable(a, m) || sameWorker({ agent: a, model: m }, cur));
+  const ready = agentReady(cur.agent);
+  return h("div", { class: "rcard" + (sel ? " sel" : "") + (isRec ? " rec-now" : ""), role: "group", tabindex: "0", "data-nav": "1", "aria-label": t(`team.role.${role}`), "data-role": role,
+      onclick: (e) => { if (e.target.closest(".alts button, .effbtn")) return; tpState.sel = role; renderTeamPop(`.rcard[data-role="${role}"]`); },
+      onkeydown: (e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tpState.sel = role; renderTeamPop(`.rcard[data-role="${role}"]`); } } },
+    h("div", { class: "rt" }, h("b", { style: "font-weight:600;color:var(--muted)" }, t(`team.role.${role}`)), isRec ? h("span", { class: "rec" }, t("tp.recommended")) : null, over ? h("span", { class: "ovr" }, t("tp.thisMsg")) : null),
+    h("div", { class: "who" }, cur.agent === "free" ? (logoImg("nvidia")) : agentLogo(cur.agent),
+      h("span", { style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, candName(cur.agent, model)),
+      role !== "images" && cur.effort ? h("button", { type: "button", class: "effbtn", "data-nav": "1", title: t("tp.effTip", { effort: effortLabel(cur.effort) }), onclick: () => cycleEffort(role) }, effortLabel(cur.effort)) : null),
+    h("div", { class: "stat" },
+      h("span", { class: "tb" }, tb != null ? `TB ${tb.toFixed(1)}` : t("tp.tbNone")),
+      h("span", { class: "cost" }, costLabel(cur.agent, model)),
+      li ? [h("span", { class: "lbar" + lbarCls, title: t("tp.pctUsed", { pct: li.pct }) }, h("i", { style: `width:${Math.min(100, li.pct)}%` })), h("span", {}, t("tp.pctUsed", { pct: li.pct }))]
+        : h("span", {}, cur.agent === "free" ? t("tp.noLimit") : cur.agent === "claude" || cur.agent === "codex" ? t("tp.noData") : t("tp.noLimit")),
+      !ready ? h("span", { style: "color:var(--warn)" }, t("tp.notReady")) : null),
+    h("div", { class: "why" }, whyLine(role, cur, rec)),
+    role === "images" ? null : h("div", { class: "alts" }, alts.map(([a, m]) => {
+      const isCur = sameWorker({ agent: a, model: m }, cur), isR = sameWorker({ agent: a, model: m }, rec);
+      return h("button", { type: "button", class: (isCur ? "cur" : "") + (agentReady(a) ? "" : " off"), "data-nav": "1", "data-a": `${a}:${m ?? ""}`, title: (isR ? t("tp.recommended") + " · " : "") + candName(a, m) + (agentReady(a) ? "" : " · " + t("tp.notReady")), "aria-label": t("tp.pickRole", { role: t(`team.role.${role}`) }) + ": " + candName(a, m), "aria-pressed": isCur ? "true" : "false",
+        onclick: () => pickWorker(role, a, m) }, a === "free" ? logoImg("nvidia") : agentLogo(a), a === "free" ? t("team.autoBest") : modelName(m), isR ? " ★" : "");
+    })));
+}
+function renderTeamPop(focus) {
+  const pop = $("#tpop"), tm = tpState.team; if (!pop || !tm) return;
+  const keepScroll = pop.scrollTop;
+  const key = presetKey(), roles = displayedRoles();
+  const presetBtn = (p) => h("button", { type: "button", class: key === p ? "on" : "", "data-nav": "1", "data-p": p, "aria-pressed": key === p ? "true" : "false", onclick: () => applyPreset(p) },
+    p === "auto" ? t("tp.preset.auto") : t(`team.preset.${p}`), presetCost[p] ? h("small", {}, presetCost[p]) : null);
+  const n = Object.keys(msgTeam).length;
+  set(pop,
+    h("div", { class: "tphead" }, h("b", {}, t("tp.title")), h("span", { class: "tsub" }, t("tp.sub")),
+      h("button", { type: "button", class: "x", "data-nav": "1", "aria-label": t("tp.close"), onclick: () => closePickers({ refocus: true }) }, "×")),
+    h("div", { class: "tpresets", role: "group", "aria-label": t("team.preset") }, ["auto", "quality", "balanced", "cheap", "free"].map(presetBtn), key === "custom" ? h("button", { type: "button", class: "on", disabled: true }, t("team.preset.custom")) : null),
+    h("div", { class: "whybox" }, t(`tp.why.${key}`)),
+    h("div", { class: "roles" }, TEAM_ROLES.map((r) => roleCard(r, roles[r] || { agent: "codex", effort: "medium" }))),
+    h("div", { class: "tscope" }, h("span", {}, t("tp.applyTo")),
+      h("span", { class: "seg", role: "group", "aria-label": t("tp.applyTo") }, ["project", "msg"].map((s) => h("button", { type: "button", class: tpState.scope === s ? "on" : "", "aria-pressed": tpState.scope === s ? "true" : "false", "data-nav": "1", "data-scope": s, onclick: () => { tpState.scope = s; renderTeamPop(`[data-scope="${s}"]`); } }, t(s === "project" ? "tp.scopeProject" : "tp.scopeMsg")))),
+      h("span", { class: "sp" }), n ? h("span", { class: "chip", style: "color:var(--accent)" }, t(n === 1 ? "tp.override1" : "tp.overrideN", { n })) : null),
+    h("div", { class: "tnote" }, t(tpState.scope === "project" ? "tp.noteProject" : "tp.noteMsg")),
+    h("div", { class: "tlinks" },
+      h("button", { type: "button", "data-nav": "1", onclick: () => { closePickers(); openDrawer("team"); } }, t("tp.advanced")),
+      h("button", { type: "button", "data-nav": "1", onclick: () => { closePickers(); openDrawer("shootout"); } }, t("tp.compare")),
+      h("button", { type: "button", "data-nav": "1", "data-so": "1", "aria-pressed": composerShootout ? "true" : "false", onclick: () => { composerShootout = !composerShootout; renderComposerShootout(); renderTeamPop('[data-so="1"]'); } }, (composerShootout ? "✓ " : "") + t("teamMenu.shootoutTurn"))));
+  pop.scrollTop = keepScroll;
+  if (typeof focus === "string") pop.querySelector(focus)?.focus();
+  else if (focus) (pop.querySelector(".tpresets button.on") || pop.querySelector("[data-nav]"))?.focus();
+}
+function renderTeamChip() {
+  const btn = $("#teambtn"); if (!btn) return;
+  const tm = S.team || { mode: "auto" };
+  const key = tpState.team ? presetKey() : (tm.mode === "manual" ? (tm.preset || "custom") : "auto");
+  const name = key === "auto" ? t("top.teamAuto") : key === "custom" ? t("team.preset.custom") : t(`team.preset.${key}`);
+  const roles = tpState.team ? displayedRoles() : null;
+  const agents = roles ? [...new Set(["code", "quick", "review"].map((r) => roles[r]?.agent).filter(Boolean))] : ["codex", "claude", "gemini"];
+  const n = Object.keys(msgTeam).length;
+  set(btn, h("span", { class: "stack", "aria-hidden": "true" }, agents.slice(0, 3).map((a) => (a === "free" ? logoImg("nvidia") : agentLogo(a)) || h("span", {}, ""))), t("top.teamPrefix", { name }),
+    n ? h("span", { class: "ov" }, t(n === 1 ? "tp.override1" : "tp.overrideN", { n })) : null);
+  btn.title = t("composer.teamTitle");
+}
+const msgTeamPayload = () => (Object.keys(msgTeam).length ? msgTeam : undefined);
+
+// ---- @mentions ----
+let mchips = [], mActive = 0, mOpen = false, mMatches = [];
+const mentionLogo = (m, cls = "plogo") => (m.agent === "free" ? logoImg("nvidia", false, cls) : m.agent === "local" ? h("span", { class: "lgl" }, "L") : agentLogo(m.agent) || h("span", { class: "lgl" }, m.label[0]));
+const freeAllowedNow = () => !!appSettings?.settings?.allowFree;
+const mentionSub = (m) => (m.model ? (hasKey(`model.${m.model}.goodAt`, lang) ? t(`model.${m.model}.goodAt`) : m.label) : t(`mention.agent.${m.name}`));
+function renderChips() {
+  const box = $("#mchips"); if (!box) return;
+  box.hidden = !mchips.length;
+  set(box, mchips.map((n) => { const m = mentionInfo(n); return h("span", { class: "mchip", title: t("mention.chipTitle", { label: m.label }) }, mentionLogo(m), "@" + n,
+    h("button", { type: "button", "aria-label": t("mention.remove", { name: n }), title: t("mention.remove", { name: n }), onclick: () => { mchips = mchips.filter((x) => x !== n); renderChips(); $("#input").focus(); } }, "×")); }));
+}
+function addMention(name) {
+  const m = mentionInfo(name); if (!m) return false;
+  if (m.agent === "free" && !freeAllowedNow()) { toast(t("tp.freeOff"), true); return false; }
+  if (!mchips.includes(m.name)) mchips = [...mchips, m.name];
+  renderChips(); return true;
+}
+function mentionQuery() {
+  const ta = $("#input"), before = ta.value.slice(0, ta.selectionStart ?? ta.value.length);
+  const m = /(^|\s)@([a-z-]*)$/i.exec(before);
+  return m ? { q: m[2].toLowerCase(), start: before.length - m[2].length - 1, end: before.length } : null;
+}
+function closeMentionMenu() { mOpen = false; const m = $("#mention"); if (m) m.hidden = true; const ta = $("#input"); ta?.setAttribute("aria-expanded", "false"); ta?.removeAttribute("aria-activedescendant"); }
+function renderMentionMenu() {
+  const q = mentionQuery();
+  if (!q) return closeMentionMenu();
+  mMatches = MENTIONS.filter((m) => m.name.startsWith(q.q));
+  if (!mMatches.length) return closeMentionMenu();
+  mActive = Math.min(mActive, mMatches.length - 1);
+  if (pickerOpen) closePickers();
+  mOpen = true;
+  const menu = $("#mention"); menu.hidden = false;
+  const row = (m, i) => h("div", { class: "mrow" + (i === mActive ? " act" : ""), role: "option", id: "mopt-" + m.name, "aria-selected": i === mActive ? "true" : "false", "aria-disabled": m.agent === "free" && !freeAllowedNow() ? "true" : null,
+      onmousedown: (e) => { e.preventDefault(); pickMention(m.name); }, onmousemove: () => { if (mActive !== i) { mActive = i; renderMentionMenu(); } } },
+    mentionLogo(m),
+    h("span", { class: "mtxt" }, h("span", { class: "nm" }, "@" + m.name), h("span", { class: "sub" }, m.agent === "free" && !freeAllowedNow() ? t("mention.freeOff") : mentionSub(m))),
+    mchips.includes(m.name) ? h("span", { class: "chk", "aria-hidden": "true" }, "✓") : null);
+  const agents = mMatches.filter((m) => !m.model), models = mMatches.filter((m) => m.model);
+  set(menu, h("h4", { role: "presentation" }, t("mention.menuTitle")),
+    agents.length ? [h("h4", { role: "presentation", style: "padding-top:2px" }, t("mention.groupWorkers")), agents.map((m) => row(m, mMatches.indexOf(m)))] : null,
+    models.length ? [h("h4", { role: "presentation", style: "padding-top:6px" }, t("mention.groupModels")), models.map((m) => row(m, mMatches.indexOf(m)))] : null);
+  $("#input").setAttribute("aria-expanded", "true");
+  $("#input").setAttribute("aria-activedescendant", "mopt-" + mMatches[mActive].name);
+  menu.querySelector(".act")?.scrollIntoView({ block: "nearest" });
+}
+function pickMention(name) {
+  const q = mentionQuery(); const ta = $("#input");
+  if (!addMention(name)) return;
+  if (q) {
+    const after = ta.value.slice(q.end).replace(/^ /, "");
+    ta.value = ta.value.slice(0, q.start).replace(/ $/, ta.value.slice(0, q.start).endsWith(" ") && after ? " " : "") + after;
+    ta.selectionStart = ta.selectionEnd = q.start;
+  }
+  closeMentionMenu(); autosize(); updateSend(); ta.focus();
+}
+function mentionKeydown(e) {
+  if (!mOpen) return false;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); mActive = (mActive + (e.key === "ArrowDown" ? 1 : -1) + mMatches.length) % mMatches.length; renderMentionMenu(); return true; }
+  if ((e.key === "Enter" && !e.shiftKey && !e.isComposing) || e.key === "Tab") { e.preventDefault(); pickMention(mMatches[mActive].name); return true; }
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeMentionMenu(); return true; }
+  return false;
+}
+function mentionInput() {
+  // typing a complete known @name followed by a space turns it into a chip too
+  const ta = $("#input"), before = ta.value.slice(0, ta.selectionStart ?? 0);
+  const m = /(^|\s)@([a-z][a-z-]*)[ \n]$/i.exec(before);
+  if (m && mentionInfo(m[2]) && addMention(m[2])) {
+    const cut = before.length - m[2].length - 2;
+    ta.value = ta.value.slice(0, cut) + ta.value.slice(before.length); ta.selectionStart = ta.selectionEnd = cut;
+    closeMentionMenu(); autosize(); updateSend(); return;
+  }
+  mActive = 0; renderMentionMenu();
+}
+function mentionChipsFor(names) {
+  if (!names?.length) return null;
+  return h("div", { class: "chat-mentions" }, names.map((n) => { const m = mentionInfo(n); return m ? h("span", { class: "mchip sent", title: t("mention.chipTitle", { label: m.label }) }, mentionLogo(m), "@" + n) : null; }));
+}
+window.__twComposerRefresh = () => { renderModelBtn(); renderTeamChip(); renderChips(); if (pickerOpen === "model") renderModelPop(); if (pickerOpen === "team") renderTeamPop(); if (mOpen) renderMentionMenu(); };
+renderModelBtn(); renderTeamChip(); renderChips();
+
 // ---------- loop ----------
 async function refresh() {
   S = await api("state");
@@ -3703,8 +4249,14 @@ async function refresh() {
 
 function autosize() { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 220) + "px"; }
 $("#input").addEventListener("input", autosize);
-$("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+$("#input").addEventListener("keydown", (e) => {
+  if (mentionKeydown(e)) return;
+  if (e.key === "Backspace" && !$("#input").value && mchips.length) { mchips = mchips.slice(0, -1); renderChips(); return; }
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+});
 $("#input").addEventListener("input", updateSend);
+$("#input").addEventListener("input", mentionInput);
+$("#input").addEventListener("click", () => { if (mOpen) renderMentionMenu(); });
 $("#attach").onclick = () => { if (!sending) $("#imagefiles").click(); };
 dictation = createDictationController({
   win: window,
@@ -3742,17 +4294,6 @@ $("#newtask").onclick = newTask;
 $("#directbtn").onclick = openDirect;
 $("#settingsbtn").onclick = () => openDrawer("settings");
 $("#keysbtn").onclick = () => openDrawer("keys");
-function teamMenu(anchor) {
-  popover(anchor,
-    h("button", { onclick: () => { closePop(); openDrawer("team"); } }, t("teamMenu.settings")),
-    h("button", { onclick: () => { closePop(); openDrawer("shootout"); } }, t("teamMenu.compare")),
-    h("div", { class: "sep" }),
-    h("button", { onclick: () => { composerShootout = !composerShootout; renderComposerShootout(); closePop(); } },
-      composerShootout ? "✓ " + t("teamMenu.shootoutTurn") : t("teamMenu.shootoutTurn"),
-      h("span", { class: "pop-sub" }, t("teamMenu.shootoutTurnDesc"))));
-}
-
-$("#teambtn").onclick = (e) => { e.stopPropagation(); teamMenu(e.currentTarget); };
 $("#composer-so-off").onclick = () => { composerShootout = false; renderComposerShootout(); };
 $("#modelsbtn").onclick = () => openDrawer("models");
 $("#usagebtn").onclick = () => openDrawer("usage");
@@ -3810,7 +4351,7 @@ newTask();
 refresh().then(() => { if (S.chats[0]) openChat(S.chats[0].id); });
 setInterval(() => refresh().then(pollChat).catch(() => {}), 1200);
 renderLimits(); setInterval(renderLimits, 15000);
-$("#omodel").addEventListener("change", renderLimits); $("#oeffort").addEventListener("change", renderLimits);
+$("#omodel").addEventListener("change", () => { renderModelBtn(); renderLimits(); }); $("#oeffort").addEventListener("change", () => { renderModelBtn(); renderLimits(); });
 window.__twLoaded = true;
 </script>
 </body>

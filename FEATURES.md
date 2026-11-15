@@ -36,7 +36,9 @@ A NolienLabs project. Landing page: https://tokenwise.site
 - **Isolated worktrees.** Each write job works on its own branch from `HEAD`. Why: parallel workers cannot collide, and your tree stays untouched.
 - **Team cards.** Each worker shows agent, model, effort and live progress. Why: you see who is doing what.
 - **Per-file review, apply, commit.** Why: you decide what enters the project.
-- **Team panel.** Auto, or pick agent, model and effort per role (code, quick work, reviews, images, research); presets quality, balanced, cheap. Why: control when you want it, defaults when you do not.
+- **Team panel and composer picker.** Auto, or pick agent, model and effort per role (code, quick work, reviews, images, research); presets quality, balanced, cheap, and free. Open the Team popover directly from the composer to see TB 4.0 scores, cost hints, plan-limit bars, and a one-line "why", and apply changes to the project or for one message only. Why: control when you want it, defaults when you do not.
+- **Composer model picker.** Compact orchestrator button next to Send (⌘/) with Claude Opus/Sonnet/Haiku and Codex Sol/Terra/Luna, effort sub-choice (low/medium/high/xhigh), fast mode toggle, and live plan-limit switch hints. Why: the most-used choice is one click away.
+- **Per-message `@mentions` routing.** Type `@` in the composer for `@codex`, `@claude`, `@gemini`, `@free`, `@local`, or models (`@sol`, `@terra`, `@luna`, `@opus`, `@sonnet`, `@haiku`, `@hydrogen`, `@argon`); validated server-side and injected into the orchestrator guide for that message only. Why: steer a single turn without changing project team settings.
 - **Research role.** Read-only web search on Claude and Codex, with numbered citations and a Sources list. Why: answers you can check.
 - **Test runner.** Per-project test command, a Run tests button per job, optional run before Apply, and a `job_test` tool for the orchestrator. Why: pass or fail sits next to the diff.
 - **Undo Apply.** A git snapshot before every Apply; Undo restores only the files it touched and refuses if they changed since. Why: applying is never a one-way door, and your own edits are never lost.
@@ -153,3 +155,4 @@ The studio was built with tokenwise. The main Claude session acted only as orche
 - **0.7:** Turkish UI, chat compaction, research role with citations.
 - **0.8:** Undo Apply, combined check after Apply, Roblox Output error import, automatic updates, stale-server protection, worker fixes.
 - **0.9:** Workspace side panel, pull requests from the review drawer, conflict check, dictation, model shootout, quota pacing and cooldowns, free-model probe, Rojo project map, welcome window and restore, app-only notifications.
+- **0.10 (unreleased):** Composer model + effort picker with live limit hints, composer Team picker popover with per-message overrides and Free preset, and `@mentions` per-message worker routing.
