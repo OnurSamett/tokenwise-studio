@@ -42,7 +42,7 @@ fetch() {
 SPARKLE_VERSION='2.8.1'
 # TODO: fill with the official SHA-256 for Sparkle-2.8.1.tar.xz from this release:
 # https://github.com/sparkle-project/Sparkle/releases/tag/2.8.1
-SPARKLE_SHA256='REPLACE_WITH_OFFICIAL_SPARKLE_2_8_1_SHA256'
+SPARKLE_SHA256='5cddb7695674ef7704268f38eccaee80e3accbf19e61c1689efff5b6116d85be'
 [[ "$SPARKLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail 'Fill SPARKLE_SHA256 in scripts/build-dmg.sh with the official release checksum first.'
 SPARKLE_DIR="$ROOT/.cache/sparkle/sdk"
 SPARKLE_ARCHIVE="$ROOT/.cache/sparkle/Sparkle-$SPARKLE_VERSION.tar.xz"
