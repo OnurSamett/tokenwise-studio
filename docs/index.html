@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tokenwise studio · Make your AI limits last longer</title>
-<meta name="description" content="tokenwise studio routes every piece of AI coding work to the right model and effort across Claude, ChatGPT Codex, Gemini, free NVIDIA and local Ollama workers. Isolated git worktrees, per-file review, Undo Apply, and Roblox Rojo support. Open source, by NolienLabs.">
+<meta name="description" content="tokenwise studio routes every piece of AI coding work to the right model and effort across Claude, ChatGPT Codex, Gemini, free NVIDIA and local Ollama workers. Isolated git worktrees, per-file review, Undo Apply. Open source, by NolienLabs.">
 <meta property="og:title" content="tokenwise studio · Make your AI limits last longer">
 <meta property="og:description" content="Right model. Right effort. Longer limits. One orchestrator, many workers: Claude, Codex, Gemini, free and local models.">
 <meta property="og:image" content="https://tokenwise.site/assets/chat-ready.jpg">
@@ -215,7 +215,6 @@
     <div class="links">
       <a href="#how">How it works</a>
       <a href="#features">Features</a>
-      <a href="#roblox">Roblox</a>
       <a href="#get">Get it</a>
       <a href="#faq">FAQ</a>
       <a href="https://github.com/OnurSamett/tokenwise-studio">GitHub</a>
@@ -279,31 +278,11 @@
       <div class="feat"><div class="ic">↪</div><h3>Quota pacing &amp; fallback</h3><p>Cooldowns track reset times so limited providers are skipped. Workers fall back along <code>codex → gemini → claude → free → local</code>, while the orchestrator can fall back along <code>claude → codex → gemini → free → local</code>.</p></div>
       <div class="feat"><div class="ic">◫</div><h3>Workspace side panel</h3><p>Browse project files, inspect diffs, preview images and pages, and view the <strong>This chat</strong> tab for files touched in the current conversation.</p></div>
       <div class="feat"><div class="ic">✓</div><h3>Conflict check, Undo &amp; PRs</h3><p>Overlapping edits are flagged before Apply. Snapshots power one-click <strong>Undo Apply</strong>, and a confirm step opens a pull request via <code>gh</code>.</p></div>
-      <div class="feat"><div class="ic">⚔</div><h3>Model shootout</h3><p>When you ask for a comparison, the same task goes to two or three models in parallel worktrees so you can pick the best diff.</p></div>
-      <div class="feat"><div class="ic">$0</div><h3>Free &amp; local workers</h3><p>Free mode runs the orchestrator and workers on free or local models. Opt-in NVIDIA models are ranked by Terminal-Bench 4.0; local Ollama runs on your hardware in Codex <code>--oss</code> mode.</p></div>
+      <div class="feat"><div class="ic">$0</div><h3>Free &amp; local workers</h3><p>Free mode runs the orchestrator and workers on free or local models. Opt-in NVIDIA models are ranked by Terminal-Bench 4.0; local Ollama runs on your hardware in Codex <code>--oss</code> mode. Ask for a comparison and the same task runs on two or three models in parallel worktrees, so you pick the best diff.</p></div>
       <div class="feat"><div class="ic">⌘</div><h3>Chat folders &amp; ⌘K palette</h3><p>Pin and organize chats into folders with date groups. Press <code>⌘K</code> to jump across chats, folders, files, and actions, or <code>?</code> for shortcuts.</p></div>
       <div class="feat"><div class="ic">🎙</div><h3>Mac app, restore &amp; dictation</h3><p>Restores your last projects or shows a welcome window, sends app-only notifications straight to the right project, and includes composer dictation.</p></div>
       <div class="feat"><div class="ic">▤</div><h3>Usage, tests &amp; Turkish UI</h3><p>14-day token and API-equivalent cost charts, worktree and combined post-apply checks, turn budgets, and English or Türkçe (<code>Auto</code>) across UI and alerts.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="roblox" style="padding-top:0">
-  <div class="wrap">
-    <div class="kicker">For Roblox developers</div>
-    <h2>Rojo-aware maps and one-paste Studio debugging.</h2>
-    <p class="sub">Built for Luau codebases synced with Rojo, so the orchestrator finds scripts fast and turns Studio Output errors into targeted fixes.</p>
-    <div class="roblox-grid">
-      <div class="roblox-card">
-        <span class="tag">Rojo project map</span>
-        <h3><code>project_map</code> for scripts and trees</h3>
-        <p>Reads your <code>*.project.json</code> files into a cached map shared with the orchestrator and workers, cutting down exploratory reads across nested Roblox services and modules.</p>
-      </div>
-      <div class="roblox-card">
-        <span class="tag">Studio error import</span>
-        <h3>Paste Studio Output, jump straight to fixes</h3>
-        <p>Click <strong>Studio errors</strong> in the composer and paste Output (up to 20 KB). Warnings and repeats are filtered locally, stack traces map to files via Rojo, and selected errors go to the team.</p>
-      </div>
+      <div class="feat"><div class="ic">🎮</div><h3>Game projects</h3><p>Rojo project map for <code>*.project.json</code> trees, Roblox Studio error import, and an opt-in, read-only playtest.</p></div>
     </div>
   </div>
 </section>
