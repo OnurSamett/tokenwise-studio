@@ -259,6 +259,144 @@ function walkRojoTree(realRoot, node, segments, extOrder, initOrder) {
   return null;
 }
 
+const SCRIPT_SUFFIXES = [
+  { ext: ".server.luau", scriptType: "Script" },
+  { ext: ".server.lua", scriptType: "Script" },
+  { ext: ".client.luau", scriptType: "LocalScript" },
+  { ext: ".client.lua", scriptType: "LocalScript" },
+  { ext: ".luau", scriptType: "ModuleScript" },
+  { ext: ".lua", scriptType: "ModuleScript" },
+];
+
+const INIT_ORDER = [
+  { file: "init.server.luau", scriptType: "Script" },
+  { file: "init.server.lua", scriptType: "Script" },
+  { file: "init.client.luau", scriptType: "LocalScript" },
+  { file: "init.client.lua", scriptType: "LocalScript" },
+  { file: "init.luau", scriptType: "ModuleScript" },
+  { file: "init.lua", scriptType: "ModuleScript" },
+];
+const INIT_NAME_SET = new Set(INIT_ORDER.map((x) => x.file));
+
+function parseScriptFilename(filename) {
+  for (const { ext, scriptType } of SCRIPT_SUFFIXES) {
+    if (filename.endsWith(ext) && filename.length > ext.length) {
+      return { name: filename.slice(0, -ext.length), scriptType };
+    }
+  }
+  return null;
+}
+
+/** Collect all script/module mappings (instancePath <-> file) and watched dirs from a Rojo project. */
+export function collectRojoScripts(repo, { project } = {}) {
+  const proj = project !== undefined ? project : findRojoProject(repo);
+  if (!proj || !repo) return null;
+  let realRoot;
+  try {
+    realRoot = fs.realpathSync(path.resolve(repo));
+  } catch {
+    return null;
+  }
+
+  const byInstance = new Map();
+  const dirs = new Set();
+  const instanceFolders = new Set();
+
+  const record = (instancePath, file, scriptType) => {
+    if (!instancePath || !file) return;
+    if (!byInstance.has(instancePath)) {
+      byInstance.set(instancePath, { instancePath, file, scriptType });
+    }
+  };
+
+  const walkDir = (absDir, segments, node) => {
+    const relDir = path.relative(realRoot, absDir).split(path.sep).join("/") || ".";
+    dirs.add(relDir);
+    if (segments.length > 0) instanceFolders.add(segments.join("."));
+
+    if (segments.length > 0) {
+      const instPath = segments.join(".");
+      for (const init of INIT_ORDER) {
+        const hit = safeRepoFile(realRoot, path.join(absDir, init.file));
+        if (hit) {
+          record(instPath, hit, init.scriptType);
+          break;
+        }
+      }
+    }
+
+    let entries;
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+    } catch {
+      return;
+    }
+
+    for (const d of entries) {
+      if (d.name === ".git" || d.name === ".tokenwise-studio" || d.isSymbolicLink()) continue;
+      if (d.isFile()) {
+        if (INIT_NAME_SET.has(d.name)) continue;
+        const parsed = parseScriptFilename(d.name);
+        if (!parsed) continue;
+        if (node && !parsed.name.startsWith("$") && Object.hasOwn(node, parsed.name) && nodePathValue(node[parsed.name])) {
+          continue;
+        }
+        const hit = safeRepoFile(realRoot, path.join(absDir, d.name));
+        if (hit) record([...segments, parsed.name].join("."), hit, parsed.scriptType);
+      } else if (d.isDirectory()) {
+        if (node && !d.name.startsWith("$") && Object.hasOwn(node, d.name) && isPlainObject(node[d.name])) {
+          continue;
+        }
+        const subDir = safeRepoDir(realRoot, path.join(absDir, d.name));
+        if (subDir) walkDir(subDir, [...segments, d.name], null);
+      }
+    }
+  };
+
+  const walkProjectNode = (node, segments, inheritedDir = null) => {
+    if (!isPlainObject(node)) return;
+    const p = nodePathValue(node);
+    let resolvedDir = null;
+    if (p) {
+      const targetAbs = path.resolve(realRoot, p);
+      const relToRoot = path.relative(realRoot, targetAbs);
+      if (!relToRoot.startsWith("..") && !path.isAbsolute(relToRoot)) {
+        const asFile = safeRepoFile(realRoot, targetAbs);
+        if (asFile) {
+          const parsed = parseScriptFilename(path.basename(asFile));
+          if (parsed && segments.length > 0) record(segments.join("."), asFile, parsed.scriptType);
+        } else {
+          resolvedDir = safeRepoDir(realRoot, targetAbs);
+        }
+      }
+    } else if (inheritedDir) {
+      resolvedDir = safeRepoDir(realRoot, inheritedDir);
+    }
+
+    if (resolvedDir) {
+      walkDir(resolvedDir, segments, node);
+    } else if (segments.length > 0) {
+      instanceFolders.add(segments.join("."));
+    }
+
+    for (const key of Object.keys(node).sort()) {
+      if (key.startsWith("$") || !isPlainObject(node[key])) continue;
+      const childFallbackDir = resolvedDir ? path.join(resolvedDir, key) : null;
+      walkProjectNode(node[key], [...segments, key], childFallbackDir);
+    }
+  };
+
+  walkProjectNode(proj.data.tree, []);
+
+  const scripts = [...byInstance.values()].sort((a, b) => a.instancePath.localeCompare(b.instancePath));
+  return {
+    projectFile: proj.file,
+    scripts,
+    dirs: [...dirs].sort(),
+    instanceFolders,
+  };
+}
+
 /** Resolve a Roblox instance path against a repo's Rojo project tree. Returns repo-relative path or null. */
 export function resolveRojoPath(repo, rawPath, { project, scriptType } = {}) {
   const proj = project !== undefined ? project : findRojoProject(repo);

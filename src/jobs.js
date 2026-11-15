@@ -10,10 +10,11 @@ import { recordGeminiRun } from "./gemini-usage.js";
 import { notify, jobNotice } from "./notify.js";
 import { withProjectNotes } from "./instructions.js";
 import { captureImages } from "./jobimages.js";
-import { runTests, stopTests, runCombinedCheck, combinedCheckRunning } from "./testrun.js";
+import { runTests, stopTests, runCombinedCheck, combinedCheckRunning, testTail, loadCombinedCheck, combinedTail } from "./testrun.js";
 import { loadSettings } from "./settings.js";
 import { createSnapshot, captureFileStates, restoreSnapshot } from "./snapshots.js";
-import { checkJobConflicts, rebaseJob, resolveJobConflicts } from "./conflicts.js";
+import { checkJobConflicts, rebaseJob, resolveJobConflicts, extractFilePatches } from "./conflicts.js";
+import { extractMentionedProjectFiles, withProjectMapSlice } from "./projectmap.js";
 
 // Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
 const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/node_modules/**", "**/.DS_Store",
@@ -130,6 +131,98 @@ export function setupGit(repo) {
   return { ok: true, isGit: true, sha, fileCount: preview.fileCount, gitignoreUpdated };
 }
 
+const MAX_FIX_DIFF_CHARS = 24 * 1024;
+const MAX_FIX_CHECK_CHARS = 8 * 1024;
+const FAIL_CHECK_STATUSES = new Set(["fail", "error", "timeout"]);
+
+function jobFileMentioned(taskLower, filePath, rojoFiles) {
+  const fl = filePath.toLowerCase();
+  if (taskLower.includes(fl)) return true;
+  if (rojoFiles.has(filePath)) return true;
+  const base = path.posix.basename(fl);
+  if (!base.startsWith("init.") && base.includes(".")) {
+    const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(?:^|[^A-Za-z0-9_./\\\\-])${escaped}(?:$|[^A-Za-z0-9_./\\\\-])`).test(taskLower)) return true;
+  }
+  return false;
+}
+
+function failingOutputForJob(jobs, prev) {
+  if (prev.test && FAIL_CHECK_STATUSES.has(prev.test.status)) {
+    return testTail(jobs, prev.id, MAX_FIX_CHECK_CHARS) || prev.test.tail || "";
+  }
+  if (prev.status === "merged") {
+    const cc = loadCombinedCheck(jobs);
+    if (cc && FAIL_CHECK_STATUSES.has(cc.status)) {
+      return combinedTail(jobs, MAX_FIX_CHECK_CHARS) || cc.tail || "";
+    }
+  }
+  return testTail(jobs, prev.id, MAX_FIX_CHECK_CHARS) || prev.test?.tail || "";
+}
+
+function findFixRound(jobs, { task, write, parent, fixOf, files, skipFixDetect }) {
+  if (skipFixDetect) return null;
+  if (fixOf) {
+    const prev = jobs.get(fixOf);
+    const explicitFiles = Array.isArray(files) && files.length ? files : (prev.files || []);
+    return { prev, matchedFiles: explicitFiles, failingOutput: failingOutputForJob(jobs, prev) };
+  }
+  if (!write) return null;
+
+  const taskLower = String(task || "").replace(/\\/g, "/").toLowerCase();
+  const rojoFiles = new Set(extractMentionedProjectFiles(jobs.repo, task));
+  const explicitSet = Array.isArray(files) && files.length ? new Set(files) : null;
+  const cc = loadCombinedCheck(jobs);
+  const ccFailed = !!(cc && FAIL_CHECK_STATUSES.has(cc.status));
+
+  const candidates = jobs.list().slice().reverse();
+  for (const prev of candidates) {
+    if ((parent || null) !== (prev.parent || null)) continue;
+    if (!prev.write || !Array.isArray(prev.files) || !prev.files.length) continue;
+    if (prev.status !== "done" && prev.status !== "merged" && prev.status !== "failed") continue;
+
+    const overlapping = prev.files.filter((f) => (explicitSet ? explicitSet.has(f) : jobFileMentioned(taskLower, f, rojoFiles)));
+    if (!overlapping.length) continue;
+
+    // Only treat as a fix round when the most recent finished write job for these files actually failed a check.
+    const testFailed = !!(prev.test && FAIL_CHECK_STATUSES.has(prev.test.status));
+    const mergedAndCcFailed = prev.status === "merged" && ccFailed && (!cc.started || !prev.finished || cc.started >= prev.created);
+    if (!testFailed && !mergedAndCcFailed) return null;
+
+    return {
+      prev,
+      matchedFiles: overlapping,
+      failingOutput: testFailed ? (testTail(jobs, prev.id, MAX_FIX_CHECK_CHARS) || prev.test?.tail || "") : (combinedTail(jobs, MAX_FIX_CHECK_CHARS) || cc?.tail || ""),
+    };
+  }
+  return null;
+}
+
+function buildFixRoundTask({ task, jobs, prev, matchedFiles, failingOutput }) {
+  let diffText = jobs.diff(prev.id).trim();
+  if (diffText && matchedFiles?.length && prev.files?.length && matchedFiles.length < prev.files.length) {
+    const patchMap = extractFilePatches(diffText);
+    const filtered = matchedFiles.map((f) => patchMap.get(f)?.patch).filter(Boolean).join("\n");
+    if (filtered.trim()) diffText = filtered.trim();
+  }
+  if (diffText.length > MAX_FIX_DIFF_CHARS) {
+    diffText = diffText.slice(0, MAX_FIX_DIFF_CHARS) + "\n...(diff truncated)";
+  }
+  let checkText = String(failingOutput || "").trim();
+  if (checkText.length > MAX_FIX_CHECK_CHARS) {
+    checkText = checkText.slice(-MAX_FIX_CHECK_CHARS);
+  }
+  return [
+    task,
+    "",
+    `Previous diff (job ${prev.id}):`,
+    diffText || "(no changes)",
+    "",
+    "Failing check output:",
+    checkText || "(no output)",
+  ].join("\n");
+}
+
 export class Jobs {
   constructor(repo) {
     this.repo = path.resolve(repo);
@@ -168,7 +261,7 @@ export class Jobs {
   isGit() { return isGitRepo(this.repo); }
 
   start({ agent, model, effort, hint = null, provider = null, task, write = false, role = null, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
-    tried = [], movedFrom = null, noFallback = false, images = [] }) {
+    tried = [], movedFrom = null, noFallback = false, images = [], fixOf = null, files = null, skipFixDetect = false }) {
     if (role !== null && role !== undefined && !ROLES.includes(role)) throw new Error(`unknown role '${role}' (roles: ${ROLES.join(", ")})`);
     if (role === "research" && write) throw new Error("research jobs must be read-only (write=false)");
     if (role === "images" && agent !== "codex") throw new Error("image generation needs Codex");
@@ -191,6 +284,7 @@ export class Jobs {
       throw new Error(`${agent} does not support web research; use claude, gemini or codex`);
     }
     const spec = resolve({ agent, model, effort, hint, provider, allowAstra: team.allow.astra === true });
+    const fixCtx = findFixRound(this, { task, write, parent, fixOf, files, skipFixDetect });
     const id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
     let cwd = this.repo, branch = null;
     if (write) {
@@ -201,6 +295,7 @@ export class Jobs {
     }
     const job = this.save({
       id, title: title || task.slice(0, 80), task, images: attachments.map((i) => i.rel), ...spec, write, role: role || null, cwd, branch, parent,
+      ...(fixCtx ? { fixOf: fixCtx.prev.id } : {}),
       tried: [...tried, agent], movedFrom, movedTo: null,
       status: "running", created: new Date().toISOString(), finished: null, exitCode: null,
       final: null, diffStat: null, files: [], pid: null,
@@ -210,7 +305,11 @@ export class Jobs {
     const researchNote = role === "research"
       ? "\n\nWeb research requirements:\n- Use web search/fetch to look up current information.\n- Cite facts inline with numbered brackets like [1], [2].\n- End with a \"Sources\" list containing ONLY the real http/https URLs you actually opened."
       : "";
-    const { cmd, args, env: extraEnv } = command(spec, { task: withProjectNotes(task, this.repo) + researchNote, cwd, write, role: role || null, lastFile, images: attachments.map((i) => i.abs) });
+    // Fix rounds get only the previous diff and failing check output instead of the full project context.
+    const workerTask = fixCtx
+      ? buildFixRoundTask({ task, jobs: this, ...fixCtx })
+      : withProjectMapSlice(withProjectNotes(task, this.repo), this.repo) + researchNote;
+    const { cmd, args, env: extraEnv } = command(spec, { task: workerTask, cwd, write, role: role || null, lastFile, images: attachments.map((i) => i.abs) });
     const log = fs.createWriteStream(this.file(id, "log"), { flags: "a" });
     const write1 = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line }) + "\n");
     write1("meta", `$ ${cmd} ${args.map((a) => (a.length > 60 ? a.slice(0, 57) + "..." : a)).join(" ")}`);
@@ -267,7 +366,7 @@ export class Jobs {
             const alt = nextAgent({ tried: j.tried, write, role: j.role || null, home: this.home });
             if (alt) {
               try {
-                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" } });
+                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" }, fixOf: job.fixOf || null, files, skipFixDetect });
                 j.status = "moved"; j.movedTo = nj.id;
                 write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
               } catch (e) { write1("meta", `fallback failed: ${e.message}`); }

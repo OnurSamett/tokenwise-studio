@@ -14,23 +14,27 @@ import { loadInstructions, instructionsGuide } from "./instructions.js";
 import { budgetDecision, turnTotal, writeBudgetState, fmtTokens } from "./budget.js";
 import { COMPACT_NOTICE, clip, compactChat, lastContextTokens, shouldCompact } from "./compact.js";
 import { listJsonCached } from "./jobs.js";
+import { getProjectMapSummary } from "./projectmap.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
-const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard", "job_test"].map((t) => `mcp__tokenwise-studio__${t}`);
+const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard", "job_test", "project_map"].map((t) => `mcp__tokenwise-studio__${t}`);
 // No Edit/Write: every change goes through a worker so the user can review it before it lands.
 const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(ls:*)",
   "Bash(python3:*)", "Bash(pytest:*)", "Bash(npm test:*)", "Bash(npm run:*)", "Bash(node:*)",
   "Bash(go test:*)", "Bash(cargo test:*)"];
 
-/** Orchestrator guide for a permission mode, plus (optional) project instructions, turn budget, non-git, and quota pacing rules. */
-export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false } = {}) {
+/** Orchestrator guide for a permission mode, plus (optional) project instructions, turn budget, non-git, project map, and quota pacing rules. */
+export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, projectMap = null } = {}) {
   const parts = [baseGuide(permissionMode)];
   if (!isGit) parts.push("NON-GIT PROJECT: this folder is not a git repository. Write jobs (write=true) require git and will be rejected. Only use read-only jobs (write=false) here; if the user asks for file changes, explain that they can set up git from the studio UI (or run git init and make an initial commit) first.");
   if (turnBudget > 0) parts.push(`TURN TOKEN BUDGET: each turn has about ${fmtTokens(turnBudget)} tokens for you plus all workers. Keep tasks tight. When delegate answers that the budget is spent, start no more jobs: wrap up with what is done and what remains.`);
   if (pacing?.active) {
     const prefer = allowFree ? "codex, gemini, or free" : "codex or gemini";
     parts.push(`QUOTA PACING (Save Claude for planning): Claude's ${pacing.window} usage is at ${pacing.pct}% (pacing level ${pacing.threshold}%). You stay on Claude for planning and review; steer worker jobs away from Claude by preferring ${prefer} for delegation instead of claude workers unless no other worker can handle the task.`);
+  }
+  if (projectMap) {
+    parts.push(`Project map available: ${projectMap.scriptCount} scripts, ${projectMap.remoteCount} remotes (${projectMap.projectFile}). Call project_map(prefix?, name?) to inspect instance paths, file paths, exports, remotes, and require edges before delegating.`);
   }
   const ig = instructionsGuide(instructions);
   if (ig) parts.push(ig);
@@ -251,7 +255,14 @@ export class Chats {
     const team = loadTeam(this.jobs.home);
     const allowFree = settings.allowFree && team.allow?.free !== false;
     const pacing = pick.agent === "claude" ? claudePacing(this.jobs.home, { settings }) : null;
-    const baseG = buildGuide(settings.permissionMode, { instructions: loadInstructions(this.jobs.repo), turnBudget: settings.turnBudget, isGit: this.jobs.isGit(), pacing, allowFree });
+    const baseG = buildGuide(settings.permissionMode, {
+      instructions: loadInstructions(this.jobs.repo),
+      turnBudget: settings.turnBudget,
+      isGit: this.jobs.isGit(),
+      pacing,
+      allowFree,
+      projectMap: getProjectMapSummary(this.jobs.repo),
+    });
     const tg = teamGuide(team, { pacing, allowFree });
     const guide = tg ? baseG + "\n\n" + tg : baseG;
     const allowedTools = settings.permissionMode === "plan-only" ? ALLOWED.filter((t) => t !== "mcp__tokenwise-studio__job_merge") : ALLOWED;

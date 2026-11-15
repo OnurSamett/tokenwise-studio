@@ -455,5 +455,6 @@ export function resolveJobConflicts(jobs, id, { conflictingFiles, failedHunks } 
     task,
     images: uploadImages,
     noFallback: true,
+    skipFixDetect: true,
   });
 }

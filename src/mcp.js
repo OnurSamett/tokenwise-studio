@@ -13,6 +13,7 @@ import { claudePacing } from "./fallback.js";
 import { budgetGate } from "./budget.js";
 import { runTests, testRunning, testTail } from "./testrun.js";
 import { normalizeFreeModelArg } from "./workers.js";
+import { queryProjectMap } from "./projectmap.js";
 
 const repo = process.env.TOKENWISE_REPO || process.cwd();
 let jobsInstance = null;
@@ -73,6 +74,7 @@ server.registerTool("delegate", {
     write: z.boolean().optional(),
     role: z.enum(ROLES).optional().describe("Optional job role; pass 'research' (with write=false) for current web research"),
     title: z.string().optional(),
+    fix_of: z.string().optional().describe("Optional previous job id for a fix round on the same files (passes only previous diff and failing check output)"),
     timeout_min: z.number().int().min(1).max(120).optional(),
   },
 }, async (a) => {
@@ -87,7 +89,7 @@ server.registerTool("delegate", {
     const over = budgetGate(jobs, process.env.TOKENWISE_PARENT, loadSettings().turnBudget);
     if (over) return fail(new Error(over));
     const prepared = prepareDelegateArgs(a);
-    return ok(brief(jobs.start({ ...prepared, timeoutMin: prepared.timeout_min })));
+    return ok(brief(jobs.start({ ...prepared, fixOf: prepared.fix_of || null, timeoutMin: prepared.timeout_min })));
   } catch (e) { return fail(e); }
 });
 
@@ -165,6 +167,20 @@ server.registerTool("job_discard", {
   inputSchema: { id: z.string() },
 }, async ({ id }) => {
   try { return ok(brief(getJobs().discard(id))); } catch (e) { return fail(e); }
+});
+
+server.registerTool("project_map", {
+  title: "Inspect Roblox Rojo project map",
+  description: "Read-only: return the cached Rojo project map (instance path <-> file path, module return keys, exported functions, RemoteEvent/RemoteFunction names, and require() edges), capped at 40 KB. Optional filter by path prefix or name.",
+  inputSchema: {
+    prefix: z.string().optional().describe("Optional file path or instance path prefix filter (e.g. 'src/server' or 'ReplicatedStorage.Shared')"),
+    name: z.string().optional().describe("Optional substring filter across script paths, exports, return keys, remotes, and requires"),
+  },
+}, async ({ prefix, name }) => {
+  try {
+    const { text } = queryProjectMap(repo, { prefix, name });
+    return ok(text);
+  } catch (e) { return fail(e); }
 });
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

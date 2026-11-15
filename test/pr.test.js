@@ -363,5 +363,5 @@ test("prNotice localizes EN/TR and MCP server exposes no PR/commit/push tool", (
 
   const mcpSrc = fs.readFileSync(path.join(ROOT, "src", "mcp.js"), "utf8");
   const tools = [...mcpSrc.matchAll(/server\.registerTool\(\s*["']([^"']+)["']/g)].map((m) => m[1]);
-  assert.equal(tools.some((name) => /pr|pull|push|commit/i.test(name)), false);
+  assert.equal(tools.some((name) => /(?:^|[_-])pr(?:$|[_-])|pull|push|commit/i.test(name)), false);
 });

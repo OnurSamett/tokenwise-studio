@@ -30,7 +30,7 @@ function codex(e, base) {
       if (it.status === "failed" || it.error) return [{ kind: "error", text: short(`${it.tool}: ${it.error?.message || it.error || it.result?.content?.[0]?.text || "failed"}`, 300) }];
       let a = it.arguments; if (typeof a === "string") { try { a = JSON.parse(a); } catch { a = {}; } }
       a = a || {};
-      if (it.tool === "delegate" || String(it.tool).startsWith("job_")) return [toolUse({ name: `mcp__tokenwise-studio__${it.tool}`, input: a }, base)];
+      if (it.tool === "delegate" || it.tool === "project_map" || String(it.tool).startsWith("job_")) return [toolUse({ name: `mcp__tokenwise-studio__${it.tool}`, input: a }, base)];
       return [{ kind: "tool", text: `${it.tool} ${short(JSON.stringify(a), 120)}` }];
     }
   }
@@ -46,6 +46,7 @@ function toolUse(t, base) {
   const i = t.input || {};
   const n = t.name || "";
   if (n.endsWith("__delegate")) return { kind: "delegate", text: `${i.agent} ${i.model || ""} · ${i.effort || "default"}${i.write ? " · writes" : ""}: ${short(i.title || i.task, 140)}` };
+  if (n.endsWith("__project_map")) return { kind: "tool", text: "project map" + (i.prefix ? ` ${i.prefix}` : i.name ? ` ${i.name}` : "") };
   if (n.includes("__job_")) return { kind: "tool", text: n.split("__").pop().replace("_", " ") + (i.id ? ` ${i.id}` : "") };
   if (n === "Read") return { kind: "read", text: rel(i.file_path, base) };
   if (n === "Edit" || n === "Write" || n === "MultiEdit") return { kind: "edit", text: `${n.toLowerCase()} ${rel(i.file_path, base)}` };
