@@ -19,7 +19,7 @@ A Mac app that lets Claude Opus orchestrate Codex, Claude and Gemini workers in 
 
 You describe a task in one chat. The orchestrator (Claude Opus) plans it and hands each piece to the worker that fits: Codex Sol for code, Claude Haiku for reading and search, Gemini, free hosted models, or a local model. Each writing worker has its own git worktree. Nothing touches your project until you apply the diff.
 
-studio is the companion to [tokenwise](https://github.com/OnurSamett/tokenwise). tokenwise is the skill that decides *which* model and effort a piece of work needs. studio gives the orchestrator a way to hand that work to another agent and merge the result. Each works without the other.
+[tokenwise](https://github.com/OnurSamett/tokenwise) is the companion skill for Claude Code, Codex CLI and Gemini CLI. It runs inside your existing agent in the terminal or a supported IDE integration, helping choose a model and effort. tokenwise studio is a separate desktop and local web app with worker orchestration, worktrees and visual review. Use either independently or use both together; IDE support depends on the agent integration.
 
 ## Why
 
