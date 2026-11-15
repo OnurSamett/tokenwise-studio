@@ -15,6 +15,7 @@ import { budgetDecision, turnTotal, writeBudgetState, fmtTokens } from "./budget
 import { COMPACT_NOTICE, clip, compactChat, lastContextTokens, shouldCompact } from "./compact.js";
 import { listJsonCached } from "./jobs.js";
 import { getProjectMapSummary } from "./projectmap.js";
+import { writeShootoutGate, clearShootoutGate } from "./shootout.js";
 
 const MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const TOOLS = ["delegate", "job_wait", "job_status", "job_diff", "job_merge", "job_discard", "job_test", "project_map"].map((t) => `mcp__tokenwise-studio__${t}`);
@@ -25,7 +26,7 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(go test:*)", "Bash(cargo test:*)"];
 
 /** Orchestrator guide for a permission mode, plus (optional) project instructions, turn budget, non-git, project map, and quota pacing rules. */
-export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, projectMap = null } = {}) {
+export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, projectMap = null, shootout = false } = {}) {
   const parts = [baseGuide(permissionMode)];
   if (!isGit) parts.push("NON-GIT PROJECT: this folder is not a git repository. Write jobs (write=true) require git and will be rejected. Only use read-only jobs (write=false) here; if the user asks for file changes, explain that they can set up git from the studio UI (or run git init and make an initial commit) first.");
   if (turnBudget > 0) parts.push(`TURN TOKEN BUDGET: each turn has about ${fmtTokens(turnBudget)} tokens for you plus all workers. Keep tasks tight. When delegate answers that the budget is spent, start no more jobs: wrap up with what is done and what remains.`);
@@ -35,6 +36,11 @@ export function buildGuide(permissionMode = "ask", { instructions = null, turnBu
   }
   if (projectMap) {
     parts.push(`Project map available: ${projectMap.scriptCount} scripts, ${projectMap.remoteCount} remotes (${projectMap.projectFile}). Call project_map(prefix?, name?) to inspect instance paths, file paths, exports, remotes, and require edges before delegating.`);
+  }
+  if (shootout) {
+    parts.push("MODEL SHOOTOUT OPTED IN: The user asked for a model shootout in this turn (note: this multiplies token use). Start 2–3 parallel write jobs (write=true) with the same task and a shared shootout parameter (e.g. shootout=\"compare\") across distinct models, wait for them with job_wait, optionally run job_test on each, and summarize the differences — do NOT call job_merge on shootout jobs so the user can pick the best one side by side.");
+  } else {
+    parts.push("Model shootouts are opt-in by the user only: do NOT pass shootout to delegate.");
   }
   const ig = instructionsGuide(instructions);
   if (ig) parts.push(ig);
@@ -204,7 +210,7 @@ export class Chats {
       .sort((a, b) => b.created.localeCompare(a.created));
   }
 
-  send({ id, message, model, effort, images = [], force, explicit } = {}) {
+  send({ id, message, model, effort, images = [], force, explicit, shootout = false } = {}) {
     const settings = loadSettings();
     model = model || settings.defaultModel;
     effort = effort || settings.defaultEffort;
@@ -216,6 +222,7 @@ export class Chats {
     if (!["low", "medium", "high", "xhigh"].includes(effort)) throw new Error("effort must be low|medium|high|xhigh");
     if (force !== undefined && force !== null && !["codex", "claude"].includes(force)) throw new Error("force must be codex or claude");
     if (explicit !== undefined && typeof explicit !== "boolean") throw new Error("explicit must be true or false");
+    if (shootout !== undefined && typeof shootout !== "boolean") throw new Error("shootout must be true or false");
     let c;
     if (id) {
       c = this.get(id);
@@ -243,7 +250,7 @@ export class Chats {
     } else {
       pick = pickOrchestrator(this.jobs.home, model, effort);
     }
-    const turn = { user: message, images: attachments.map((i) => i.rel), agent: pick.agent, model: pick.model, effort: pick.effort, started: new Date().toISOString(), finished: null, cost: null };
+    const turn = { user: message, images: attachments.map((i) => i.rel), agent: pick.agent, model: pick.model, effort: pick.effort, started: new Date().toISOString(), finished: null, cost: null, ...(shootout ? { shootout: true } : {}) };
     if (pick.reason) turn.handoff = { from: "claude", reason: pick.reason };
     c.turns.push(turn);
     this.save(c);
@@ -262,6 +269,7 @@ export class Chats {
       pacing,
       allowFree,
       projectMap: getProjectMapSummary(this.jobs.repo),
+      shootout: !!shootout,
     });
     const tg = teamGuide(team, { pacing, allowFree });
     const guide = tg ? baseG + "\n\n" + tg : baseG;
@@ -276,6 +284,7 @@ export class Chats {
     const live = { base: 0, run: 0, warned: false, stopped: false, written: -1 };
     const claudeMsgs = new Map();
     try { writeBudgetState(this.jobs.home, id, { turn: ti, started: turn.started, orch: 0 }); } catch {}
+    try { writeShootoutGate(this.jobs.home, id, { turn: ti, started: turn.started, allowed: !!shootout }); } catch {}
     const budgetTick = () => {
       try {
         const orch = live.base + live.run;
@@ -297,6 +306,7 @@ export class Chats {
 
     const finish = (code, stopped) => {
       clearInterval(ticker); budgetTick();
+      try { clearShootoutGate(this.jobs.home, id, ti); } catch {}
       this.running.delete(id);
       const cur = this.get(id);
       cur.sessionId = c.sessionId ?? null;
@@ -543,7 +553,7 @@ export class Chats {
         try { this.jobs.discard(j.id); } catch {}
       }
     }
-    for (const ext of ["json", "jsonl", "mcp.json", "budget"]) fs.rmSync(this.f(id, ext), { force: true });
+    for (const ext of ["json", "jsonl", "mcp.json", "budget", "shootout"]) fs.rmSync(this.f(id, ext), { force: true });
     this._listCache.delete(`${id}.json`);
     return { ok: true };
   }

@@ -15,6 +15,7 @@ import { loadSettings } from "./settings.js";
 import { createSnapshot, captureFileStates, restoreSnapshot } from "./snapshots.js";
 import { checkJobConflicts, rebaseJob, resolveJobConflicts, extractFilePatches } from "./conflicts.js";
 import { extractMentionedProjectFiles, withProjectMapSlice } from "./projectmap.js";
+import { registerShootoutJob } from "./shootout.js";
 
 // Build/run artifacts that should never end up in a worker's diff, even without a .gitignore.
 const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/node_modules/**", "**/.DS_Store",
@@ -261,7 +262,7 @@ export class Jobs {
   isGit() { return isGitRepo(this.repo); }
 
   start({ agent, model, effort, hint = null, provider = null, task, write = false, role = null, title, timeoutMin = 20, parent = process.env.TOKENWISE_PARENT || null,
-    tried = [], movedFrom = null, noFallback = false, images = [], fixOf = null, files = null, skipFixDetect = false }) {
+    tried = [], movedFrom = null, noFallback = false, images = [], fixOf = null, files = null, skipFixDetect = false, shootout = null }) {
     if (role !== null && role !== undefined && !ROLES.includes(role)) throw new Error(`unknown role '${role}' (roles: ${ROLES.join(", ")})`);
     if (role === "research" && write) throw new Error("research jobs must be read-only (write=false)");
     if (role === "images" && agent !== "codex") throw new Error("image generation needs Codex");
@@ -296,10 +297,12 @@ export class Jobs {
     const job = this.save({
       id, title: title || task.slice(0, 80), task, images: attachments.map((i) => i.rel), ...spec, write, role: role || null, cwd, branch, parent,
       ...(fixCtx ? { fixOf: fixCtx.prev.id } : {}),
+      ...(shootout ? { shootout } : {}),
       tried: [...tried, agent], movedFrom, movedTo: null,
       status: "running", created: new Date().toISOString(), finished: null, exitCode: null,
       final: null, diffStat: null, files: [], pid: null,
     });
+    if (shootout) { try { registerShootoutJob(this.home, shootout, job); } catch {} }
 
     const lastFile = this.file(id, "last");
     const researchNote = role === "research"
@@ -366,7 +369,7 @@ export class Jobs {
             const alt = nextAgent({ tried: j.tried, write, role: j.role || null, home: this.home });
             if (alt) {
               try {
-                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" }, fixOf: job.fixOf || null, files, skipFixDetect });
+                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" }, fixOf: job.fixOf || null, files, skipFixDetect, shootout: j.shootout || null });
                 j.status = "moved"; j.movedTo = nj.id;
                 write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
               } catch (e) { write1("meta", `fallback failed: ${e.message}`); }

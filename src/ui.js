@@ -31,6 +31,7 @@ import { parseStudioErrors, formatStudioPrompt } from "./studiolog.js";
 import { listRepoFiles, readRepoTextFile, resolveRepoImage, worktreeDiff, splitDiff, chatFiles } from "./workspace.js";
 import { prPreconditions, commitAndOpenPr, selectAppliedJobs, formatChangesBy } from "./pr.js";
 import { notify, prNotice } from "./notify.js";
+import { startShootout, listShootouts, getShootout, pickShootout, discardShootout, pruneExpiredShootouts } from "./shootout.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
@@ -55,8 +56,18 @@ function remember(p) {
   try { fs.mkdirSync(path.dirname(RECENTS), { recursive: true }); fs.writeFileSync(RECENTS, JSON.stringify(list, null, 2)); } catch {}
   return list;
 }
+let lastPrunedAt = 0;
+function maybePruneShootouts(force = false) {
+  if (!jobs) return;
+  const now = Date.now();
+  if (!force && now - lastPrunedAt < 5 * 60 * 1000) return;
+  lastPrunedAt = now;
+  try { pruneExpiredShootouts(jobs, { now }); } catch {}
+}
 function openProject(p) {
   repo = p; jobs = new Jobs(repo); chats = new Chats(jobs, serverChatOpts);
+  lastPrunedAt = 0;
+  maybePruneShootouts(true);
   remember(repo);
 }
 function combinedCheckInfo() {
@@ -67,10 +78,16 @@ function combinedCheckInfo() {
   const status = c.status === "running" && !running ? "error" : c.status;
   return { ...c, status, tail };
 }
-const state = () => ({ version: LOADED_VERSION, repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit() }, recents: recents(), chats: chats.list(),
-  jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
-  combinedCheck: combinedCheckInfo(),
-  team: (({ mode, preset }) => ({ mode, preset }))(loadTeam(jobs.home)) });
+const state = () => {
+  maybePruneShootouts(false);
+  return {
+    version: LOADED_VERSION, repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit() }, recents: recents(), chats: chats.list(),
+    jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
+    shootouts: listShootouts(jobs),
+    combinedCheck: combinedCheckInfo(),
+    team: (({ mode, preset }) => ({ mode, preset }))(loadTeam(jobs.home)),
+  };
+};
 
 const gitIn = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const staged = () => { try { return gitIn("diff", "--cached", "--name-only").split("\n").filter(Boolean); } catch { return []; } };
@@ -332,6 +349,8 @@ export const handler = async (req, res) => {
       if (what === "worktree-diff") return send(res, 200, worktreeDiff(repo));
       if (what === "chatfiles") return send(res, 200, chatFiles({ repo, chats, jobs, chatId: id || url.searchParams.get("id") }));
       if (what === "git-setup") return send(res, 200, gitSetupPreview(repo));
+      if (what === "shootouts") return send(res, 200, { shootouts: listShootouts(jobs) });
+      if (what === "shootout") return send(res, 200, getShootout(jobs, id));
     }
     if (req.method === "POST") {
       const b = await readBody(req, what === "upload" ? UPLOAD_BODY_LIMIT : undefined);
@@ -426,6 +445,22 @@ export const handler = async (req, res) => {
         return send(res, 200, state());
       }
       if (what === "delegate") return send(res, 200, jobs.start({ ...b, parent: null }));
+      if (what === "shootout") return send(res, 200, startShootout(jobs, { ...b, parent: b.parent ?? null }));
+      if (what === "shootout-pick") return send(res, 200, pickShootout(jobs, id, b.jobId, { files: b.files, autoCheck: b.autoCheck !== false }));
+      if (what === "shootout-discard") return send(res, 200, discardShootout(jobs, id));
+      if (what === "shootout-test") {
+        const view = getShootout(jobs, id);
+        if (!view.testConfigured) throw new Error("no test command configured for this project");
+        const started = [];
+        for (const c of view.candidates) {
+          const j = c.job;
+          if (j.write && j.status === "done" && (j.files || []).length && !testRunning(j)) {
+            runTests(jobs, j.id);
+            started.push(j.id);
+          }
+        }
+        return send(res, 200, { started, ...getShootout(jobs, id) });
+      }
       if (what === "git-setup") return send(res, 200, { ...setupGit(repo), state: state() });
     }
     return send(res, 404, { error: "not found" });
@@ -466,8 +501,13 @@ function registerServer(repoPath, url) {
 }
 
 let activeServer = null;
+let shootoutPruneTimer = null;
 export function startServer({ repo: start, port = 4777, summarize, spawn, exec } = {}) {
   initServer({ repo: start, summarize, spawn, exec });
+  if (!shootoutPruneTimer) {
+    shootoutPruneTimer = setInterval(() => maybePruneShootouts(true), 15 * 60 * 1000);
+    shootoutPruneTimer.unref?.();
+  }
   return new Promise((resolve, reject) => {
     const server = http.createServer(handler);
     server.once("error", reject);
@@ -481,6 +521,7 @@ export function startServer({ repo: start, port = 4777, summarize, spawn, exec }
 }
 
 export function stopServer() {
+  if (shootoutPruneTimer) { clearInterval(shootoutPruneTimer); shootoutPruneTimer = null; }
   return new Promise((resolve) => {
     if (!activeServer) return resolve();
     const s = activeServer;

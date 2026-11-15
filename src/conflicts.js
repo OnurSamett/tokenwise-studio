@@ -205,6 +205,7 @@ export function checkJobConflicts(jobs, jobOrId, { files } = {}) {
 
   const others = jobs.list().filter(
     (o) => o.id !== j.id && o.write && o.status === "done" && Array.isArray(o.files) && o.files.length > 0
+      && !(j.shootout && o.shootout === j.shootout)
   );
 
   const diffPath = jobs.file(j.id, "diff");

@@ -618,6 +618,92 @@
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (prefers-contrast: more) { .side, .top, .composer, .drawer { backdrop-filter: none; background: var(--s1); } }
 
+  /* Model shootout (graphite + indigo, no yellow) */
+  .pop .pop-sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 1px; }
+  .composer-so-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin: 0 0 8px; padding: 7px 10px; border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 10%, var(--s2));
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line2));
+    font-size: 12px; color: var(--ink);
+  }
+  .composer-so-bar[hidden] { display: none; }
+  .shootout-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 36%, transparent);
+    white-space: nowrap;
+  }
+  .composer-so-bar .x {
+    background: transparent; border: 0; color: var(--muted); cursor: pointer;
+    font-size: 15px; line-height: 1; padding: 2px 5px; border-radius: 6px;
+  }
+  .composer-so-bar .x:hover { background: var(--s3); color: var(--ink); }
+  .shootout-group {
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+    background: color-mix(in srgb, var(--accent) 5%, var(--s1));
+    border-radius: 10px; padding: 8px 10px; margin-top: 6px;
+  }
+  .shootout-group-h {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-bottom: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink);
+  }
+  .shootout-warn {
+    padding: 10px 12px; border-radius: 10px; margin-bottom: 14px;
+    background: color-mix(in srgb, var(--accent) 9%, var(--s2));
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line2));
+    font-size: 12.8px; line-height: 1.45;
+  }
+  .shootout-warn b { display: block; color: var(--ink); margin-bottom: 3px; }
+  .shootout-warn span { color: var(--muted); }
+  .shootout-workers { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .shootout-worker-row {
+    display: grid; grid-template-columns: 64px minmax(105px, 1fr) minmax(130px, 1.25fr) minmax(92px, .85fr) auto;
+    gap: 8px; align-items: center;
+  }
+  .shootout-worker-row .slot { font-size: 12px; font-weight: 600; color: var(--muted); }
+  @media (max-width: 680px) {
+    .shootout-worker-row { grid-template-columns: 1fr 1fr; }
+    .shootout-worker-row .slot { grid-column: 1 / -1; }
+  }
+  body.drawer-open .drawer.shootout-wide { width: min(1240px, 96vw); }
+  .shootout-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 14px; align-items: start;
+  }
+  .so-col {
+    background: var(--s2); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  }
+  .so-col.picked {
+    border-color: var(--ok);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 35%, transparent);
+  }
+  .so-col.discarded { opacity: .68; }
+  .so-head { display: flex; align-items: flex-start; gap: 9px; }
+  .so-head .so-title { flex: 1; min-width: 0; }
+  .so-head .so-name { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .so-head .so-sub { font-size: 12px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .so-metrics {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    background: var(--s1); border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px;
+  }
+  .so-m small { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .so-m b { font-size: 12.8px; font-weight: 600; }
+  .so-files { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+  .so-files code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+    background: var(--s1); border: 1px solid var(--line); border-radius: 5px;
+    padding: 2px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .so-conflict {
+    font-size: 12px; color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--bad) 28%, transparent);
+    border-radius: 8px; padding: 6px 8px;
+  }
+  .so-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 4px; }
+
 </style>
 </head>
 <body>
@@ -642,6 +728,11 @@
     <div class="banner" id="banner" hidden></div>
     <div class="nongit" id="nongit" hidden></div>
     <div class="composer">
+      <div class="composer-so-bar" id="composer-so-bar" hidden>
+        <span class="shootout-chip" id="composer-so-pill">Shootout ON</span>
+        <span class="grow" id="composer-so-warn">Model shootout enabled for this message — runs multiple models in parallel and multiplies token use.</span>
+        <button class="x" type="button" id="composer-so-off" aria-label="Turn off model shootout for this message">×</button>
+      </div>
       <div class="attachments" id="attachments"></div>
       <input type="file" id="imagefiles" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
       <textarea id="input" rows="1" placeholder="Ask the team…"></textarea>
@@ -731,6 +822,10 @@ function applyStaticI18n() {
     $("#mic").setAttribute("aria-label", t("composer.dictate"));
   }
   $("#teambtn").title = t("composer.teamTitle");
+  $("#composer-so-pill").textContent = t("composer.shootoutPill");
+  $("#composer-so-warn").textContent = t("composer.shootoutWarn");
+  $("#composer-so-off").title = t("composer.shootoutOffTitle");
+  $("#composer-so-off").setAttribute("aria-label", t("composer.shootoutOffTitle"));
   $("#omodel").title = t("composer.orchModel");
   $("#oeffort").title = t("composer.orchEffort");
   for (const opt of $("#oeffort").options) opt.textContent = effortLabel(opt.value);
@@ -956,10 +1051,15 @@ const PRESET_ROLES = {
 };
 
 // ---------- state ----------
-let S = { repo: "", chats: [], jobs: [] };
+let S = { repo: "", chats: [], jobs: [], shootouts: [] };
 let chatId = null, chatFrom = 0, turns = [], drawer = null;
 
-let attachments = [], sending = false;
+let attachments = [], sending = false, composerShootout = false;
+function renderComposerShootout() {
+  const bar = $("#composer-so-bar");
+  if (bar) bar.hidden = !composerShootout;
+  $("#teambtn")?.classList.toggle("so-on", composerShootout);
+}
 function updateSend() { $("#send").disabled = sending || (!$("#input").value.trim() && !attachments.length); }
 function clearAttachments() {
   attachments.forEach((a) => URL.revokeObjectURL(a.url)); attachments = []; drawAttachments();
@@ -1219,20 +1319,36 @@ function renderTurnChrome() {
   });
 }
 
+function renderWorkerRow(j) {
+  const movedWhy = j.movedFrom ? translateReason(j.movedFrom.reason, lang) : "";
+  return h("div", { class: "wk" }, h("button", { class: "worker", onclick: () => openJob(j.id) },
+    (() => { const lg = j.agent === "free" ? makerLogo(j.model) || logoImg("nvidia") : agentLogo(j.agent); return h("span", { class: "badge " + j.agent + (lg ? " has-logo" : "") }, lg || BADGE[j.agent] || "?"); })(),
+    h("span", {}, h("div", { class: "w-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort), h("span", { class: "w-state " + j.status }, stateLabel(j.status))), h("div", { class: "w-task" }, j.title),
+      j.movedFrom ? h("div", { class: "moved", title: movedWhy }, t("teamCard.tookOver", { agent: AGENT[j.movedFrom.agent] || j.movedFrom.agent, reason: movedWhy })) : null),
+    h("span", { class: "bar " + j.status }, h("i")),
+    h("span", { class: "w-time" }, clock(j.created, j.finished))),
+    j.test ? h("div", { class: "wk-extra" }, testChip(j)) : null, jobThumbs(j));
+}
+
 function teamCard(jobs) {
   const live = jobs.filter((j) => j.status === "running").length;
+  const rows = [];
+  const seenShootouts = new Set();
+  for (const j of jobs) {
+    if (!j.shootout) { rows.push(renderWorkerRow(j)); continue; }
+    if (seenShootouts.has(j.shootout)) continue;
+    seenShootouts.add(j.shootout);
+    const groupJobs = jobs.filter((x) => x.shootout === j.shootout);
+    const soId = j.shootout;
+    rows.push(h("div", { class: "shootout-group" },
+      h("div", { class: "shootout-group-h" },
+        h("span", {}, h("span", { class: "shootout-chip", style: "margin-right:6px" }, t("shootout.groupHeader", { n: groupJobs.length }))),
+        h("button", { class: "btn", onclick: () => openShootout(soId) }, t("shootout.compareBtn"))),
+      groupJobs.map(renderWorkerRow)));
+  }
   return h("div", { class: "team" },
     h("div", { class: "team-h" }, live ? h("span", { class: "spin" }) : h("span", { style: "color:var(--ok)" }, "✓"), live ? t("teamCard.working", { live, total: jobs.length }) : tp("teamCard.delegated", jobs.length)),
-    jobs.map((j) => {
-      const movedWhy = j.movedFrom ? translateReason(j.movedFrom.reason, lang) : "";
-      return h("div", { class: "wk" }, h("button", { class: "worker", onclick: () => openJob(j.id) },
-        (() => { const lg = j.agent === "free" ? makerLogo(j.model) || logoImg("nvidia") : agentLogo(j.agent); return h("span", { class: "badge " + j.agent + (lg ? " has-logo" : "") }, lg || BADGE[j.agent] || "?"); })(),
-        h("span", {}, h("div", { class: "w-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort), h("span", { class: "w-state " + j.status }, stateLabel(j.status))), h("div", { class: "w-task" }, j.title),
-          j.movedFrom ? h("div", { class: "moved", title: movedWhy }, t("teamCard.tookOver", { agent: AGENT[j.movedFrom.agent] || j.movedFrom.agent, reason: movedWhy })) : null),
-        h("span", { class: "bar " + j.status }, h("i")),
-        h("span", { class: "w-time" }, clock(j.created, j.finished))),
-        j.test ? h("div", { class: "wk-extra" }, testChip(j)) : null, jobThumbs(j));
-    }));
+    rows);
 }
 
 let lastAppliedIds = [];
@@ -1310,7 +1426,7 @@ async function openGitSetup(triggerBtn) {
       close();
       renderSide(); renderTop(); renderBanner();
       if (ws.open) { if (ws.tab === "changes") loadWsDiff(true); else loadWsDir(ws.cwd || ""); }
-      if (drawer && (drawer.kind === "team" || drawer.kind === "direct")) renderDrawer(true);
+      if (drawer && (drawer.kind === "team" || drawer.kind === "direct" || drawer.kind === "shootout")) renderDrawer(true);
       toast(t("git.setupDone", { sha: r.sha }));
     } catch (e) {
       busy = false;
@@ -1348,15 +1464,42 @@ function renderNonGit() {
   set(el, ...nonGitNoticeKids());
 }
 
+function activeShootoutsForBanner() {
+  return (S.shootouts || []).filter((s) =>
+    !s.pickedJobId && !s.discardedAt && !s.expiredAt &&
+    (s.readyCount > 0 || s.runningCount > 0) &&
+    (s.parent === chatId || s.parent === null)
+  );
+}
+
 function renderBanner() {
   renderNonGit();
-  const p = pending();
+  const soList = activeShootoutsForBanner();
+  const soIds = new Set(soList.map((s) => s.id));
+  const p = pending().filter((j) => !j.shootout || !soIds.has(j.shootout));
   const b = $("#banner");
   const cc = S.combinedCheck || null;
   const undoIds = undoableBannerJobs();
-  if (!changed("banner", [p.map((j) => [j.id, j.files]), staged, undoIds, cc ? [cc.status, cc.command, cc.durationMs, cc.exitCode, cc.tail] : null])) return;
+  if (!changed("banner", [
+    p.map((j) => [j.id, j.files]),
+    soList.map((s) => [s.id, s.status, s.readyCount, s.runningCount]),
+    staged,
+    undoIds,
+    cc ? [cc.status, cc.command, cc.durationMs, cc.exitCode, cc.tail] : null,
+  ])) return;
+  const rows = [];
+  for (const so of soList) {
+    const done = Math.max(0, (so.totalCount || 0) - (so.runningCount || 0));
+    rows.push(h("div", { class: "banner-row" },
+      h("span", { class: "dot", style: so.runningCount > 0 ? "background:var(--accent)" : "background:var(--ok)" }),
+      h("span", { class: "txt" },
+        so.runningCount > 0
+          ? t("shootout.bannerRunning", { done, total: so.totalCount })
+          : t("shootout.bannerReady", { ready: so.readyCount, total: so.totalCount }),
+        h("small", {}, so.title || "")),
+      h("button", { class: "btn primary", onclick: () => openShootout(so.id) }, t("shootout.bannerAction"))));
+  }
   if (!p.length && (staged.length || cc?.status === "running")) {
-    b.hidden = false;
     const running = cc?.status === "running";
     const dotStyle = cc?.status === "pass" ? "background:var(--ok)" : ["fail", "timeout", "error"].includes(cc?.status) ? "background:var(--bad)" : running ? "background:var(--accent)" : "background:var(--ok)";
     const checkBox = cc ? h("div", { class: "banner-check" },
@@ -1364,7 +1507,7 @@ function renderBanner() {
         h("span", { class: "chip " + cc.status }, running ? h("span", { class: "spin", style: "width:9px;height:9px" }) : null, combinedLabel(cc.status)),
         h("span", {}, `${cc.command}${cc.durationMs != null ? ` · ${(cc.durationMs / 1000).toFixed(1)}s` : ""}${cc.exitCode != null && cc.status !== "pass" ? t("test.exitCode", { code: cc.exitCode }) : ""}`)),
       cc.tail ? h("pre", {}, cc.tail) : null) : null;
-    set(b,
+    rows.push(
       h("div", { class: "banner-row" },
         h("span", { class: "dot", style: dotStyle }),
         h("span", { class: "txt" }, staged.length ? [tp("banner.applied", staged.length), h("small", {}, t("banner.stagedNote"))] : combinedLabel(cc.status)),
@@ -1373,17 +1516,19 @@ function renderBanner() {
           h("button", { class: "btn", disabled: running, onclick: runCombined }, running ? t("banner.checking") : cc ? t("banner.checkAgain") : t("banner.checkCombined")),
           staged.length ? h("button", { class: "btn primary", onclick: () => openDrawer("commit") }, t("banner.commit")) : null)),
       checkBox);
-    const pre = b.querySelector(".banner-check pre");
-    if (pre) pre.scrollTop = pre.scrollHeight;
-    return;
+  } else if (p.length) {
+    const files = p.reduce((n, j) => n + j.files.length, 0);
+    rows.push(h("div", { class: "banner-row" },
+      h("span", { class: "dot" }),
+      h("span", { class: "txt" }, tp("banner.ready", files), h("small", {}, tp("banner.fromWorkers", p.length))),
+      h("button", { class: "btn primary", onclick: openReview }, t("banner.review"))));
   }
-  if (!p.length) { b.hidden = true; return; }
-  const files = p.reduce((n, j) => n + j.files.length, 0);
+  const cleanRows = rows.filter(Boolean);
+  if (!cleanRows.length) { b.hidden = true; return; }
   b.hidden = false;
-  set(b, h("div", { class: "banner-row" },
-    h("span", { class: "dot" }),
-    h("span", { class: "txt" }, tp("banner.ready", files), h("small", {}, tp("banner.fromWorkers", p.length))),
-    h("button", { class: "btn primary", onclick: openReview }, t("banner.review"))));
+  set(b, ...cleanRows);
+  const pre = b.querySelector(".banner-check pre");
+  if (pre) pre.scrollTop = pre.scrollHeight;
 }
 
 function renderTop() {
@@ -1486,7 +1631,8 @@ async function sendChatMessage(message, { withAttachments = false } = {}) {
         images.push(a.path);
       }
     }
-    const c = await api("chat", { id: chatId, message: text, images, model: $("#omodel").value, effort: $("#oeffort").value, ...(force ? { force } : {}), ...(explicit ? { explicit } : {}) });
+    const c = await api("chat", { id: chatId, message: text, images, model: $("#omodel").value, effort: $("#oeffort").value, ...(force ? { force } : {}), ...(explicit ? { explicit } : {}), ...(composerShootout ? { shootout: true } : {}) });
+    if (composerShootout) { composerShootout = false; renderComposerShootout(); }
     if (withAttachments) {
       clearAttachments();
       $("#input").value = ""; autosize(); $("#send").disabled = true;
@@ -1513,7 +1659,8 @@ let studioDraft = { raw: "", result: null, selected: new Set() };
 function openDrawer(kind, id, focusPath = null) {
   const current = drawer = { kind, id, ...(focusPath ? { focusPath } : {}) };
   const panel = $("#drawer");
-  panel.classList.remove("wide");
+  panel.classList.remove("wide", "shootout-wide");
+  if (kind === "shootout-review") panel.classList.add("wide", "shootout-wide");
   set(panel, h("div", { class: "d-head" }, h("h3", {}, t("drawer.loading")), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")), h("div", { class: "d-body muted", role: "status" }, t("drawer.loading")));
   document.body.classList.add("drawer-open");
   renderDrawer(true).catch((e) => { if (drawer === current) { closeDrawer(); toast(e.message || t("drawer.failed"), true); } });
@@ -1522,6 +1669,7 @@ function closeDrawer() { drawer = null; document.body.classList.remove("drawer-o
 const openJob = (id, focusPath = null) => openDrawer("job", id, focusPath);
 const openReview = () => openDrawer("review");
 const openDirect = () => openDrawer("direct");
+const openShootout = (id) => openDrawer("shootout-review", id);
 const path0 = () => S.project?.name || t("top.thisProject");
 const rebaseFailures = new Map();
 
@@ -2031,7 +2179,7 @@ async function renderDrawer(full) {
     };
     draw();
     set(d,
-      h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("team.title")), h("div", { class: "meta" }, t("team.meta", { project: path0() }), h("button", { class: "linkbtn", onclick: () => openDrawer("models") }, t("side.modelGuide")))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
+      h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("team.title")), h("div", { class: "meta" }, t("team.meta", { project: path0() }), h("button", { class: "linkbtn", onclick: () => openDrawer("models") }, t("side.modelGuide")), " · ", h("button", { class: "linkbtn", onclick: () => openDrawer("shootout") }, t("team.compareBtn")))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
       body,
       h("div", { class: "d-foot" }, h("span", { class: "note" }, t("team.foot")),
         h("button", { class: "btn", onclick: closeDrawer }, t("drawer.cancel")),
@@ -2402,6 +2550,9 @@ async function renderDrawer(full) {
   if (drawer.kind === "direct") {
     if (!full) return;
     const isGit = S.project?.isGit !== false;
+    const modeSeg = h("div", { class: "seg", style: "margin-bottom:14px" },
+      h("button", { type: "button", class: "on" }, h("b", {}, t("direct.modeSingle"))),
+      h("button", { type: "button", onclick: () => openDrawer("shootout") }, h("b", {}, t("direct.modeShootout"))));
     const f = h("form", { class: "modal-form" },
       h("div", { class: "row" },
         h("select", { name: "agent" }, ["codex", "claude", "gemini"].map((a) => h("option", { value: a }, AGENT[a]))),
@@ -2415,12 +2566,282 @@ async function renderDrawer(full) {
       h("div", { class: "err", id: "derr" }));
     set(d,
       h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("direct.title")), h("div", { class: "meta" }, t("direct.meta"))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
-      h("div", { class: "d-body" }, f),
+      h("div", { class: "d-body" }, modeSeg, f),
       h("div", { class: "d-foot" }, h("span", { class: "note" }), h("button", { class: "btn primary", onclick: async () => {
         const fd = new FormData(f); const body = { agent: fd.get("agent"), effort: fd.get("effort"), task: fd.get("task"), write: !!fd.get("write") };
         if (fd.get("model")) body.model = fd.get("model");
         try { const j = await api("delegate", body); await refresh(); openJob(j.id); } catch (e) { $("#derr").textContent = e.message; }
       } }, t("direct.start"))));
+    return;
+  }
+  if (drawer.kind === "shootout") {
+    if (!full) return;
+    const opening = drawer;
+    let data; try { [data] = await Promise.all([api(`team?orch=${encodeURIComponent($("#omodel").value)}`), loadCatalog()]); } catch (e) { if (drawer === opening) { toast(e.message, true); closeDrawer(); } return; }
+    if (drawer !== opening) return;
+    const isGit = S.project?.isGit !== false;
+    const opt = data.options || {}, tm = data.team || {};
+    const agents = ["codex", "claude", "gemini", ...(tm.allow?.free ? ["free"] : [])];
+    const modelsFor = (ag) => (opt.agents?.[ag]?.models || ["auto"]).filter((m) => tm.allow?.astra || m !== "astra");
+    const pickDefaultModel = (ag, pref) => {
+      const ms = modelsFor(ag);
+      if (pref && ms.includes(pref)) return pref;
+      return ms.find((m) => m !== "auto") || ms[0] || "auto";
+    };
+    const workers = [
+      { agent: "codex", model: pickDefaultModel("codex", "sol"), effort: "medium" },
+      { agent: "claude", model: pickDefaultModel("claude", "sonnet"), effort: "medium" },
+    ];
+    const ta = h("textarea", { rows: 5, placeholder: t("shootout.taskPlaceholder") });
+    const errEl = h("div", { class: "err" });
+    const body = h("div", { class: "d-body" });
+    const startBtn = h("button", { class: "btn primary" });
+    let busy = false;
+    const updateStartBtn = () => {
+      startBtn.disabled = busy || !isGit;
+      startBtn.textContent = busy ? t("shootout.starting") : t("shootout.start", { n: workers.length });
+    };
+    const draw = () => {
+      const modeSeg = h("div", { class: "seg", style: "margin-bottom:14px" },
+        h("button", { type: "button", onclick: () => openDrawer("direct") }, h("b", {}, t("direct.modeSingle"))),
+        h("button", { type: "button", class: "on" }, h("b", {}, t("direct.modeShootout"))));
+      const nonGitBox = !isGit ? h("div", { class: "nongit", style: "margin-bottom:14px" }, ...nonGitNoticeKids()) : null;
+      const warnBox = h("div", { class: "shootout-warn" },
+        h("b", {}, t("shootout.warnTitle", { n: workers.length })),
+        h("span", {}, t("shootout.warnBody", { n: workers.length }), !isGit ? " " + t("shootout.nonGitNotice") : ""));
+      const rows = workers.map((w, idx) => {
+        const ms = modelsFor(w.agent);
+        if (!ms.includes(w.model)) w.model = ms[0] || "auto";
+        const aMeta = opt.agents?.[w.agent] || {};
+        const agSel = h("select", { onchange: (e) => { w.agent = e.target.value; w.model = pickDefaultModel(w.agent); draw(); } },
+          agents.map((ag) => h("option", { value: ag, selected: ag === w.agent ? true : null }, `${AGENT[ag] || ag}${opt.agents?.[ag]?.ready ? "" : t("team.notReady")}`)));
+        const mdSel = h("select", { onchange: (e) => { w.model = e.target.value; } },
+          ms.map((m) => {
+            const label = m === "auto" ? t(w.agent === "free" ? "team.autoBest" : "team.autoModel") : (aMeta.labels?.[m] || describeModel(w.agent, m)?.label || modelName(m) || m);
+            return h("option", { value: m, selected: m === w.model ? true : null }, label);
+          }));
+        const efSel = h("select", { onchange: (e) => { w.effort = e.target.value; } },
+          ["low", "medium", "high", "xhigh"].map((e) => h("option", { value: e, selected: e === w.effort ? true : null }, effortLabel(e))));
+        const rmBtn = idx >= 2 ? h("button", { type: "button", class: "btn", onclick: () => { workers.splice(idx, 1); draw(); } }, t("shootout.removeThird")) : h("span", {});
+        return h("div", { class: "shootout-worker-row" },
+          h("span", { class: "slot" }, t("shootout.workerSlot", { n: idx + 1 })),
+          agSel, mdSel, efSel, rmBtn);
+      });
+      const addThirdBtn = workers.length < 3 ? h("button", {
+        type: "button", class: "btn", style: "align-self:flex-start",
+        onclick: () => { workers.push({ agent: "gemini", model: pickDefaultModel("gemini", "argon"), effort: "medium" }); draw(); },
+      }, t("shootout.addThird")) : null;
+      set(body,
+        modeSeg,
+        nonGitBox,
+        warnBox,
+        h("div", { class: "section" },
+          h("h4", {}, t("shootout.workersLabel")),
+          h("div", { class: "shootout-workers" }, rows, addThirdBtn)),
+        h("div", { class: "section modal-form" },
+          h("h4", {}, t("shootout.taskLabel")),
+          ta,
+          errEl));
+      updateStartBtn();
+    };
+    startBtn.onclick = async () => {
+      if (busy || !isGit) return;
+      errEl.textContent = "";
+      busy = true;
+      updateStartBtn();
+      try {
+        const res = await api("shootout", { task: ta.value, workers, parent: chatId || null });
+        await refresh();
+        openShootout(res.shootout.id);
+      } catch (e) {
+        errEl.textContent = e.message;
+        busy = false;
+        updateStartBtn();
+      }
+    };
+    draw();
+    set(d,
+      h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("shootout.title")), h("div", { class: "meta" }, t("shootout.meta"))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
+      body,
+      h("div", { class: "d-foot" }, h("span", { class: "note" }), h("button", { class: "btn", onclick: closeDrawer }, t("drawer.cancel")), startBtn));
+    setTimeout(() => ta.focus(), 50);
+    return;
+  }
+  if (drawer.kind === "shootout-review") {
+    const soSummary = (S.shootouts || []).find((s) => s.id === drawer.id);
+    const soJobs = S.jobs.filter((j) => j.shootout === drawer.id);
+    const sig = JSON.stringify([
+      soSummary?.status, soSummary?.pickedJobId, soSummary?.discardedAt, soSummary?.expiredAt,
+      soJobs.map((j) => [j.id, j.status, j.finished, (j.files || []).length, j.test?.status, j.test?.durationMs, j.tokens, j.cost, !!j.applySnapshot]),
+    ]);
+    if (!full && drawer.lastSig === sig) {
+      for (const j of soJobs) {
+        const tm = d.querySelector(`.w-time[data-so-job="${j.id}"]`);
+        if (tm) tm.textContent = clock(j.created, j.finished);
+      }
+      return;
+    }
+    const prevOpen = new Set([...d.querySelectorAll("details[data-so-key][open]")].map((el) => el.dataset.soKey));
+    drawer.lastSig = sig;
+    const current = drawer;
+    const data = await api(`shootout/${drawer.id}`);
+    if (drawer !== current) return;
+    const so = data.shootout;
+    const candidates = data.candidates || [];
+    const testConfigured = !!data.testConfigured;
+    const isResolved = !!(so.pickedJobId || so.discardedAt || so.expiredAt);
+    const fmtCost = (j, u) => {
+      if (j.agent === "free") return t("shootout.freeCost");
+      if (!u || (!(u.total > 0) && !(u.cost > 0))) return t("shootout.tokensPending");
+      const c = Number(u.cost || 0);
+      const money = c > 0 ? `$${c < 0.01 ? c.toFixed(4) : c.toFixed(2)}` : "$0.00";
+      return `${u.estimated ? "~" : ""}${money}`;
+    };
+    const candStatus = (j) => {
+      if (so.pickedJobId === j.id) return ["picked", t("shootout.status.picked")];
+      if (j.status === "done") return ["ready", t("shootout.status.ready")];
+      if (so.expiredAt && j.status === "discarded") return ["discarded", t("shootout.status.expired")];
+      return [j.status, hasKey(`shootout.status.${j.status}`, lang) ? t(`shootout.status.${j.status}`) : stateLabel(j.status)];
+    };
+    const canRunAllTests = testConfigured && !isResolved && candidates.some((c) => c.job.status === "done" && (c.files || []).length && c.job.test?.status !== "running");
+    const runAllBtn = canRunAllTests ? h("button", { class: "btn", onclick: async () => {
+      runAllBtn.disabled = true;
+      try {
+        await api(`shootout-test/${so.id}`, {});
+        await refresh();
+        drawer.lastSig = null;
+        await renderDrawer(true);
+      } catch (e) { toast(e.message, true); runAllBtn.disabled = false; }
+    } }, t("shootout.runAllTests")) : null;
+
+    let picking = false;
+    const pickButtons = [];
+    const cols = candidates.map((c) => {
+      const j = c.job;
+      const files = c.files || [];
+      const stats = c.stats || { filesCount: files.length, additions: 0, deletions: 0 };
+      const usage = c.usage || {};
+      const conflicts = c.conflicts || null;
+      const isPickedCol = so.pickedJobId === j.id;
+      const isDiscardedCol = !isPickedCol && (isResolved || j.status === "discarded");
+      const [stCls, stText] = candStatus(j);
+      const lg = j.agent === "free" ? makerLogo(j.model) || logoImg("nvidia") : agentLogo(j.agent);
+      const allBlocked = !!(conflicts && !conflicts.clean && files.length && (conflicts.applyConflicts || []).length >= files.length);
+
+      const testSummary = !testConfigured && !j.test
+        ? h("span", { class: "muted" }, t("shootout.testsNotConfigured"))
+        : j.test
+          ? h("span", { style: "display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap" },
+              h("span", { class: "chip " + j.test.status }, j.test.status === "running" ? h("span", { class: "spin", style: "width:9px;height:9px" }) : null, testWord(j.test.status)),
+              j.test.durationMs != null ? h("span", { class: "muted", style: "font-weight:400;font-size:12px" }, `${(j.test.durationMs / 1000).toFixed(1)}s`) : null)
+          : h("span", { class: "muted" }, t("shootout.testsNotRun"));
+
+      const tokText = usage.total > 0 ? t("shootout.tokensValue", { tokens: fmtCompactTok(usage.total) }) : t("shootout.tokensPending");
+      const costText = fmtCost(j, usage);
+      const canPick = !isResolved && j.status === "done" && files.length > 0;
+      const pickBtn = canPick ? h("button", {
+        class: "btn primary",
+        disabled: allBlocked || null,
+        onclick: async () => {
+          if (picking) return;
+          picking = true;
+          pickBtn.textContent = t("shootout.picking");
+          for (const b of pickButtons) b.disabled = true;
+          try {
+            await api(`shootout-pick/${so.id}`, { jobId: j.id });
+            lastAppliedIds = [j.id];
+            stagedAt = 0;
+            closeDrawer();
+            await refresh();
+            toast(t("shootout.toastPicked", { name: `${AGENT[j.agent] || j.agent} ${modelName(j.model)}` }), {
+              actionLabel: t("job.undoApply"),
+              onAction: () => undoApplyJobs([j.id]),
+            });
+          } catch (e) {
+            picking = false;
+            for (const b of pickButtons) b.disabled = false;
+            pickBtn.textContent = t("shootout.pickThis");
+            toast(e.message, true);
+          }
+        },
+      }, t("shootout.pickThis")) : null;
+      if (pickBtn) pickButtons.push(pickBtn);
+
+      const diffDet = files.length ? h("details", {
+        class: "tech",
+        "data-so-key": `diff:${j.id}`,
+        open: prevOpen.has(`diff:${j.id}`) || null,
+      },
+      h("summary", {}, tp("shootout.filesChanged", files.length)),
+      h("div", { style: "margin-top:8px" }, files.map((f) => fileBlock(f, null, null, j, conflicts?.files?.[f.path] || null)))) : null;
+
+      const noteDet = j.final ? h("details", {
+        class: "tech",
+        "data-so-key": `note:${j.id}`,
+        open: prevOpen.has(`note:${j.id}`) || null,
+      },
+      h("summary", {}, t("shootout.finalNote")),
+      h("div", { class: "answer", style: "margin-top:8px" }, richReply(j.final))) : null;
+
+      return h("div", { class: "so-col" + (isPickedCol ? " picked" : isDiscardedCol ? " discarded" : "") },
+        h("div", { class: "so-head" },
+          h("span", { class: "badge " + j.agent + (lg ? " has-logo" : "") }, lg || BADGE[j.agent] || "?"),
+          h("div", { class: "so-title" },
+            h("div", { class: "so-name" }, `${AGENT[j.agent] || j.agent} · ${modelName(j.model)}`, effortBars(j.effort)),
+            h("div", { class: "so-sub" },
+              h("span", { class: "w-state " + (stCls === "picked" || stCls === "ready" ? "done" : stCls) }, stText),
+              "·",
+              h("span", { class: "w-time", "data-so-job": j.id }, clock(j.created, j.finished))))),
+        h("div", { class: "so-metrics" },
+          h("div", { class: "so-m" },
+            h("small", {}, t("shootout.diffStats")),
+            files.length
+              ? h("b", {}, h("span", { style: "color:var(--ok)" }, "+" + stats.additions), " ", h("span", { style: "color:var(--bad)" }, "−" + stats.deletions), h("span", { class: "muted", style: "font-weight:400" }, ` · ${tp("shootout.filesChanged", files.length)}`))
+              : h("b", { class: "muted" }, t("shootout.noChanges"))),
+          h("div", { class: "so-m" },
+            h("small", {}, t("shootout.tokensLabel")),
+            h("b", {}, usage.total > 0 ? `${tokText} · ${costText}` : costText)),
+          h("div", { class: "so-m", style: "grid-column:1 / -1" },
+            h("small", {}, t("shootout.testsLabel")),
+            h("b", {}, testSummary))),
+        allBlocked ? h("div", { class: "so-conflict" }, t("shootout.conflictsBlocked")) : null,
+        files.length ? h("div", { class: "so-files" }, files.map((f) => h("code", { title: f.path }, `${f.path} (+${f.add}/−${f.del})`))) : null,
+        (testConfigured && (j.status === "done" || j.test)) ? testPanel(j) : null,
+        diffDet,
+        noteDet,
+        h("div", { class: "so-foot" },
+          h("button", { class: "btn", onclick: () => openJob(j.id) }, t("shootout.openJob")),
+          isPickedCol
+            ? h("div", { style: "display:flex;align-items:center;gap:6px" },
+                h("span", { class: "chip pass" }, t("shootout.pickedBadge")),
+                j.status === "merged" && j.applySnapshot ? h("button", { class: "btn", onclick: () => undoApplyJobs([j.id]) }, t("job.undoApply")) : null)
+            : pickBtn));
+    });
+
+    const discardAllBtn = !isResolved ? h("button", { class: "btn", onclick: async () => {
+      discardAllBtn.disabled = true;
+      try {
+        await api(`shootout-discard/${so.id}`, {});
+        closeDrawer();
+        await refresh();
+        toast(t("shootout.toastDiscarded"));
+      } catch (e) { toast(e.message, true); discardAllBtn.disabled = false; }
+    } }, t("shootout.discardAll")) : null;
+
+    set(d,
+      h("div", { class: "d-head" },
+        h("div", {},
+          h("h3", {}, so.title || t("shootout.title")),
+          h("div", { class: "meta" }, so.pickedJobId ? t("shootout.pickedMeta") : t("shootout.reviewMeta", { n: candidates.length }))),
+        h("div", { style: "display:flex;align-items:center;gap:8px" },
+          runAllBtn,
+          h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×"))),
+      h("div", { class: "d-body" },
+        h("div", { class: "section" },
+          h("h4", {}, t("shootout.taskLabel")),
+          h("div", { class: "muted", style: "white-space:pre-wrap;font-size:13.5px" }, so.task)),
+        h("div", { class: "shootout-grid" }, cols)),
+      h("div", { class: "d-foot" }, h("span", { class: "note" }, t("shootout.footNote")), discardAllBtn));
     return;
   }
   if (drawer.kind === "studiolog") {
@@ -3309,7 +3730,18 @@ $("#newtask").onclick = newTask;
 $("#directbtn").onclick = openDirect;
 $("#settingsbtn").onclick = () => openDrawer("settings");
 $("#keysbtn").onclick = () => openDrawer("keys");
-$("#teambtn").onclick = () => openDrawer("team");
+function teamMenu(anchor) {
+  popover(anchor,
+    h("button", { onclick: () => { closePop(); openDrawer("team"); } }, t("teamMenu.settings")),
+    h("button", { onclick: () => { closePop(); openDrawer("shootout"); } }, t("teamMenu.compare")),
+    h("div", { class: "sep" }),
+    h("button", { onclick: () => { composerShootout = !composerShootout; renderComposerShootout(); closePop(); } },
+      composerShootout ? "✓ " + t("teamMenu.shootoutTurn") : t("teamMenu.shootoutTurn"),
+      h("span", { class: "pop-sub" }, t("teamMenu.shootoutTurnDesc"))));
+}
+
+$("#teambtn").onclick = (e) => { e.stopPropagation(); teamMenu(e.currentTarget); };
+$("#composer-so-off").onclick = () => { composerShootout = false; renderComposerShootout(); };
 $("#modelsbtn").onclick = () => openDrawer("models");
 $("#usagebtn").onclick = () => openDrawer("usage");
 $("#themebtn").onclick = cycleTheme;

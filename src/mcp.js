@@ -14,6 +14,7 @@ import { budgetGate } from "./budget.js";
 import { runTests, testRunning, testTail } from "./testrun.js";
 import { normalizeFreeModelArg } from "./workers.js";
 import { queryProjectMap } from "./projectmap.js";
+import { resolveTurnShootoutId } from "./shootout.js";
 
 const repo = process.env.TOKENWISE_REPO || process.cwd();
 let jobsInstance = null;
@@ -35,6 +36,7 @@ export function prepareDelegateArgs(a) {
 
 const brief = (j, { includeConflicts = false } = {}) => ({
   id: j.id, status: j.status, agent: j.agent, model: j.model, effort: j.effort, write: j.write, role: j.role || null,
+  shootout: j.shootout || null,
   title: j.title, diffStat: j.diffStat, files: j.files, movedFrom: j.movedFrom || null, movedTo: j.movedTo || null, final: j.final ? String(j.final).slice(0, 4000) : null,
   images: (j.images || []).map((i) => i.path), tests: j.test ? j.test.status : null,
   ...(includeConflicts ? { conflicts: j.write && j.status === "done" ? getJobs().conflicts(j.id) : null } : {}),
@@ -54,6 +56,7 @@ server.registerTool("delegate", {
     "role: optional ('code', 'quick', 'review', 'research', 'images'). Use role='research' with write=false for questions needing current web information (enables web search on claude/codex; free/local are not supported for web research).",
     "The worker cannot see this conversation: put every detail it needs in `task` (files, constraints, done-condition).",
     "Dispatch independent tasks in parallel, then job_wait each.",
+    "shootout: optional (true or short group name) to group 2-3 parallel write=true jobs into one side-by-side model shootout; multiplies token use and is ONLY allowed when the user explicitly asked for it in the current turn.",
     "If a worker's plan is near its usage limit or it hits a rate limit, the job is automatically moved to the next worker (codex → gemini → claude → free → local); job_wait follows the move.",
   ].join(" ") + (() => {
     const home = path.join(repo, ".tokenwise-studio");
@@ -75,6 +78,7 @@ server.registerTool("delegate", {
     role: z.enum(ROLES).optional().describe("Optional job role; pass 'research' (with write=false) for current web research"),
     title: z.string().optional(),
     fix_of: z.string().optional().describe("Optional previous job id for a fix round on the same files (passes only previous diff and failing check output)"),
+    shootout: z.union([z.boolean(), z.string().min(1).max(80)]).optional().describe("Group parallel write jobs as a model shootout; allowed ONLY when the user asked for a shootout in this turn"),
     timeout_min: z.number().int().min(1).max(120).optional(),
   },
 }, async (a) => {
@@ -88,8 +92,18 @@ server.registerTool("delegate", {
     }
     const over = budgetGate(jobs, process.env.TOKENWISE_PARENT, loadSettings().turnBudget);
     if (over) return fail(new Error(over));
+    let shootoutId = null;
+    if (a.shootout !== undefined && a.shootout !== false) {
+      if (!a.write) return fail(new Error("shootout jobs must be write jobs (write=true)"));
+      shootoutId = resolveTurnShootoutId(jobs.home, process.env.TOKENWISE_PARENT, a.shootout, { title: a.title || "", task: a.task });
+    }
     const prepared = prepareDelegateArgs(a);
-    return ok(brief(jobs.start({ ...prepared, fixOf: prepared.fix_of || null, timeoutMin: prepared.timeout_min })));
+    return ok(brief(jobs.start({
+      ...prepared,
+      fixOf: prepared.fix_of || null,
+      timeoutMin: prepared.timeout_min,
+      ...(shootoutId ? { shootout: shootoutId, noFallback: true, skipFixDetect: true } : {}),
+    })));
   } catch (e) { return fail(e); }
 });
 
