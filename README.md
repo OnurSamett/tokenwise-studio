@@ -112,7 +112,7 @@ Alternatively, install the browser CLI with Node.js 20+ and git already installe
 irm https://tokenwise.site/install.ps1 | iex
 ```
 
-Then run `tokenwise-studio.cmd --browser` in a project folder. This one-liner installs the CLI; the desktop zip above bundles its own runtime. Worker CLI/shim behavior, process-tree cancellation and project test commands still need Windows validation. See [release and platform notes](docs/releasing.md).
+Then run `tokenwise-studio.cmd --browser` in a project folder. This one-liner installs the CLI; the desktop zip above bundles its own runtime. Worker CLI/shim behavior, process-tree cancellation and project test commands still need Windows validation.
 
 ### Manual CLI install
 
