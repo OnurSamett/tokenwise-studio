@@ -242,25 +242,27 @@
   <div class="wrap">
     <div class="kicker">Get it</div>
     <h2>Two ways to use tokenwise.</h2>
-    <p class="sub">Use the skill inside the agent you already like, or the studio to run a whole team from one screen. They work great together, and each works on its own.</p>
+    <p class="sub">Choose the workspace that fits how you work. Both are independent and can also be used together.</p>
     <div class="products">
       <div class="card">
-        <span class="tag">App</span>
+        <span class="tag">DESKTOP APP</span>
         <h3>tokenwise studio</h3>
-        <p>A separate desktop app and local web UI for a team of coding workers, with isolated git worktrees, per-file review, and usage views.</p>
+        <p>A visual workspace to coordinate agents, follow progress, inspect changes and review before applying them.</p>
+        <ul class="product-highlights"><li>Desktop app with a visual interface</li><li>Project files, worktrees and per-file review</li><li>macOS and Windows beta</li></ul>
+        <details class="install-details"><summary>Download &amp; install Studio</summary><div class="install-content">
         <div class="install-tabs" role="tablist" aria-label="Operating system">
-          <button class="btn sm" id="tab-macos" type="button" role="tab" aria-selected="true" aria-controls="install-macos" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 19h20"/></svg>macOS</button>
-          <button class="btn sm" id="tab-windows" type="button" role="tab" aria-selected="false" aria-controls="install-windows" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M10 9v11"/></svg>Windows (beta)</button>
+          <button class="btn sm" id="tab-macos" type="button" role="tab" aria-selected="true" aria-controls="install-macos" tabindex="0">macOS</button>
+          <button class="btn sm" id="tab-windows" type="button" role="tab" aria-selected="false" aria-controls="install-windows" tabindex="-1">Windows (beta)</button>
         </div>
         <div id="install-macos" role="tabpanel" aria-labelledby="tab-macos" tabindex="0">
-          <div class="install-action"><a class="btn primary btn-download" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 19h20"/></svg>Download for Mac<svg class="dl-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg></a></div>
+          <div class="install-action"><a class="btn primary btn-download" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg" rel="noopener noreferrer">Download for Mac<svg class="dl-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg></a></div>
           <p>Drag the app to Applications. Includes Node.js for Apple Silicon and Intel Macs (macOS 13.3+). Needs git and a signed-in worker CLI.</p>
           <p>Or install the CLI with Node.js 20+ already installed:</p>
           <div class="code"><button class="copy" type="button" data-copy="curl -fsSL https://tokenwise.site/install.sh | sh">Copy</button>curl -fsSL https://tokenwise.site/install.sh | sh</div>
           <p>The installer checks Node, installs the CLI, runs <code>setup</code>, and opens the app. It never installs Node automatically.</p>
         </div>
         <div id="install-windows" role="tabpanel" aria-labelledby="tab-windows" tabindex="0" hidden>
-          <div class="install-action"><a class="btn primary btn-download" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M10 9v11"/></svg>Download for Windows (beta)<svg class="dl-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg></a></div>
+          <div class="install-action"><a class="btn primary btn-download" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip" rel="noopener noreferrer">Download for Windows (beta)<svg class="dl-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg></a></div>
           <p>Extract the entire zip to a writable folder and run <code>TokenwiseStudio.exe</code>. Node.js and .NET are included. Install git and a signed-in worker CLI separately. If WebView2 is missing, the app links to Microsoft's Evergreen installer.</p>
           <div class="beta-note"><strong>Unsigned beta:</strong> SmartScreen: <strong>More info → Run anyway</strong>. <strong>Not yet tested on real Windows hardware.</strong> Native dictation, Roblox playtest and Sparkle automatic updates are Mac-only and hidden on Windows. Notifications use the browser Notification API; click the bell to grant permission and keep the app open to receive them. To update, download the latest zip.</div>
           <p>Alternative browser CLI installer (requires Node.js 20+ and git), in PowerShell:</p>
@@ -270,15 +272,19 @@
         <ul><li>Sign in to Claude Code, Codex CLI, Antigravity, or Gemini CLI with an API key. <code>tokenwise-studio doctor</code> checks workers.</li><li>Free &amp; local workers: add an NVIDIA API key (opt-in) or Ollama (<code>gpt-oss:20b</code>).</li></ul>
         <p>Step-by-step setup guides: <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/getting-started.md" rel="noopener noreferrer" lang="en">English</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/baslangic.md" rel="noopener noreferrer" lang="tr">Türkçe</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-es.md" rel="noopener noreferrer" lang="es">Español</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-de.md" rel="noopener noreferrer" lang="de">Deutsch</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-fr.md" rel="noopener noreferrer" lang="fr">Français</a>. The app interface supports English, Türkçe, Español, Deutsch and Français.</p>
         <div class="foot"><a class="btn sm" href="https://github.com/OnurSamett/tokenwise-studio" rel="noopener noreferrer">View on GitHub</a></div>
+        </div></details>
       </div>
       <div class="card">
-        <span class="tag">Skill</span>
-        <h3>tokenwise</h3>
-        <p>An agent skill for Claude Code, Codex CLI and Gemini CLI. It works inside your existing coding agent, in the terminal or a supported IDE integration, and helps route work by model and effort.</p>
+        <span class="tag">AGENT SKILL</span>
+        <h3>tokenwise skill</h3>
+        <p>Guidance that helps your existing coding agent choose a suitable model and effort for each part of the work.</p>
+        <ul class="product-highlights"><li>Works inside your existing agent</li><li>Terminal or supported IDE integration</li><li>Claude Code, Codex CLI and Gemini CLI</li></ul>
+        <details class="install-details"><summary>Install the skill</summary><div class="install-content">
         <div class="code"><button class="copy" type="button" data-copy="git clone https://github.com/OnurSamett/tokenwise.git &amp;&amp; ./tokenwise/install.sh">Copy</button>git clone https://github.com/OnurSamett/tokenwise.git
 ./tokenwise/install.sh   <span class="c"># Claude Code, Codex, Gemini</span></div>
         <ul><li>Stay in your existing agent and its terminal or supported IDE workflow; support depends on the integration.</li><li>Optional provider CLIs for independent work and second opinions; images through Codex.</li></ul>
         <div class="foot"><a class="btn sm" href="https://github.com/OnurSamett/tokenwise" rel="noopener noreferrer">View on GitHub</a></div>
+        </div></details>
       </div>
     </div>
   </div>
