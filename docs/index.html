@@ -44,11 +44,12 @@
 <nav aria-label="Main navigation">
   <div class="wrap">
     <div class="brand-group"><a class="brand" href="#"><img src="assets/logo.png" alt="" width="26" height="26">tokenwise studio</a><a class="byline" href="https://nolienlabs.com" rel="noopener noreferrer"><img src="assets/nolien-mark.svg" alt="" width="18" height="18">by NolienLabs</a></div>
-    <div class="links">
+    <button class="nav-toggle btn sm" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+    <div class="links" id="nav-links">
       <a href="#how">How it works</a>
+      <a href="#get">Get it</a>
       <a href="#features">Features</a>
       <a href="#measure">Usage</a>
-      <a href="#get">Get it</a>
       <a href="#faq">FAQ</a>
       <a href="https://github.com/OnurSamett/tokenwise-studio" rel="noopener noreferrer">GitHub</a>
     </div>
@@ -59,12 +60,14 @@
 <main id="main">
 <header class="hero">
   <div class="wrap">
-    <span class="eyebrow">Open source · <b>A NolienLabs project</b></span>
+    <span class="eyebrow">Free · No account · Runs on your machine</span>
     <h1>Make your AI limits <em>last longer.</em></h1>
     <p class="lede">Bring Claude, Codex, Gemini and other workers together. Choose the right model and effort, review their work, and understand your usage.</p>
+    <p class="hero-choice">Download the visual app, or stay inside the coding agent you already use.</p>
     <div class="cta">
-      <a class="btn primary" href="#get">Get tokenwise studio</a>
-      <a class="btn" href="https://github.com/OnurSamett/tokenwise" rel="noopener noreferrer">tokenwise skill on GitHub</a>
+      <a class="btn primary" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg" rel="noopener noreferrer"><svg class="os-mark" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M12.7 8.4c0-1.9 1.5-2.8 1.6-2.8-.9-1-2.2-1.1-2.6-1.1-1.1-.1-2.2.7-2.7.7-.6 0-1.4-.6-2.4-.6-1.2 0-2.4.7-3 1.8-1.3 2.2-.3 5.5.9 7.3.6.9 1.3 1.8 2.3 1.8.9 0 1.3-.6 2.4-.6s1.4.6 2.4.6 1.6-.9 2.2-1.8c.7-1 1-2 1-2-.1 0-2-.8-2-3.3zM10.9 3.7c.5-.6.8-1.5.7-2.3-.7.1-1.6.5-2.1 1.1-.5.6-.9 1.5-.8 2.3.8 0 1.6-.4 2.2-1.1z"/></svg>Download for macOS</a>
+      <a class="btn" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip" rel="noopener noreferrer"><svg class="os-mark" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M0 2.2 6.6 1.3v6.2H0V2.2zm7.3-1L16 0v7.5H7.3V1.2zM0 8.5h6.6v6.3L0 13.8V8.5zm7.3.1H16V16l-8.7-1.2V8.6z"/></svg>Download for Windows</a>
+      <a class="btn" href="#skill">Stay in your agent</a>
     </div>
 
     <div class="shot">
@@ -82,6 +85,7 @@
       <span><img src="assets/providers/claude.svg" alt="" width="22" height="22">Claude Code</span>
       <span><img src="assets/providers/codex.svg" alt="" width="22" height="22">ChatGPT Codex</span>
       <span><img src="assets/providers/gemini.svg" alt="" width="22" height="22">Gemini</span>
+      <span class="cursor"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M22.106 5.68L12.5.135a.998.998 0 00-.998 0L1.893 5.68a.84.84 0 00-.419.726v11.186c0 .3.16.577.42.727l9.607 5.547a.999.999 0 00.998 0l9.608-5.547a.84.84 0 00.42-.727V6.407a.84.84 0 00-.42-.726zm-.603 1.176L12.228 22.92c-.063.108-.228.064-.228-.061V12.34a.59.59 0 00-.295-.51l-9.11-5.26c-.107-.062-.063-.228.062-.228h18.55c.264 0 .428.286.296.514z"/></svg>Cursor</span>
       <span><img src="assets/providers/nvidia.svg" alt="" width="22" height="22">Free NVIDIA models</span>
     </div>
   </div>
@@ -115,11 +119,67 @@
     <p class="flow-caption">Illustrative workflow; models and roles depend on your settings.</p>
     <div id="measure" class="flow-usage">
       <div class="usage-mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
-      <div><h3>Keep an eye on usage.</h3><p>Explore reported tokens and API-equivalent cost estimates. Compare against equivalent tasks and check the quality of results; savings vary and subscription charges differ.</p></div>
+      <div><h3>Keep an eye on usage.</h3><p>The Usage screen shows reported tokens and API-equivalent cost estimates for your own runs. Compare equivalent tasks and check quality; savings vary, and these figures are not subscription charges.</p></div>
       <a href="https://github.com/OnurSamett/tokenwise/blob/main/bench/README.md" rel="noopener noreferrer">How we measure <span aria-hidden="true">↗</span></a>
     </div>
   </div>
 </section>
+
+<section id="get">
+  <div class="wrap">
+    <div class="kicker">Get it</div>
+    <h2>Two ways to use tokenwise.</h2>
+    <p class="sub">Choose the workspace that fits how you work. Both are independent and can also be used together. The app runs on your machine and does not add a tokenwise account. Hosted free models stay off until you opt in.</p>
+    <div class="products">
+      <div class="card">
+        <span class="tag">DESKTOP APP</span>
+        <h3>tokenwise studio</h3>
+        <p>A visual workspace to coordinate agents, follow progress, inspect changes and review before applying them.</p>
+        <div class="product-visual studio-visual" aria-hidden="true"><div class="pv-window"><div class="pv-bar"><i></i><i></i><i></i><span>tokenwise studio</span></div><div class="pv-body"><div class="pv-sidebar"><i></i><i></i><i></i><i></i></div><div class="pv-main"><span>YOUR WORKSPACE</span><div class="pv-task">Build the feature <b>↗</b></div><div class="pv-workers"><div><img src="assets/providers/claude.svg" alt=""> Claude <small>Planning</small></div><div><img src="assets/providers/codex.svg" alt=""> Codex <small>Working</small></div></div></div></div></div></div>
+        <ul class="product-highlights"><li>Desktop app with a visual interface</li><li>Project files, worktrees and per-file review</li><li>macOS and Windows beta</li></ul>
+        <div class="product-downloads"><a class="btn primary" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg" rel="noopener noreferrer"><svg class="os-mark" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M12.7 8.4c0-1.9 1.5-2.8 1.6-2.8-.9-1-2.2-1.1-2.6-1.1-1.1-.1-2.2.7-2.7.7-.6 0-1.4-.6-2.4-.6-1.2 0-2.4.7-3 1.8-1.3 2.2-.3 5.5.9 7.3.6.9 1.3 1.8 2.3 1.8.9 0 1.3-.6 2.4-.6s1.4.6 2.4.6 1.6-.9 2.2-1.8c.7-1 1-2 1-2-.1 0-2-.8-2-3.3zM10.9 3.7c.5-.6.8-1.5.7-2.3-.7.1-1.6.5-2.1 1.1-.5.6-.9 1.5-.8 2.3.8 0 1.6-.4 2.2-1.1z"/></svg>Download for macOS</a><a class="btn" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip" rel="noopener noreferrer"><svg class="os-mark" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M0 2.2 6.6 1.3v6.2H0V2.2zm7.3-1L16 0v7.5H7.3V1.2zM0 8.5h6.6v6.3L0 13.8V8.5zm7.3.1H16V16l-8.7-1.2V8.6z"/></svg>Download for Windows</a></div>
+        <details class="install-details"><summary>Setup and system requirements</summary><div class="install-content">
+        <div class="install-tabs" role="tablist" aria-label="Operating system">
+          <button class="btn sm" id="tab-macos" type="button" role="tab" aria-selected="true" aria-controls="install-macos" tabindex="0">macOS</button>
+          <button class="btn sm" id="tab-windows" type="button" role="tab" aria-selected="false" aria-controls="install-windows" tabindex="-1">Windows (beta)</button>
+        </div>
+        <div id="install-macos" role="tabpanel" aria-labelledby="tab-macos" tabindex="0">
+          <div class="install-action"><a class="btn primary btn-download" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg" rel="noopener noreferrer">Download for Mac<svg class="dl-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg></a></div>
+          <p>Drag the app to Applications. Includes Node.js for Apple Silicon and Intel Macs (macOS 13.3+). Needs git and a signed-in worker CLI.</p>
+          <p>Or install the CLI with Node.js 20+ already installed:</p>
+          <div class="code"><button class="copy" type="button" data-copy="curl -fsSL https://tokenwise.site/install.sh | sh">Copy</button>curl -fsSL https://tokenwise.site/install.sh | sh</div>
+          <p>The installer checks Node, installs the CLI, runs <code>setup</code>, and opens the app. It never installs Node automatically.</p>
+        </div>
+        <div id="install-windows" role="tabpanel" aria-labelledby="tab-windows" tabindex="0" hidden>
+          <div class="install-action"><a class="btn primary btn-download" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip" rel="noopener noreferrer">Download for Windows (beta)<svg class="dl-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg></a></div>
+          <p>Extract the entire zip to a writable folder and run <code>TokenwiseStudio.exe</code>. Node.js and .NET are included. Install git and a signed-in worker CLI separately. If WebView2 is missing, the app links to Microsoft's Evergreen installer.</p>
+          <div class="beta-note"><strong>Unsigned beta:</strong> SmartScreen: <strong>More info → Run anyway</strong>. <strong>Not yet tested on real Windows hardware.</strong> Native dictation, Roblox playtest and Sparkle automatic updates are Mac-only and hidden on Windows. Notifications use the browser Notification API; click the bell to grant permission and keep the app open to receive them. To update, download the latest zip.</div>
+          <p>Alternative browser CLI installer (requires Node.js 20+ and git), in PowerShell:</p>
+          <div class="code"><button class="copy" type="button" data-copy="irm https://tokenwise.site/install.ps1 | iex">Copy</button>irm https://tokenwise.site/install.ps1 | iex</div>
+          <p>Then run <code>tokenwise-studio.cmd --browser</code> in a project folder. This one-liner installs the CLI; the desktop download bundles its own runtime.</p>
+        </div>
+        <ul><li>Sign in to Claude Code, Codex CLI, Antigravity, or Gemini CLI with an API key. <code>tokenwise-studio doctor</code> checks workers.</li><li>Free &amp; local workers: add an NVIDIA API key (opt-in) or Ollama (<code>gpt-oss:20b</code>).</li></ul>
+        <p>Step-by-step setup guides: <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/getting-started.md" rel="noopener noreferrer" lang="en">English</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/baslangic.md" rel="noopener noreferrer" lang="tr">Türkçe</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-es.md" rel="noopener noreferrer" lang="es">Español</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-de.md" rel="noopener noreferrer" lang="de">Deutsch</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-fr.md" rel="noopener noreferrer" lang="fr">Français</a>. The app interface supports English, Türkçe, Español, Deutsch and Français.</p>
+        <div class="foot"><a class="btn sm" href="https://github.com/OnurSamett/tokenwise-studio" rel="noopener noreferrer">View on GitHub</a></div>
+        </div></details>
+      </div>
+      <div class="card" id="skill">
+        <span class="tag">AGENT SKILL</span>
+        <h3>tokenwise skill</h3>
+        <p>Guidance that helps your existing coding agent choose a suitable model and effort for each part of the work.</p>
+        <div class="product-visual skill-visual" aria-hidden="true"><div class="pv-window"><div class="pv-bar"><i></i><i></i><i></i><span>your coding agent</span></div><div class="skill-screen"><div><b>›</b> Work on the project</div><div class="skill-chip">✦ &nbsp; tokenwise skill</div><p>Choose the right model and effort.</p><div class="skill-route"><span>Claude</span><span>Codex</span><span>Gemini</span></div></div></div></div>
+        <ul class="product-highlights"><li>Works inside your existing agent</li><li>Terminal or supported IDE integration</li><li>Claude Code, Codex CLI and Gemini CLI</li></ul>
+        <details class="install-details"><summary>Install the skill</summary><div class="install-content">
+        <div class="code"><button class="copy" type="button" data-copy="git clone https://github.com/OnurSamett/tokenwise.git &amp;&amp; ./tokenwise/install.sh">Copy</button>git clone https://github.com/OnurSamett/tokenwise.git
+./tokenwise/install.sh   <span class="c"># Claude Code, Codex, Gemini</span></div>
+        <ul><li>Stay in your existing agent and its terminal or supported IDE workflow; support depends on the integration.</li><li>Optional provider CLIs for independent work and second opinions; images through Codex.</li></ul>
+        <div class="foot"><a class="btn sm" href="https://github.com/OnurSamett/tokenwise" rel="noopener noreferrer">View on GitHub</a></div>
+        </div></details>
+      </div>
+    </div>
+  </div>
+</section>
+
 
 <section id="features">
   <div class="wrap">
@@ -144,8 +204,12 @@
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg></div>
         <h3>Conflict check, Undo &amp; PRs</h3>
-        <p>Overlapping edits are flagged before Apply. Snapshots power one-click <strong>Undo Apply</strong>, and a confirm step opens a pull request via <code>gh</code>.</p>
+        <p>Writing workers stay in isolated git worktrees. Overlapping edits are flagged before Apply. Snapshots power one-click <strong>Undo Apply</strong>, and a confirm step opens a pull request via <code>gh</code>.</p>
       </div>
+    </div>
+    <details class="more-screens">
+      <summary>Also in the studio</summary>
+      <div class="grid">
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></svg></div>
         <h3>Free &amp; local workers</h3>
@@ -171,7 +235,8 @@
         <h3>Game projects</h3>
         <p>Rojo project map for <code>*.project.json</code> trees, Roblox Studio error import, and an opt-in, read-only playtest.</p>
       </div>
-    </div>
+      </div>
+    </details>
   </div>
 </section>
 
@@ -179,7 +244,7 @@
   <div class="wrap">
     <div class="kicker">Free can be enough</div>
     <h2>Free models, ranked on a board you can check.</h2>
-    <p class="sub">We rank free models by Terminal-Bench 4.0, the official, independently run board, using the score of the version actually served. Scores are a snapshot, not a guarantee for your code. Compare models on the same benchmark; results from different versions are not directly comparable.</p>
+    <p class="sub">These numbers rank models on Terminal-Bench 4.0. They are not a token-savings result for tokenwise. We use the official, independently run board and the score of the version actually served. Scores are a snapshot, not a guarantee for your code. Compare models on the same benchmark; results from different versions are not directly comparable.</p>
     <div class="bench">
       <div class="n free"><b>40.0</b><span>DeepSeek V4.1 Flash, free. Ties Claude Haiku 5.5 (40.0).</span></div>
       <div class="n free"><b>36.7</b><span>GLM-5.3 Flash, free.</span></div>
@@ -228,61 +293,6 @@
   </div>
 </section>
 
-<section id="get">
-  <div class="wrap">
-    <div class="kicker">Get it</div>
-    <h2>Two ways to use tokenwise.</h2>
-    <p class="sub">Choose the workspace that fits how you work. Both are independent and can also be used together.</p>
-    <div class="products">
-      <div class="card">
-        <span class="tag">DESKTOP APP</span>
-        <h3>tokenwise studio</h3>
-        <p>A visual workspace to coordinate agents, follow progress, inspect changes and review before applying them.</p>
-        <div class="product-visual studio-visual" aria-hidden="true"><div class="pv-window"><div class="pv-bar"><i></i><i></i><i></i><span>tokenwise studio</span></div><div class="pv-body"><div class="pv-sidebar"><i></i><i></i><i></i><i></i></div><div class="pv-main"><span>YOUR WORKSPACE</span><div class="pv-task">Build the feature <b>↗</b></div><div class="pv-workers"><div><img src="assets/providers/claude.svg" alt=""> Claude <small>Planning</small></div><div><img src="assets/providers/codex.svg" alt=""> Codex <small>Working</small></div></div></div></div></div></div>
-        <ul class="product-highlights"><li>Desktop app with a visual interface</li><li>Project files, worktrees and per-file review</li><li>macOS and Windows beta</li></ul>
-        <div class="product-downloads"><a class="btn primary" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg" rel="noopener noreferrer">Download for macOS <span aria-hidden="true">↓</span></a><a class="btn" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip" rel="noopener noreferrer">Download for Windows <span aria-hidden="true">↓</span></a></div>
-        <details class="install-details"><summary>Setup and system requirements</summary><div class="install-content">
-        <div class="install-tabs" role="tablist" aria-label="Operating system">
-          <button class="btn sm" id="tab-macos" type="button" role="tab" aria-selected="true" aria-controls="install-macos" tabindex="0">macOS</button>
-          <button class="btn sm" id="tab-windows" type="button" role="tab" aria-selected="false" aria-controls="install-windows" tabindex="-1">Windows (beta)</button>
-        </div>
-        <div id="install-macos" role="tabpanel" aria-labelledby="tab-macos" tabindex="0">
-          <div class="install-action"><a class="btn primary btn-download" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg" rel="noopener noreferrer">Download for Mac<svg class="dl-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg></a></div>
-          <p>Drag the app to Applications. Includes Node.js for Apple Silicon and Intel Macs (macOS 13.3+). Needs git and a signed-in worker CLI.</p>
-          <p>Or install the CLI with Node.js 20+ already installed:</p>
-          <div class="code"><button class="copy" type="button" data-copy="curl -fsSL https://tokenwise.site/install.sh | sh">Copy</button>curl -fsSL https://tokenwise.site/install.sh | sh</div>
-          <p>The installer checks Node, installs the CLI, runs <code>setup</code>, and opens the app. It never installs Node automatically.</p>
-        </div>
-        <div id="install-windows" role="tabpanel" aria-labelledby="tab-windows" tabindex="0" hidden>
-          <div class="install-action"><a class="btn primary btn-download" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip" rel="noopener noreferrer">Download for Windows (beta)<svg class="dl-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg></a></div>
-          <p>Extract the entire zip to a writable folder and run <code>TokenwiseStudio.exe</code>. Node.js and .NET are included. Install git and a signed-in worker CLI separately. If WebView2 is missing, the app links to Microsoft's Evergreen installer.</p>
-          <div class="beta-note"><strong>Unsigned beta:</strong> SmartScreen: <strong>More info → Run anyway</strong>. <strong>Not yet tested on real Windows hardware.</strong> Native dictation, Roblox playtest and Sparkle automatic updates are Mac-only and hidden on Windows. Notifications use the browser Notification API; click the bell to grant permission and keep the app open to receive them. To update, download the latest zip.</div>
-          <p>Alternative browser CLI installer (requires Node.js 20+ and git), in PowerShell:</p>
-          <div class="code"><button class="copy" type="button" data-copy="irm https://tokenwise.site/install.ps1 | iex">Copy</button>irm https://tokenwise.site/install.ps1 | iex</div>
-          <p>Then run <code>tokenwise-studio.cmd --browser</code> in a project folder. This one-liner installs the CLI; the desktop download bundles its own runtime.</p>
-        </div>
-        <ul><li>Sign in to Claude Code, Codex CLI, Antigravity, or Gemini CLI with an API key. <code>tokenwise-studio doctor</code> checks workers.</li><li>Free &amp; local workers: add an NVIDIA API key (opt-in) or Ollama (<code>gpt-oss:20b</code>).</li></ul>
-        <p>Step-by-step setup guides: <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/getting-started.md" rel="noopener noreferrer" lang="en">English</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/baslangic.md" rel="noopener noreferrer" lang="tr">Türkçe</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-es.md" rel="noopener noreferrer" lang="es">Español</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-de.md" rel="noopener noreferrer" lang="de">Deutsch</a> · <a href="https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-fr.md" rel="noopener noreferrer" lang="fr">Français</a>. The app interface supports English, Türkçe, Español, Deutsch and Français.</p>
-        <div class="foot"><a class="btn sm" href="https://github.com/OnurSamett/tokenwise-studio" rel="noopener noreferrer">View on GitHub</a></div>
-        </div></details>
-      </div>
-      <div class="card">
-        <span class="tag">AGENT SKILL</span>
-        <h3>tokenwise skill</h3>
-        <p>Guidance that helps your existing coding agent choose a suitable model and effort for each part of the work.</p>
-        <div class="product-visual skill-visual" aria-hidden="true"><div class="pv-window"><div class="pv-bar"><i></i><i></i><i></i><span>your coding agent</span></div><div class="skill-screen"><div><b>›</b> Work on the project</div><div class="skill-chip">✦ &nbsp; tokenwise skill</div><p>Choose the right model and effort.</p><div class="skill-route"><span>Claude</span><span>Codex</span><span>Gemini</span></div></div></div></div>
-        <ul class="product-highlights"><li>Works inside your existing agent</li><li>Terminal or supported IDE integration</li><li>Claude Code, Codex CLI and Gemini CLI</li></ul>
-        <details class="install-details"><summary>Install the skill</summary><div class="install-content">
-        <div class="code"><button class="copy" type="button" data-copy="git clone https://github.com/OnurSamett/tokenwise.git &amp;&amp; ./tokenwise/install.sh">Copy</button>git clone https://github.com/OnurSamett/tokenwise.git
-./tokenwise/install.sh   <span class="c"># Claude Code, Codex, Gemini</span></div>
-        <ul><li>Stay in your existing agent and its terminal or supported IDE workflow; support depends on the integration.</li><li>Optional provider CLIs for independent work and second opinions; images through Codex.</li></ul>
-        <div class="foot"><a class="btn sm" href="https://github.com/OnurSamett/tokenwise" rel="noopener noreferrer">View on GitHub</a></div>
-        </div></details>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section id="faq">
   <div class="wrap">
     <div class="kicker">FAQ</div>
@@ -305,7 +315,8 @@
   <div class="wrap">
     <h2>Right model. Right effort. Longer limits.</h2>
     <p class="sub">Install it in a minute and let your plans go further.</p>
-    <div class="cta"><a class="btn primary" href="#get">Install tokenwise studio</a><a class="btn" href="https://github.com/OnurSamett/tokenwise-studio" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 3 14.9 8.9 21.4 9.8 16.7 14.4 17.8 20.9 12 17.8 6.2 20.9 7.3 14.4 2.6 9.8 9.1 8.9 12 3"/></svg>Star on GitHub <span data-star-count aria-label="GitHub stars"></span></a></div>
+    <div class="cta"><a class="btn primary" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg" rel="noopener noreferrer"><svg class="os-mark" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M12.7 8.4c0-1.9 1.5-2.8 1.6-2.8-.9-1-2.2-1.1-2.6-1.1-1.1-.1-2.2.7-2.7.7-.6 0-1.4-.6-2.4-.6-1.2 0-2.4.7-3 1.8-1.3 2.2-.3 5.5.9 7.3.6.9 1.3 1.8 2.3 1.8.9 0 1.3-.6 2.4-.6s1.4.6 2.4.6 1.6-.9 2.2-1.8c.7-1 1-2 1-2-.1 0-2-.8-2-3.3zM10.9 3.7c.5-.6.8-1.5.7-2.3-.7.1-1.6.5-2.1 1.1-.5.6-.9 1.5-.8 2.3.8 0 1.6-.4 2.2-1.1z"/></svg>Download for macOS</a><a class="btn" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip" rel="noopener noreferrer"><svg class="os-mark" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M0 2.2 6.6 1.3v6.2H0V2.2zm7.3-1L16 0v7.5H7.3V1.2zM0 8.5h6.6v6.3L0 13.8V8.5zm7.3.1H16V16l-8.7-1.2V8.6z"/></svg>Download for Windows</a><a class="btn" href="#skill">Stay in your agent</a></div>
+    <p class="star-ask">If this helps your limits last longer, <a href="https://github.com/OnurSamett/tokenwise-studio" rel="noopener noreferrer">star it on GitHub</a><span data-star-count aria-label="GitHub stars"></span>.</p>
   </div>
 </div>
 
@@ -314,16 +325,16 @@
 <footer>
   <div class="wrap">
     <div class="top">
-      <a class="made" href="https://nolienlabs.com" rel="noopener noreferrer">A <b>NolienLabs</b> project</a>
+      <a class="made" href="https://nolienlabs.com" rel="noopener noreferrer"><img src="assets/nolien-mark.svg" alt="" width="16" height="16">A NolienLabs project</a>
       <span>MIT licensed</span>
       <div class="links">
         <a href="https://github.com/OnurSamett/tokenwise-studio" rel="noopener noreferrer">Studio</a>
         <a href="https://github.com/OnurSamett/tokenwise" rel="noopener noreferrer">Skill</a>
         <a href="https://nolienlabs.com" rel="noopener noreferrer">About NolienLabs ↗</a>
-        <a href="https://github.com/OnurSamett" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/OnurSamett/tokenwise-studio" rel="noopener noreferrer">Star on GitHub</a>
       </div>
     </div>
-    <p class="legal">Claude, Anthropic, ChatGPT, Codex, OpenAI, Gemini, Google, NVIDIA, Roblox and other names and logos are trademarks of their respective owners and are used only to identify compatible tools and models. tokenwise and NolienLabs are not affiliated with, endorsed by, or sponsored by these companies.</p>
+    <p class="legal">Claude, Anthropic, ChatGPT, Codex, OpenAI, Gemini, Google, Cursor, Anysphere, NVIDIA, Roblox and other names and logos are trademarks of their respective owners and are used only to identify compatible tools and models. tokenwise and NolienLabs are not affiliated with, endorsed by, or sponsored by these companies.</p>
   </div>
 </footer>
 </body>

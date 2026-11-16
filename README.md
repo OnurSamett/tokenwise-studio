@@ -2,8 +2,8 @@
 
 <h1 align="center">tokenwise studio</h1>
 
-<p align="center"><b>One agent plans. The others do the work.</b><br>
-A desktop app that coordinates Claude, Codex, Gemini and other workers in isolated git worktrees. You review every diff before it lands.</p>
+<p align="center"><b>Make your AI limits last longer.</b><br>
+Free, no account, runs on your machine. Bring Claude, Codex, Gemini, Cursor and other workers together. Review every diff before it lands.</p>
 
 <p align="center">
   <a href="https://github.com/OnurSamett/tokenwise-studio/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/OnurSamett/tokenwise-studio?style=social"></a>
@@ -17,9 +17,11 @@ A desktop app that coordinates Claude, Codex, Gemini and other workers in isolat
 
 <p align="center"><b>Getting started:</b> <a href="docs/getting-started.md">English</a> · <a href="docs/baslangic.md">Türkçe</a> · <a href="docs/setup-es.md">Español</a> · <a href="docs/setup-de.md">Deutsch</a> · <a href="docs/setup-fr.md">Français</a></p>
 
+<p align="center">If this helps your limits last longer, <a href="https://github.com/OnurSamett/tokenwise-studio">star tokenwise studio on GitHub</a>.</p>
+
 <p align="center"><img src="assets/chat-ready.jpg" alt="tokenwise studio: the orchestrator split a task between a Codex Sol worker and a Claude Haiku worker, and 3 files are ready for review" width="900"></p>
 
-You describe a task in one chat. The selected orchestrator can plan it and hand pieces to workers that fit: Codex Sol for code, Claude Haiku for reading and search, Gemini, free hosted models, or a local model. Each writing worker has its own git worktree. Nothing touches your project until you apply the diff.
+You describe a task in one chat. The selected orchestrator can plan it and hand pieces to workers that fit: Codex Sol for code, Claude Haiku for reading and search, Gemini, Cursor, free hosted models, or a local model. Each writing worker has its own git worktree. Nothing touches your project until you apply the diff. There is no tokenwise account. Hosted free models stay off until you opt in.
 
 [tokenwise](https://github.com/OnurSamett/tokenwise) is the companion skill for Claude Code, Codex CLI and Gemini CLI. It runs inside your existing agent in the terminal or a supported IDE integration, helping choose a model and effort. tokenwise studio is a separate desktop and local web app with worker orchestration, worktrees and visual review. Use either independently or use both together; IDE support depends on the agent integration.
 
@@ -58,7 +60,7 @@ More:
 
 - **Never stuck on a limit.** Workers fall back along `codex → gemini → claude → free → local`. The orchestrator itself falls back along `claude → codex → gemini → free → local`, and **Free mode** runs both orchestrator and workers with zero paid plan usage.
 - **Native Mac app.** One window per project, Dock icon, desktop notifications.
-- **Five kinds of worker.** Codex, Claude, Gemini (via Antigravity), free NVIDIA models, and local Ollama.
+- **Workers on the plans you already have.** Codex, Claude, Gemini (via Antigravity), Cursor, free NVIDIA models, and local Ollama.
 - **Tests and checks.** A per-project test command runs in the worker's worktree, and a combined check runs after Apply.
 - **Images.** Paste a screenshot into the chat, or have Codex generate images and review them like any file.
 - **Project rules.** Put instructions in `TOKENWISE.md`; they cannot override the review rules.
