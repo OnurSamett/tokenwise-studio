@@ -17,7 +17,7 @@ Free, no account, runs on your machine. Bring Claude, Codex, Gemini, Cursor and 
 
 <p align="center"><b>Getting started:</b> <a href="docs/getting-started.md">English</a> · <a href="docs/baslangic.md">Türkçe</a> · <a href="docs/setup-es.md">Español</a> · <a href="docs/setup-de.md">Deutsch</a> · <a href="docs/setup-fr.md">Français</a></p>
 
-<p align="center">If this helps your limits last longer, <a href="https://github.com/OnurSamett/tokenwise-studio">star tokenwise studio on GitHub</a>.</p>
+<p align="center">Help us reach more people. <a href="https://github.com/OnurSamett/tokenwise-studio">Star tokenwise studio on GitHub</a>.</p>
 
 <p align="center"><img src="assets/chat-ready.jpg" alt="tokenwise studio: the orchestrator split a task between a Codex Sol worker and a Claude Haiku worker, and 3 files are ready for review" width="900"></p>
 
