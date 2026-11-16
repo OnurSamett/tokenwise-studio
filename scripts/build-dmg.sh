@@ -23,7 +23,8 @@ done
 xcrun --find swiftc >/dev/null
 VERSION="$(node -p 'require("./package.json").version')"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || fail 'Invalid package version'
-IDENTITY="${CODESIGN_IDENTITY:-Developer ID Application: [redacted] ([redacted])}"
+: "${CODESIGN_IDENTITY:?Set CODESIGN_IDENTITY to your Developer ID Application identity.}"
+IDENTITY="$CODESIGN_IDENTITY"
 DIST="$ROOT/dist"
 CACHE="${TOKENWISE_NODE_CACHE:-$ROOT/.cache/node}"
 mkdir -p "$DIST" "$CACHE"
