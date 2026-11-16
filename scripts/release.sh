@@ -36,4 +36,4 @@ echo '[release] Appcast updated locally. Publish it only after the GitHub releas
 echo "[release] Publishing v$VERSION with versioned and stable DMG assets plus Windows zips when built"
 gh release create "v$VERSION" "${RELEASE_ASSETS[@]}" \
   --repo OnurSamett/tokenwise-studio --title "tokenwise studio $VERSION" --notes-file "$NOTES"
-echo '[release] Release published. Review, commit and push docs/appcast.xml to serve https://tokenwise.site/appcast.xml.'
+echo '[release] Release published. Keep docs/appcast.xml here, then copy it to the private tokenwise-site repo and push that repo. The live feed is https://tokenwise.site/appcast.xml.'
