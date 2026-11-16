@@ -87,47 +87,37 @@
   </div>
 </div>
 
-<section id="how">
+<section id="how" class="flow-section">
   <div class="wrap">
     <div class="kicker">How it works</div>
-    <h2>One orchestrator. A whole team of models.</h2>
-    <p class="sub">Grepping a repo doesn't need your strongest model. Debugging a race condition does. tokenwise studio makes that call for every piece of the job.</p>
-    <div class="steps">
-      <div class="step">
-        <div class="n">01</div>
-        <h3>Describe or dictate the task</h3>
-        <p>Type or dictate in the composer, pick an orchestrator or team preset, or steer a single message with <code>@codex</code>, <code>@sol</code>, or <code>@gemini</code>.</p>
-      </div>
-      <div class="step">
-        <div class="n">02</div>
-        <h3>Right model, right effort</h3>
-        <p>Each writing worker runs in its own git worktree with the model and effort it needs—or as a parallel model shootout when you ask for one.</p>
-        <div class="route">
-          <div><span>search · summaries</span><b>Haiku · low</b></div>
-          <div><span>routine code</span><b>Codex Sol · medium</b></div>
-          <div><span>hard bugs · design</span><b>Opus · high</b></div>
-        </div>
-      </div>
-      <div class="step">
-        <div class="n">03</div>
-        <h3>Check conflicts, then apply</h3>
-        <p>Nothing touches your project until you review per-file diffs with conflict detection, run tests in the worktree, stage with one-click Undo Apply, or open a PR.</p>
-      </div>
+    <h2>One task. A team that works together.</h2>
+    <p class="sub">Bring your idea, choose your team, and stay in control from the first prompt to the final review.</p>
+    <div class="flow" aria-label="From task to model team to review">
+      <article class="flow-stage">
+        <div class="flow-label"><span>01</span> START WITH A TASK</div>
+        <div class="flow-visual flow-prompt" aria-hidden="true"><div class="flow-window"><span>YOUR PROJECT</span><div class="prompt-bubble">Build the feature and check the tests<span class="prompt-cursor"></span></div><div class="prompt-actions"><span>＋</span><span class="prompt-send">↑</span></div></div></div>
+        <h3>Describe what you need.</h3>
+        <p>Type or dictate, then choose an orchestrator or team preset.</p>
+      </article>
+      <article class="flow-stage">
+        <div class="flow-label"><span>02</span> ROUTE THE WORK</div>
+        <div class="flow-visual flow-team" aria-hidden="true"><div class="team-orch"><span class="team-orb">✦</span> Orchestrator <span class="team-ready">●</span></div><div class="team-branches"><div><img src="assets/providers/claude.svg" alt=""><span>Claude</span><small>PLAN</small></div><div><img src="assets/providers/codex.svg" alt=""><span>Codex</span><small>CODE</small></div><div><img src="assets/providers/gemini.svg" alt=""><span>Gemini</span><small>EXPLORE</small></div></div></div>
+        <h3>Find the right fit.</h3>
+        <p>Route work across models and effort levels. Writing workers use isolated Git worktrees.</p>
+      </article>
+      <article class="flow-stage">
+        <div class="flow-label"><span>03</span> REVIEW &amp; APPLY</div>
+        <div class="flow-visual flow-review" aria-hidden="true"><div class="review-sheet"><span>CHANGES READY</span><div><b>✓</b><i></i><em>+12</em></div><div><b>✓</b><i></i><em>+8</em></div><div class="review-actions"><span>Review changes</span><strong>Apply</strong></div></div></div>
+        <h3>Make the final call.</h3>
+        <p>Review file changes, check conflicts and apply what you choose. Undo is available.</p>
+      </article>
     </div>
-  </div>
-</section>
-
-<section id="measure" class="measure-section">
-  <div class="wrap">
-    <div class="kicker">Make every task count</div>
-    <h2>Use the right resources.<br>See what each task takes.</h2>
-    <p class="sub">Routing work to a suitable model and effort can reduce usage or estimated cost. The result depends on the task, model, provider and the extra work involved.</p>
-    <div class="measure-grid">
-      <article><span class="measure-num">01 / TOKENS</span><h3>Understand usage</h3><p>Explore reported token use by day, agent and model. Compare equivalent tasks against a baseline to measure whether total usage actually falls.</p></article>
-      <article><span class="measure-num">02 / COST</span><h3>Look at cost separately</h3><p>Different models have different prices. API-equivalent estimates help compare work, but do not represent charges on a subscription plan.</p></article>
-      <article><span class="measure-num">03 / QUALITY</span><h3>Check the result</h3><p>Compare completed work and verification checks alongside usage. Delegation has overhead, so smaller tasks may use more, not less.</p></article>
+    <p class="flow-caption">Illustrative workflow; models and roles depend on your settings.</p>
+    <div id="measure" class="flow-usage">
+      <div class="usage-mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+      <div><h3>Keep an eye on usage.</h3><p>Explore reported tokens and API-equivalent cost estimates. Compare against equivalent tasks and check the quality of results; savings vary and subscription charges differ.</p></div>
+      <a href="https://github.com/OnurSamett/tokenwise/blob/main/bench/README.md" rel="noopener noreferrer">How we measure <span aria-hidden="true">↗</span></a>
     </div>
-    <p class="measure-note">Results vary. <a href="https://github.com/OnurSamett/tokenwise/blob/main/bench/README.md" rel="noopener noreferrer">Read the benchmark method ↗</a></p>
   </div>
 </section>
 
@@ -248,8 +238,10 @@
         <span class="tag">DESKTOP APP</span>
         <h3>tokenwise studio</h3>
         <p>A visual workspace to coordinate agents, follow progress, inspect changes and review before applying them.</p>
+        <div class="product-visual studio-visual" aria-hidden="true"><div class="pv-window"><div class="pv-bar"><i></i><i></i><i></i><span>tokenwise studio</span></div><div class="pv-body"><div class="pv-sidebar"><i></i><i></i><i></i><i></i></div><div class="pv-main"><span>YOUR WORKSPACE</span><div class="pv-task">Build the feature <b>↗</b></div><div class="pv-workers"><div><img src="assets/providers/claude.svg" alt=""> Claude <small>Planning</small></div><div><img src="assets/providers/codex.svg" alt=""> Codex <small>Working</small></div></div></div></div></div></div>
         <ul class="product-highlights"><li>Desktop app with a visual interface</li><li>Project files, worktrees and per-file review</li><li>macOS and Windows beta</li></ul>
-        <details class="install-details"><summary>Download &amp; install Studio</summary><div class="install-content">
+        <div class="product-downloads"><a class="btn primary" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio.dmg" rel="noopener noreferrer">Download for macOS <span aria-hidden="true">↓</span></a><a class="btn" href="https://github.com/OnurSamett/tokenwise-studio/releases/latest/download/tokenwise-studio-windows.zip" rel="noopener noreferrer">Download for Windows <span aria-hidden="true">↓</span></a></div>
+        <details class="install-details"><summary>Setup and system requirements</summary><div class="install-content">
         <div class="install-tabs" role="tablist" aria-label="Operating system">
           <button class="btn sm" id="tab-macos" type="button" role="tab" aria-selected="true" aria-controls="install-macos" tabindex="0">macOS</button>
           <button class="btn sm" id="tab-windows" type="button" role="tab" aria-selected="false" aria-controls="install-windows" tabindex="-1">Windows (beta)</button>
@@ -278,6 +270,7 @@
         <span class="tag">AGENT SKILL</span>
         <h3>tokenwise skill</h3>
         <p>Guidance that helps your existing coding agent choose a suitable model and effort for each part of the work.</p>
+        <div class="product-visual skill-visual" aria-hidden="true"><div class="pv-window"><div class="pv-bar"><i></i><i></i><i></i><span>your coding agent</span></div><div class="skill-screen"><div><b>›</b> Work on the project</div><div class="skill-chip">✦ &nbsp; tokenwise skill</div><p>Choose the right model and effort.</p><div class="skill-route"><span>Claude</span><span>Codex</span><span>Gemini</span></div></div></div></div>
         <ul class="product-highlights"><li>Works inside your existing agent</li><li>Terminal or supported IDE integration</li><li>Claude Code, Codex CLI and Gemini CLI</li></ul>
         <details class="install-details"><summary>Install the skill</summary><div class="install-content">
         <div class="code"><button class="copy" type="button" data-copy="git clone https://github.com/OnurSamett/tokenwise.git &amp;&amp; ./tokenwise/install.sh">Copy</button>git clone https://github.com/OnurSamett/tokenwise.git
