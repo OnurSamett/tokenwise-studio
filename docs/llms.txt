@@ -19,6 +19,10 @@ Studio can coordinate Claude Code, Codex CLI, Gemini through Antigravity, and op
 - [Deutsch](https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-de.md): Anleitung für Installation und Anbieter.
 - [Français](https://github.com/OnurSamett/tokenwise-studio/blob/main/docs/setup-fr.md): Guide d’installation et de connexion des fournisseurs.
 
+## Usage and measurement
+
+Routing can reduce token usage or estimated cost, but outcomes depend on the task and setup; delegation has overhead. API-equivalent estimates are not subscription charges. See the [benchmark method](https://github.com/OnurSamett/tokenwise/blob/main/bench/README.md).
+
 ## Optional
 
 - [Changelog](https://github.com/OnurSamett/tokenwise-studio/blob/main/CHANGELOG.md): Release history and changes.

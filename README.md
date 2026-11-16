@@ -3,7 +3,7 @@
 <h1 align="center">tokenwise studio</h1>
 
 <p align="center"><b>One agent plans. The others do the work.</b><br>
-A Mac app that lets Claude Opus orchestrate Codex, Claude and Gemini workers in isolated git worktrees. You review every diff before it lands.</p>
+A desktop app that coordinates Claude, Codex, Gemini and other workers in isolated git worktrees. You review every diff before it lands.</p>
 
 <p align="center">
   <a href="https://github.com/OnurSamett/tokenwise-studio/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/OnurSamett/tokenwise-studio?style=social"></a>
@@ -19,9 +19,13 @@ A Mac app that lets Claude Opus orchestrate Codex, Claude and Gemini workers in 
 
 <p align="center"><img src="assets/chat-ready.jpg" alt="tokenwise studio: the orchestrator split a task between a Codex Sol worker and a Claude Haiku worker, and 3 files are ready for review" width="900"></p>
 
-You describe a task in one chat. The orchestrator (Claude Opus) plans it and hands each piece to the worker that fits: Codex Sol for code, Claude Haiku for reading and search, Gemini, free hosted models, or a local model. Each writing worker has its own git worktree. Nothing touches your project until you apply the diff.
+You describe a task in one chat. The selected orchestrator can plan it and hand pieces to workers that fit: Codex Sol for code, Claude Haiku for reading and search, Gemini, free hosted models, or a local model. Each writing worker has its own git worktree. Nothing touches your project until you apply the diff.
 
 [tokenwise](https://github.com/OnurSamett/tokenwise) is the companion skill for Claude Code, Codex CLI and Gemini CLI. It runs inside your existing agent in the terminal or a supported IDE integration, helping choose a model and effort. tokenwise studio is a separate desktop and local web app with worker orchestration, worktrees and visual review. Use either independently or use both together; IDE support depends on the agent integration.
+
+## Usage and cost
+
+Routing work can reduce token usage or estimated cost, but results depend on the task, model, provider and delegation overhead. Compare the same task and quality checks against a baseline. The Usage screen reports available token counts and API-equivalent estimates; subscription billing is separate. See the companion skill’s [benchmark method](https://github.com/OnurSamett/tokenwise/blob/main/bench/README.md).
 
 ## Why
 

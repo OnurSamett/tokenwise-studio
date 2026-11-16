@@ -47,6 +47,7 @@
     <div class="links">
       <a href="#how">How it works</a>
       <a href="#features">Features</a>
+      <a href="#measure">Usage</a>
       <a href="#get">Get it</a>
       <a href="#faq">FAQ</a>
       <a href="https://github.com/OnurSamett/tokenwise-studio" rel="noopener noreferrer">GitHub</a>
@@ -60,7 +61,7 @@
   <div class="wrap">
     <span class="eyebrow">Open source · <b>A NolienLabs project</b></span>
     <h1>Make your AI limits <em>last longer.</em></h1>
-    <p class="lede">One orchestrator routes tasks across Claude, Codex, Gemini, free NVIDIA, and local Ollama in isolated git worktrees.</p>
+    <p class="lede">Bring Claude, Codex, Gemini and other workers together. Choose the right model and effort, review their work, and understand your usage.</p>
     <div class="cta">
       <a class="btn primary" href="#get">Get tokenwise studio</a>
       <a class="btn" href="https://github.com/OnurSamett/tokenwise" rel="noopener noreferrer">tokenwise skill on GitHub</a>
@@ -113,6 +114,20 @@
         <p>Nothing touches your project until you review per-file diffs with conflict detection, run tests in the worktree, stage with one-click Undo Apply, or open a PR.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<section id="measure" class="measure-section">
+  <div class="wrap">
+    <div class="kicker">Make every task count</div>
+    <h2>Use the right resources.<br>See what each task takes.</h2>
+    <p class="sub">Routing work to a suitable model and effort can reduce usage or estimated cost. The result depends on the task, model, provider and the extra work involved.</p>
+    <div class="measure-grid">
+      <article><span class="measure-num">01 / TOKENS</span><h3>Understand usage</h3><p>Explore reported token use by day, agent and model. Compare equivalent tasks against a baseline to measure whether total usage actually falls.</p></article>
+      <article><span class="measure-num">02 / COST</span><h3>Look at cost separately</h3><p>Different models have different prices. API-equivalent estimates help compare work, but do not represent charges on a subscription plan.</p></article>
+      <article><span class="measure-num">03 / QUALITY</span><h3>Check the result</h3><p>Compare completed work and verification checks alongside usage. Delegation has overhead, so smaller tasks may use more, not less.</p></article>
+    </div>
+    <p class="measure-note">Results vary. <a href="https://github.com/OnurSamett/tokenwise/blob/main/bench/README.md" rel="noopener noreferrer">Read the benchmark method ↗</a></p>
   </div>
 </section>
 
@@ -276,7 +291,8 @@
     <div class="faq">
       <details><summary>Do I need both the skill and studio?</summary><p>No. Use the tokenwise skill inside a supported coding agent, or use the separate studio app for its visual workflow. Each works on its own; you can also use both. IDE support depends on the agent integration.</p></details>
       <details><summary>Is it free?</summary><p>Yes. tokenwise and tokenwise studio are open source (MIT). They run on your machine and use the plans and CLIs you already have; there is no tokenwise account or server.</p></details>
-      <details><summary>Does it save usage, really?</summary><p>On small tasks the overhead is about even; the savings come from long sessions with lots of reading, where mechanical work goes to cheaper models and other plans. The Model guide links to benchmark data; the Usage screen helps you compare tokens and API-equivalent costs on your own work. Subscription plans are not billed by those estimates.</p></details>
+      <details><summary>Does it save usage, really?</summary><p>It can, but savings are not guaranteed. Compare the same tasks and quality checks with and without routing: delegation has overhead and can increase usage on small tasks. The Usage screen shows reported tokens and API-equivalent estimates; those estimates are not subscription charges. <a href="https://github.com/OnurSamett/tokenwise/blob/main/bench/README.md" rel="noopener noreferrer">See the benchmark method.</a></p></details>
+      <details><summary>Can I use image generation?</summary><p>The companion skill can delegate image generation to Codex when an image-capable tool is available in your setup. Provider capabilities and access depend on the host and account.</p></details>
       <details><summary>Will my code be sent to free providers?</summary><p>Only if you opt in. Hosted free models require a provider key and opt-in through Settings or <code>TOKENWISE_ALLOW_FREE=1</code>, because free tiers may use prompts for training. Their file tools block secret files such as <code>.env</code>. Prompts and text you paste are still sent to the provider you choose.</p></details>
       <details><summary>Can a worker break my project?</summary><p>Writing workers stay in their own git worktree. Before Apply, studio checks for overlapping edits between workers; Apply stages only ticked files without committing, and every Apply records a snapshot for one-click Undo Apply.</p></details>
       <details><summary>What happens when Claude runs out?</summary><p>At the configured limit threshold (90% by default), or on a mid-turn limit, the orchestrator can continue on the next available provider: <code>claude → codex → gemini → free → local</code>. It keeps the conversation and review tools. Settings lets you switch automatically, ask first, or turn switching off. Free providers require opt-in and credentials; local models require Ollama. Cooldowns also pause limited providers until their reset time. Turn orchestrator fallback off with <code>TOKENWISE_ORCH_FALLBACK=0</code>.</p></details>
