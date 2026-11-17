@@ -313,6 +313,11 @@ export function doUninstall(opts = {}) {
       log(r.ok ? "    removed" : `    failed: ${r.error || "unknown error"}`);
     }
   }
+  if (flag("--no-app")) {
+    log("  - launcher app: left unchanged (--no-app)");
+    log("\nTo finish, run: npm uninstall -g tokenwise-studio");
+    return;
+  }
   const owned = findOwnedAppBundles({ home: () => homeDir });
   const def = defaultAppPath(homeDir);
   if (owned.length) {

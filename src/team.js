@@ -61,7 +61,7 @@ export const PRESETS = {
 const clone = (x) => JSON.parse(JSON.stringify(x));
 export const DEFAULT_TEAM = { mode: "auto", preset: null, roles: clone(PRESETS.balanced), allow: { free: true, astra: false } };
 
-const AGENTS = ["codex", "claude", "gemini", "free"];
+const AGENTS = ["codex", "claude", "gemini", "cursor", "free"];
 const EFFORTS = ["low", "medium", "high", "xhigh"];
 const MODEL = /^[\w.\/:-]{1,120}$/;
 const FREE_MODEL = /^(nvidia|openrouter|groq|mistral|custom):[\w.\/:-]{1,120}$/;
@@ -161,9 +161,9 @@ export function geminiFamilies() {
 }
 
 /** What the UI can offer. Never throws. */
-export function teamOptions(freeModels = [], { home = null, orchestratorAgent = "claude" } = {}) {
+export function teamOptions(freeModels = [], { home = null, orchestratorAgent = "claude", doctorData = null, skipModelProbe = false } = {}) {
   let d = {};
-  try { d = doctor() || {}; } catch {}
+  try { d = doctorData || doctor() || {}; } catch {}
   const ready = (a) => !!(d[a] && d[a].installed && d[a].signedIn);
   let providers = [];
   try { providers = freeProviders().map((p) => p.name); } catch {}
@@ -182,13 +182,14 @@ export function teamOptions(freeModels = [], { home = null, orchestratorAgent = 
     agents: {
       codex: { ready: ready("codex") && !settings.freeMode, cooldown: cdOf("codex"), models: ["luna", "terra", "sol", "astra"], labels: fam("codex"), unsupportedRoles: [] },
       claude: { ready: ready("claude") && !settings.freeMode, cooldown: cdOf("claude"), pacing: !!pacing?.active, models: ["haiku", "sonnet", "opus"], labels: fam("claude"), unsupportedRoles: [] },
-      gemini: { ready: ready("gemini") && !settings.freeMode, cooldown: cdOf("gemini"), models: geminiFamilies(), labels: fam("gemini"), unsupportedRoles: [] },
+      gemini: { ready: ready("gemini") && !settings.freeMode, cooldown: cdOf("gemini"), models: skipModelProbe ? ["hydrogen", "argon"] : geminiFamilies(), labels: fam("gemini"), unsupportedRoles: [] },
+      cursor: { ready: ready("cursor") && !settings.freeMode, cooldown: cdOf("cursor"), models: ["auto"], labels: {}, unsupportedRoles: ["research"] },
       free: { ready: providers.length > 0, cooldown: cdOf("free"), models: ["auto", ...freeIds], labels: Object.fromEntries(freeIds.map((id) => [id, describe("free", id)?.label || id.slice(id.indexOf(":") + 1)])), providers, optIn: Boolean(settings.allowFree || settings.freeMode), unsupportedRoles: ["research"] },
     },
     roles: ROLES.map((id) => ({
       id,
       label: LABELS[id],
-      ...(id === "research" ? { unsupportedAgents: ["free"] } : id === "images" ? { supportedAgents: ["codex"] } : {}),
+      ...(id === "research" ? { unsupportedAgents: ["free", "cursor"] } : id === "images" ? { supportedAgents: ["codex"] } : {}),
     })),
     presets: Object.keys(PRESETS),
     pacing: pacing?.active ? { ...pacing, prefer } : { active: false },
@@ -204,7 +205,7 @@ export function teamGuide(team, { pacing = null, allowFree = loadSettings().allo
       "- Writing code: free (auto model) or local",
       "- Quick & mechanical work: free (auto model) or local",
       "- Reviews and second opinions: free (auto model) or local",
-      "Never delegate to codex, claude, or gemini while Free mode is on (delegations to paid plans are refused).",
+      "Never delegate to codex, claude, gemini, or cursor while Free mode is on (delegations to paid plans are refused).",
     ].join("\n");
   }
   const freeAllowed = allowFree && team?.allow?.free !== false;

@@ -80,7 +80,7 @@ test("team.js includes research role, presets, and marks free unsupported in tea
       assert.deepEqual(opts.agents.gemini.unsupportedRoles, []);
       assert.deepEqual(opts.agents.codex.unsupportedRoles, []);
       const resRole = opts.roles.find((r) => r.id === "research");
-      assert.deepEqual(resRole.unsupportedAgents, ["free"]);
+      assert.deepEqual(resRole.unsupportedAgents, ["free", "cursor"]);
       const imgRole = opts.roles.find((r) => r.id === "images");
       assert.deepEqual(imgRole.supportedAgents, ["codex"]);
 

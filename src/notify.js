@@ -48,6 +48,9 @@ export function notify({ title, message, subtitle, key, repo } = {}, deps = {}) 
   try {
     if (process.env.TOKENWISE_NOTIFY === "0") return false;
     if (!(deps.settings || loadSettings()).notifications) return false;
+    // Routine model handoffs already appear in the chat. A separate desktop
+    // alert for each one duplicates the turn-completion notice.
+    if (typeof key === "string" && key.startsWith("handoff:")) return false;
     if ((deps.platform || process.platform) !== "darwin") {
       if (key && seen.has(key)) return false;
       if (key) seen.add(key);

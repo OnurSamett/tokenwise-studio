@@ -776,6 +776,9 @@ test("agy mcp add/remove argument building, syncGeminiMcp state, setup/uninstall
       assert.deepEqual(setupCalls[0].args.slice(0, 3), ["mcp", "add", "tokenwise-studio"]);
 
       const uninstallCalls = [];
+      const protectedApp = path.join(home, "Applications", "tokenwise studio.app");
+      fs.mkdirSync(path.join(protectedApp, "Contents"), { recursive: true });
+      fs.writeFileSync(path.join(protectedApp, "Contents", "Info.plist"), "<string>com.nolienlabs.tokenwise-studio</string>");
       doUninstall({
         args: ["--no-app"],
         claudeInstalled: false,
@@ -785,6 +788,7 @@ test("agy mcp add/remove argument building, syncGeminiMcp state, setup/uninstall
         homeDir: home,
       });
       assert.equal(uninstallCalls.length, 1);
+      assert.ok(fs.existsSync(protectedApp), "--no-app must preserve the installed app");
       assert.deepEqual(uninstallCalls[0].args, ["mcp", "remove", "tokenwise-studio"]);
 
       // 4. geminiCommand builds headless plan-mode stream-json command and embeds chat_id in prompt

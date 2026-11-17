@@ -163,8 +163,12 @@ export async function prPreconditions(repo, { exec = defaultExec } = {}) {
   let hasHead = false;
   let hasOrigin = false;
   let originUrl = null;
+  let branches = [];
 
   if (isGit) {
+    try {
+      branches = (await gitOut(repo, ["for-each-ref", "--format=%(refname:short)", "refs/heads"], exec)).split("\n").filter(Boolean);
+    } catch {}
     try {
       stagedFiles = (await gitOut(repo, ["diff", "--cached", "--name-only"], exec))
         .split("\n")
@@ -202,6 +206,7 @@ export async function prPreconditions(repo, { exec = defaultExec } = {}) {
     stagedFiles,
     hasStaged: stagedFiles.length > 0,
     currentBranch,
+    branches,
     detached,
     hasHead,
     hasOrigin,
@@ -213,6 +218,14 @@ export async function prPreconditions(repo, { exec = defaultExec } = {}) {
     canPush,
     canOpenPr: canPush && ghReady,
   };
+}
+
+/** Push only the checked-out branch; an expected branch prevents stale UI state changing the target. */
+export async function pushCurrentBranch(repo, expectedBranch, { exec = defaultExec } = {}) {
+  const branch = (await gitOut(repo, ["symbolic-ref", "--short", "-q", "HEAD"], exec)).trim();
+  if (!branch || branch !== expectedBranch) throw new Error("The current branch changed. Refresh and try again.");
+  await exec("git", ["-C", repo, "push", "--set-upstream", "origin", `HEAD:refs/heads/${branch}`], { cwd: repo, timeout: 60_000 });
+  return { branch, pushed: true };
 }
 
 export async function commitAndOpenPr({

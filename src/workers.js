@@ -1,3 +1,4 @@
+import { cursorAgentBin } from "./cursor.js";
 // Worker adapters: turn {agent, model, effort, write} into a headless CLI command.
 import { imageNote } from "./uploads.js";
 import { execFileSync } from "./process.js";
@@ -52,7 +53,7 @@ export function prepareCodexPlaytestHome({
   return targetHome;
 }
 
-export const AGENTS = ["codex", "claude", "gemini", "local", "free"];
+export const AGENTS = ["codex", "claude", "gemini", "cursor", "local", "free"];
 const FREEAGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), "freeagent.js");
 const EFFORTS = ["low", "medium", "high", "xhigh"];
 
@@ -116,7 +117,7 @@ export function normalizeFreeModelArg(model) {
 /** Validate and normalise a request; throws with a readable message on policy violations. */
 export function resolve({ agent, model, effort, hint = null, provider = null, allowAstra = false }) {
   if (!AGENTS.includes(agent)) throw new Error(`agent must be one of ${AGENTS.join(", ")}`);
-  const defaults = { codex: "medium", claude: "low", gemini: "medium", local: "medium", free: "medium" };
+  const defaults = { codex: "medium", claude: "low", gemini: "medium", cursor: "medium", local: "medium", free: "medium" };
   const eff = effort || defaults[agent];
   if (eff === "max" || eff === "ultra") throw new Error("effort max/ultra is not allowed from tokenwise-studio; use up to xhigh");
   if (!EFFORTS.includes(eff)) throw new Error(`effort must be one of ${EFFORTS.join(", ")}`);
@@ -128,6 +129,8 @@ export function resolve({ agent, model, effort, hint = null, provider = null, al
     }
   } else if (agent === "claude") {
     m = model || process.env.TOKENWISE_CLAUDE_MODEL || "haiku";
+  } else if (agent === "cursor") {
+    m = model || "auto";
   } else if (agent === "local") {
     m = model || process.env.TOKENWISE_LOCAL_MODEL || "gpt-oss:20b";
   } else if (agent === "free") {
@@ -149,9 +152,16 @@ export function resolve({ agent, model, effort, hint = null, provider = null, al
 }
 
 /** Build the CLI invocation. `lastFile` receives Codex's final message. */
-export function command({ agent, model, effort, via, hint: specHint, provider: specProvider }, { task, cwd, write, role = null, lastFile, images = [], playtest = null }) {
+export function command({ agent, model, effort, via, hint: specHint, provider: specProvider }, { task, cwd, write, role = null, lastFile, images = [], playtest = null, strictModel = false }) {
   if (role === "playtest" && agent !== "claude" && agent !== "codex") {
     throw new Error(`${agent} does not support Roblox playtest; use claude or codex`);
+  }
+  if (agent === "cursor") {
+    // Ask mode is Cursor's read-only mode; writes run only in the isolated worktree.
+    const args = ["-p", task, "--output-format", "text", "--workspace", cwd, "--trust", "--sandbox", "enabled"];
+    if (!write) args.push("--mode", "ask");
+    if (model && model !== "auto") args.push("--model", model);
+    return { cmd: cursorAgentBin(), args };
   }
   if (agent === "gemini" && via === "antigravity") {
     const args = ["-p", task, "--model", model, "--output-format", "stream-json", "--print-timeout", "0s",
@@ -183,7 +193,7 @@ export function command({ agent, model, effort, via, hint: specHint, provider: s
     };
     if (parsed.kind === "provider_model") {
       // "provider:model": try that provider/model first, keep the other configured providers as fallback.
-      env = { TOKENWISE_FREE_PROVIDERS: [parsed.provider, ...otherProviders(parsed.provider)].join(","), [`TOKENWISE_${parsed.provider.toUpperCase()}_MODEL`]: parsed.id };
+      env = { TOKENWISE_FREE_PROVIDERS: (strictModel ? [parsed.provider] : [parsed.provider, ...otherProviders(parsed.provider)]).join(","), [`TOKENWISE_${parsed.provider.toUpperCase()}_MODEL`]: parsed.id, ...(strictModel ? { TOKENWISE_FREE_STRICT_MODEL: "1" } : {}) };
     } else if (hint) {
       env = { TOKENWISE_FREE_HINT: hint, TOKENWISE_FREE_MODEL: "" };
       if (prov) env.TOKENWISE_FREE_PROVIDERS = [prov, ...otherProviders(prov)].join(",");

@@ -203,6 +203,14 @@ test("notify() removes osascript fallback: returns false and logs once when no n
   }
 });
 
+test("routine model handoffs stay in chat without duplicate desktop alerts", () => {
+  resetNotifyState();
+  const deps = { platform: "linux", settings: { notifications: true } };
+  assert.equal(notify({ title: "Switching models", key: "handoff:chat:1" }, deps), false);
+  assert.equal(notify({ title: "Turn complete", key: "turn:chat:1" }, deps), true);
+  resetNotifyState();
+});
+
 test("grep check: no osascript or Script Editor in notification / orchestrator / UI code", () => {
   for (const rel of ["src/notify.js", "src/appbundle.js", "src/orchestrator.js", "src/jobs.js", "src/ui.js"]) {
     const src = fs.readFileSync(path.join(ROOT, rel), "utf8");

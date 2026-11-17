@@ -23,7 +23,7 @@ let jobsInstance = null;
 const getJobs = () => (jobsInstance ||= new Jobs(repo));
 const server = new McpServer({ name: "tokenwise-studio", version: "0.1.0" });
 
-const PAID_AGENTS = new Set(["codex", "claude", "gemini"]);
+const PAID_AGENTS = new Set(["codex", "claude", "gemini", "cursor"]);
 
 /** Validate and resolve per-chat context from an explicit `chat_id` argument or `TOKENWISE_PARENT` env. */
 export function resolveChatId(argChatId, envParent = process.env.TOKENWISE_PARENT, home = null) {
@@ -78,10 +78,12 @@ export function prepareDelegateArgs(a, opts = {}) {
   };
 }
 
-const briefFor = (jobs, j, { includeConflicts = false } = {}) => ({
+const briefFor = (jobs, j, { includeConflicts = false, detail = false } = {}) => ({
   id: j.id, status: j.status, agent: j.agent, model: j.model, effort: j.effort, write: j.write, role: j.role || null,
   shootout: j.shootout || null,
-  title: j.title, diffStat: j.diffStat, files: j.files, movedFrom: j.movedFrom || null, movedTo: j.movedTo || null, final: j.final ? String(j.final).slice(0, 4000) : null,
+  title: j.title, diffStat: j.diffStat, files: Array.isArray(j.files) ? (detail ? j.files : j.files.slice(0, 30)) : j.files, movedFrom: j.movedFrom || null, movedTo: j.movedTo || null, final: j.final ? String(j.final).slice(0, detail ? 12000 : 1200) : null,
+  ...(j.final && String(j.final).length > (detail ? 12000 : 1200) ? { finalTruncated: true } : {}),
+  ...(Array.isArray(j.files) && j.files.length > 30 && !detail ? { fileCount: j.files.length } : {}),
   images: (j.images || []).map((i) => i.path), tests: j.test ? j.test.status : null,
   ...(j.playtest ? {
     playtest: {
@@ -105,7 +107,7 @@ const fail = (e) => ({ isError: true, content: [{ type: "text", text: String(e.m
  */
 export function createOrchestratorTools({ jobs: jobsOpt = null, parent: parentOpt = undefined, permissionMode: permOpt = null } = {}) {
   const resolveJobs = () => jobsOpt || getJobs();
-  const resolvePerm = () => permOpt || loadSettings().permissionMode;
+  const resolvePerm = () => permOpt || (process.env.TOKENWISE_PERMISSION === "plan-only" ? "plan-only" : loadSettings().permissionMode);
   const resolveParent = (argChatId, jobs) => {
     const baseParent = parentOpt !== undefined ? parentOpt : process.env.TOKENWISE_PARENT;
     return resolveChatId(argChatId, baseParent, jobs.home);
@@ -166,11 +168,11 @@ export function createOrchestratorTools({ jobs: jobsOpt = null, parent: parentOp
       } catch (e) { return fail(e); }
     },
 
-    async job_status({ id } = {}) {
+    async job_status({ id, detail = false } = {}) {
       try {
         const jobs = resolveJobs();
         return ok(id
-          ? briefFor(jobs, jobs.get(id), { includeConflicts: true })
+          ? briefFor(jobs, jobs.get(id), { includeConflicts: true, detail: detail === true })
           : jobs.list().map((j) => briefFor(jobs, j, { includeConflicts: true })));
       } catch (e) { return fail(e); }
     },
@@ -256,7 +258,7 @@ export const ORCH_TOOL_SPECS = [
       parameters: {
         type: "object",
         properties: {
-          agent: { type: "string", enum: ["codex", "claude", "gemini", "local", "free"], description: "Worker agent" },
+          agent: { type: "string", enum: ["codex", "claude", "gemini", "cursor", "local", "free"], description: "Worker agent" },
           task: { type: "string", description: "Self-contained prompt for the worker (at least 10 chars)" },
           model: { type: "string", description: "Optional model; for agent='free', pass 'auto' or a full 'nvidia:<id>' / '<provider>:<id>'" },
           effort: { type: "string", enum: ["low", "medium", "high", "xhigh"] },
@@ -295,6 +297,7 @@ export const ORCH_TOOL_SPECS = [
         type: "object",
         properties: {
           id: { type: "string", description: "Optional job id" },
+          detail: { type: "boolean", description: "Include more of one job's report and its full file list" },
         },
       },
     },
@@ -389,7 +392,7 @@ server.registerTool("delegate", {
     "Start a self-contained task on another AI agent CLI and return a job id immediately (it runs in the background).",
     "agent: 'codex' (models: terra, sol [default], or a full slug; astra is blocked unless the user opted in),",
     "'local' (Ollama model via Codex, free and unlimited, can edit files), 'free' (free hosted models via a safe tool loop; pass model='auto' [default] or a full 'nvidia:<id>' / '<provider>:<id>' from the team options — never a bare alias like 'deepseek'; reads and, with write=true, edits files; it cannot run commands; opt-in),",
-    "'claude' (haiku [default], sonnet, opus) or 'gemini' (via Google Antigravity: hydrogen [default, fast], argon [frontier, strongest]). effort: low|medium|high|xhigh.",
+    "'claude' (haiku [default], sonnet, opus), 'gemini' (hydrogen or argon), or 'cursor' (Cursor Agent CLI, auto model; effort is controlled by Cursor). effort: low|medium|high|xhigh.",
     "write=false: read-only answer. write=true: the worker edits files in its own git worktree branched from HEAD",
     "(uncommitted changes in the main tree are NOT visible to it); review with job_diff, then job_merge or job_discard.",
     "role: optional ('code', 'quick', 'review', 'research', 'images', 'playtest'). Use role='research' with write=false for questions needing current web information (enables web search on claude/codex; free/local are not supported for web research). Use role='playtest' with write=false to run a read-only, rate-limited Roblox Studio playtest via StudioMCP (agent optional, defaults to Settings playtest model; claude/codex only; mutating/edit/upload tools are blocked).",
@@ -408,7 +411,7 @@ server.registerTool("delegate", {
     return tg ? "\n\n" + tg : "";
   })(),
   inputSchema: {
-    agent: z.enum(["codex", "claude", "gemini", "local", "free"]).optional().describe("Worker agent (optional for role='playtest', defaults to Settings playtest model)"),
+    agent: z.enum(["codex", "claude", "gemini", "cursor", "local", "free"]).optional().describe("Worker agent (optional for role='playtest', defaults to Settings playtest model)"),
     task: z.string().min(10),
     images: z.array(z.string()).max(6).optional().describe("Repo-relative paths inside .tokenwise-studio/uploads; forwarded to Codex and Claude"),
     model: z.string().optional().describe("Optional model; for agent='free', pass 'auto' or a full 'nvidia:<id>' (or '<provider>:<id>') from team options"),
@@ -432,7 +435,7 @@ server.registerTool("job_wait", {
 server.registerTool("job_status", {
   title: "List or inspect jobs",
   description: "Without id: list all jobs. With id: one job's status. Finished write jobs include a `conflicts` field (overlaps with other unapplied jobs and apply cleanliness against the current tree) so you can sequence applies.",
-  inputSchema: { id: z.string().optional() },
+  inputSchema: { id: z.string().optional(), detail: z.boolean().optional() },
 }, (a) => defaultTools.handlers.job_status(a));
 
 server.registerTool("job_diff", {

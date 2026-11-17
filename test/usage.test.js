@@ -53,3 +53,48 @@ test("aggregateUsage: empty input and days clamp", () => {
   assert.equal(r.days, 90); assert.equal(r.byDay.length, 90); assert.equal(r.totals.total, 0); assert.deepEqual(r.byModel, []);
   assert.equal(aggregateUsage({ now: NOW, days: "x" }).days, 14);
 });
+
+test("aggregateUsage counts job lifecycle outcomes without requiring reported tokens", () => {
+  const start = at(0);
+  const later = new Date(new Date(start).getTime() + 9000).toISOString();
+  const later2 = new Date(new Date(start).getTime() + 3000).toISOString();
+  const jobs = [
+    { created: start, finished: later, agent: "codex", model: "sol", status: "done" },
+    { created: start, finished: later2, agent: "codex", model: "sol", status: "failed" },
+    { created: start, finished: null, agent: "codex", model: "sol", status: "discarded" },
+    { created: start, finished: later, agent: "codex", model: "sol", status: "running" },
+    { created: start, finished: later, agent: "codex", model: "sol", status: "moved" },
+    { created: start, finished: at(1), agent: "codex", model: "sol", status: "merged" }, // earlier end: invalid duration
+    { created: start, finished: "invalid", agent: "codex", model: "sol", status: "undone" },
+    { created: at(30), finished: later, agent: "codex", model: "sol", status: "failed" }, // outside window
+    { created: null, finished: later, agent: "codex", model: "sol", status: "done" },
+    { created: "bad", finished: later, agent: "codex", model: "sol", status: "done" },
+  ];
+  const r = aggregateUsage({ jobs, days: 14, now: NOW });
+  assert.equal(r.totals.jobs, 7);
+  assert.equal(r.totals.total, 0);
+  const row = r.byModel.find((item) => item.agent === "codex" && item.model === "sol");
+  assert.equal(row.jobs, 7);
+  assert.deepEqual(row.jobStats, {
+    completed: 3, failed: 1, discarded: 1, moved: 1, running: 1, other: 0,
+    durationCount: 3, durationTotalMs: 21000, averageDurationMs: 7000,
+  });
+  assert.deepEqual(r.totals.jobStats, row.jobStats);
+});
+
+test("aggregateUsage keeps outcomes separate by actual provider and model", () => {
+  const jobs = [
+    { created: at(0), agent: "codex", model: "sol", status: "failed" },
+    { created: at(0), agent: "free", model: "nvidia:example/model", modelUsed: "nvidia:example/actual", status: "done" },
+    { created: at(0), agent: "codex", model: "sol", status: "unknown" },
+  ];
+  const r = aggregateUsage({ jobs, days: 14, now: NOW });
+  const codex = r.byModel.find((item) => item.agent === "codex");
+  const free = r.byModel.find((item) => item.agent === "free");
+  assert.equal(codex.jobStats.failed, 1);
+  assert.equal(codex.jobStats.other, 1);
+  assert.equal(codex.jobStats.averageDurationMs, null);
+  assert.equal(free.model, "nvidia:example/actual");
+  assert.equal(free.jobStats.completed, 1);
+  assert.equal(r.totals.jobs, 3);
+});

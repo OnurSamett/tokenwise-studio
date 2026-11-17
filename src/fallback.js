@@ -16,6 +16,19 @@ export { clearCooldown, getCooldown, inCooldown, activeCooldowns, formatHHMM };
 
 export const RATE_LIMIT = /rate.?limit|usage limit|quota|\b429\b|too many requests|resource.?exhausted|limit (?:reached|exceeded)|exceeded your|out of credits|hit your (?:[\w-]+ )?limit/i;
 
+// Only provider/model failures can trigger a worker handoff. Never retry content or safety refusals.
+export function freeWorkerRefused(error) {
+  return /safety|policy|content.?filter|prohibited|cannot (?:assist|help)|(?:model|assistant) refus/i.test(String(error?.message || ""));
+}
+export function freeWorkerUnavailable(error) {
+  if (!error || error.type !== "free.error") return false;
+  const message = String(error.message || "");
+  if (freeWorkerRefused(error)) return false;
+  const status = Number(error.status) || 0;
+  return [401, 403, 404, 408, 429, 500, 502, 503, 504].includes(status) ||
+    /no usable free model|model (?:not found|unavailable|not available|not supported|access denied)|timed? ?out|timeout|connection (?:refused|reset|failed)|network error/i.test(message);
+}
+
 const chain = () => loadSettings().fallbackOrder;
 const threshold = () => loadSettings().limitThreshold;
 const liveWindow = (w, now = Date.now()) => w && typeof w.pct === "number" && !(w.resetsAt && w.resetsAt <= now);
@@ -91,12 +104,12 @@ export function preferredWorkers(home, { write, role, pacing = null, settings = 
 
 export function available(agent, { write, role } = {}, home) {
   const s = loadSettings();
-  if (s.freeMode && (agent === "codex" || agent === "claude" || agent === "gemini")) return false;
-  if (role === "research" && (agent === "free" || agent === "local")) return false;
+  if (s.freeMode && (agent === "codex" || agent === "claude" || agent === "gemini" || agent === "cursor")) return false;
+  if (role === "research" && (agent === "free" || agent === "local" || agent === "cursor")) return false;
   if (role === "images" && agent !== "codex") return false;
   if (role === "playtest") return false;
   if (inCooldown(agent)) return false;
-  const d = doctor()[agent];
+  const d = doctor(agent)[agent];
   if (!d || !d.installed || !d.signedIn) return false;
   if (agent === "free") return (s.freeMode || s.allowFree) && (!home || s.freeMode || loadTeam(home).allow.free !== false);
   return true;

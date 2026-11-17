@@ -38,12 +38,13 @@ const ALLOWED = [...TOOLS, "Read", "Glob", "Grep",
   "Bash(go test:*)", "Bash(cargo test:*)"];
 
 /** Orchestrator guide for a permission mode, plus (optional) project instructions, turn budget, non-git, project map, and quota pacing rules. */
-export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, freeMode = null, projectMap = null, shootout = false, mentions = [], robloxPlaytest = null } = {}) {
+export function buildGuide(permissionMode = "ask", { instructions = null, turnBudget = 0, isGit = true, pacing = null, allowFree = false, freeMode = null, projectMap = null, shootout = false, mentions = [], robloxPlaytest = null, delegationFirst = false } = {}) {
   const playtestEnabled = robloxPlaytest?.enabled !== undefined ? Boolean(robloxPlaytest.enabled) : Boolean(loadSettings().playtestEnabled);
   const parts = [baseGuide(permissionMode, { playtestEnabled })];
+  parts.push("ORCHESTRATOR ROLE: Coordinate, do not perform routine implementation, repository exploration, long reads, or tests yourself. Delegate even small searches and edits to an appropriate worker (Codex Terra for simple tasks, Sol for harder ones), wait for concise results, review outcomes and report to the user. Keep only essential planning, coordination, and minimal verification in your own context. If a worker is unavailable or rejects a task, try another permitted worker; never silently take over implementation. If no worker is available, explain the blockage and ask the user how to proceed. Respect free mode, permissions, explicit model choices and safety refusals; never retry a safety refusal to evade it.");
   const isFreeMode = freeMode === null ? Boolean(loadSettings().freeMode) : Boolean(freeMode);
   if (isFreeMode) {
-    parts.push("FREE MODE IS ON (no plan usage): only free and local workers are allowed. Do NOT delegate to claude, codex, or gemini — those delegations will be refused. Always pass agent=\"free\" (or agent=\"local\") to delegate.");
+    parts.push("FREE MODE IS ON (no plan usage): only free and local workers are allowed. Do NOT delegate to claude, codex, gemini, or cursor — those delegations will be refused. Always pass agent=\"free\" (or agent=\"local\") to delegate.");
   }
   if (playtestEnabled && robloxPlaytest?.rojo && robloxPlaytest?.studioMcpFound) {
     parts.push("ROBLOX STUDIO PLAYTEST READY: a Rojo project file and StudioMCP were detected. You may start a read-only delegate(..., write=false, role=\"playtest\") job when the user asks to test the game; do NOT request Studio edit, execute_luau, or upload tools.");
@@ -62,6 +63,11 @@ export function buildGuide(permissionMode = "ask", { instructions = null, turnBu
   } else {
     parts.push("Model shootouts are opt-in by the user only: do NOT pass shootout to delegate.");
   }
+  if (delegationFirst) {
+    parts.push(
+      "DELEGATION-FIRST (user preference — guidance, not a hard rule): For substantial requests that split into clear pieces, prefer coordinating workers: plan the pieces, delegate self-contained tasks (parallel when independent), job_wait, review each job_diff or read-only answer, integrate, and report outcomes in your summary. Pick agent/model/effort and write=true vs write=false as usual; permission mode, merge/apply rules, turn token budget, quota pacing, free mode, and fallback still govern what is allowed. For straightforward reading, searching, summaries, and simple edits, prefer a suitable lightweight worker with a concise task even when the task is small. When delegation would add more overhead than value or the work cannot be separated, do the minimum necessary directly and suggest a lower-cost main model when the current one is Opus or Astra; never switch the main model silently. Reserve Opus and Astra for work needing their stronger judgment, not routine reading or writing. Every file edit still goes through a worker when writes are permitted."
+    );
+  }
   const mg = mentionGuide(mentions);
   if (mg) parts.push(mg);
   const ig = instructionsGuide(instructions);
@@ -77,7 +83,7 @@ function baseGuide(permissionMode, { playtestEnabled = false } = {}) {
   if (permissionMode === "plan-only") {
     return `You are the ORCHESTRATOR in tokenwise studio running in PLAN-ONLY mode. You plan, investigate and answer, without making or delegating any file edits.
 Use the tokenwise-studio tools to hand read-only research pieces to cheaper workers instead of doing everything yourself:
-- delegate(agent, model, effort, task, write=false, role): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for analysis), gemini (hydrogen for quick and routine work, argon (frontier) for hard problems), free (opt-in hosted APIs: pass model="auto" or a full "nvidia:<id>" from the team options, never a bare alias). Spread work across providers to spare each plan's limits. When plans run low, jobs move automatically to the next worker (ending with 'local', a free Ollama model); mention such moves in your summary.
+- delegate(agent, model, effort, task, write=false, role): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for analysis), gemini (hydrogen for quick and routine work, argon (frontier) for hard problems), cursor (Cursor Agent CLI; auto model; uses the Cursor plan), free (opt-in hosted APIs: pass model="auto" or a full "nvidia:<id>" from the team options, never a bare alias). Spread work across providers to spare each plan's limits. When plans run low, jobs move automatically to the next worker (ending with 'local', a free Ollama model); mention such moves in your summary.
 - Pick effort from: many interacting parts, ambiguity, prior failure, costly mistake. 0 signals -> low, 1 -> medium, 2+ -> high.
 - PLAN-ONLY MODE IS ACTIVE: do NOT edit files yourself, do NOT pass write=true to delegate (it will be rejected), and do NOT call job_merge. Only read-only (write=false) delegation is permitted.
 ${researchRule}${playtestRule}
@@ -95,7 +101,7 @@ Finish each turn with a SHORT plain-language summary for a busy user: at most 5 
   const nextStep = permissionMode === "auto-apply" ? "(usually: review the staged changes or commit)" : "(usually: review and apply in the studio)";
   return `You are the ORCHESTRATOR in tokenwise studio. You plan, delegate, review and integrate.
 Use the tokenwise-studio tools to hand self-contained pieces to cheaper workers instead of doing them yourself:
-- delegate(agent, model, effort, task, write, role): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for routine code), gemini (hydrogen for quick and routine work, argon (frontier) for hard problems), free (opt-in hosted APIs: pass model="auto" or a full "nvidia:<id>" from the team options, never a bare alias). Spread work across providers to spare each plan's limits. When plans run low, jobs move automatically to the next worker (ending with 'local', a free Ollama model); mention such moves in your summary.
+- delegate(agent, model, effort, task, write, role): codex (sol default, terra for simple/mechanical), claude (haiku for search/summaries, sonnet for routine code), gemini (hydrogen for quick and routine work, argon (frontier) for hard problems), cursor (Cursor Agent CLI; auto model; uses the Cursor plan), free (opt-in hosted APIs: pass model="auto" or a full "nvidia:<id>" from the team options, never a bare alias). Spread work across providers to spare each plan's limits. When plans run low, jobs move automatically to the next worker (ending with 'local', a free Ollama model); mention such moves in your summary.
 - Pick effort from: many interacting parts, ambiguity, prior failure, costly mistake. 0 signals -> low, 1 -> medium, 2+ -> high.
 - write=true for edits: the worker gets its own git worktree from HEAD. Then job_wait and review every job_diff.
 ${mergeRule}
@@ -106,7 +112,7 @@ ${researchRule}${playtestRule}
 - Review every diff: flag unrelated changes, generated files, caches or build output.
 - job_test(id) runs the project's tests in a finished write job's worktree and returns pass/fail plus the end of the output. Use it to check a worker's changes before you call them ready; if it fails, say so (or delegate a fix).
 - Image generation (icons, banners, OG images, illustrations, game art) goes to codex, the images role: delegate with write=true and name the output file path (png/jpg/webp). The picture is part of the job's diff and shows inline in the chat as a thumbnail, so do not paste file paths for the user to open; the user applies it like any other file.
-- You cannot edit files yourself: every code change, however small, goes to a worker (write=true) ${reviewTarget}. For a tiny change pick the cheapest fitting worker (codex terra low, or claude haiku low). Reading and small investigations you can do yourself.
+- You cannot edit files yourself: every code change, however small, goes to a worker (write=true) ${reviewTarget}. For a tiny change pick the cheapest fitting worker (codex terra low, or claude haiku low). Delegate routine reading and investigations too; keep your own reads minimal for review.
 - Never use astra or max effort unless the user asks.
 You already run in the project root: never use cd, &&, pipes or redirects. Your shell is limited to read-only git (status, diff, log), ls, and test runners (python3, pytest, npm test, node, go test, cargo test). To verify combined changes, ask a worker to run the tests.
 Finish each turn with a SHORT plain-language summary for a busy user: at most 5 lines, no job ids, no file paths beyond names, no process details. Say what changed, who did it (e.g. "Codex Terra"), and what the user should do next ${nextStep}.`;
@@ -411,7 +417,7 @@ export class Chats {
       .sort((a, b) => b.created.localeCompare(a.created));
   }
 
-  send({ id, message, model, effort, images = [], force, explicit, shootout = false, mentions, team: teamOverride } = {}) {
+  send({ id, message, model, effort, images = [], force, explicit, shootout = false, mentions, team: teamOverride, permissionMode } = {}) {
     const settings = loadSettings();
     model = model || settings.defaultModel;
     effort = effort || settings.defaultEffort;
@@ -430,6 +436,8 @@ export class Chats {
     }
     if (explicit !== undefined && typeof explicit !== "boolean") throw new Error("explicit must be true or false");
     if (shootout !== undefined && typeof shootout !== "boolean") throw new Error("shootout must be true or false");
+    if (permissionMode != null && permissionMode !== "plan-only") throw new Error("permissionMode override must be plan-only");
+    const turnPerm = permissionMode === "plan-only" ? "plan-only" : settings.permissionMode;
     const mentionNames = normalizeMentions(mentions);
     if (!settings.freeMode && mentionNames.some((n) => mentionInfo(n).agent === "free") && !(settings.allowFree && loadTeam(this.jobs.home).allow?.free !== false)) {
       throw new Error("Free models are off. Turn them on in Settings (and the team options) to use @free.");
@@ -490,15 +498,17 @@ export class Chats {
 
     const mcpFile = this.f(id, "mcp.json");
     const writeMcpConfig = (orchAgent) => {
+      const env = { TOKENWISE_REPO: this.jobs.repo, TOKENWISE_PARENT: id, TOKENWISE_ORCH_AGENT: orchAgent };
+      if (turnPerm === "plan-only") env.TOKENWISE_PERMISSION = "plan-only";
       fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: { "tokenwise-studio": {
-        command: process.execPath, args: [MCP], env: { TOKENWISE_REPO: this.jobs.repo, TOKENWISE_PARENT: id, TOKENWISE_ORCH_AGENT: orchAgent },
+        command: process.execPath, args: [MCP], env,
       } } }));
     };
     writeMcpConfig(turn.agent);
     const team = loadTeam(this.jobs.home);
     const allowFree = settings.freeMode || (settings.allowFree && team.allow?.free !== false);
     const pacing = pick.agent === "claude" && !settings.freeMode ? claudePacing(this.jobs.home, { settings }) : null;
-    const baseG = buildGuide(settings.permissionMode, {
+    const baseG = buildGuide(turnPerm, {
       instructions: loadInstructions(this.jobs.repo),
       turnBudget: settings.turnBudget,
       isGit: this.jobs.isGit(),
@@ -509,10 +519,11 @@ export class Chats {
       shootout: !!shootout,
       mentions: mentionNames,
       robloxPlaytest: { enabled: !!settings.playtestEnabled, rojo: !!findRojoProject(this.jobs.repo), studioMcpFound: !!locateStudioMcp().found },
+      delegationFirst: !!settings.delegationFirst,
     });
     const tg = [teamGuide(team, { pacing, allowFree, freeMode: settings.freeMode }), overrideGuide(roleOverride, { allowFree })].filter(Boolean).join("\n");
     const guide = tg ? baseG + "\n\n" + tg : baseG;
-    const allowedTools = settings.permissionMode === "plan-only" ? ALLOWED.filter((t) => t !== "mcp__tokenwise-studio__job_merge") : ALLOWED;
+    const allowedTools = turnPerm === "plan-only" ? ALLOWED.filter((t) => t !== "mcp__tokenwise-studio__job_merge") : ALLOWED;
 
     const log = fs.createWriteStream(this.f(id, "jsonl"), { flags: "a" });
     const w = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line: scrubBase64Images(line), turn: ti, agent: turn.agent, ...(stream === "user" ? { images: turn.images, ...(turn.mentions ? { mentions: turn.mentions } : {}) } : {}) }) + "\n");
@@ -613,7 +624,7 @@ export class Chats {
           model: t.model,
           guide,
           prompt,
-          permissionMode: settings.permissionMode,
+          permissionMode: turnPerm,
           chatFn: this.chatFn,
           signal: ac.signal,
           onUsage: (u) => {

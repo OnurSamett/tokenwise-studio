@@ -1752,7 +1752,17 @@ final class StudioWindow: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownlo
             }
         } else if type == "project" {
             let action = (body["action"] as? String ?? "").lowercased()
-            if action == "switched", let newRepo = body["repo"] as? String {
+            if action == "navigate", let newRepo = body["repo"] as? String,
+               let rawURL = body["url"] as? String, let target = URL(string: rawURL),
+               let registered = readServers()[newRepo], let known = URL(string: registered),
+               sameOrigin(target, known), target.scheme == "http", isLocalHost(target.host) {
+                var components = URLComponents(url: known, resolvingAgainstBaseURL: false)
+                if let chat = body["chat"] as? String, chat.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil {
+                    components?.fragment = "chat=\(chat)"
+                }
+                onProjectSwitched?(self, newRepo)
+                if let url = components?.url { load(url) }
+            } else if action == "switched", let newRepo = body["repo"] as? String {
                 onProjectSwitched?(self, newRepo)
             } else if action == "switch" {
                 onSwitchProject?(self)

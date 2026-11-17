@@ -46,6 +46,7 @@ export const DEFAULTS = Object.freeze({
   playtestMaxScreenshots: 25, // max viewport captures per playtest
   playtestMaxMinutes: 10, // max playtest duration in minutes
   playtestAllowInput: false, // allow keyboard/mouse/navigation input simulation in Roblox Studio playtests (default off)
+  delegationFirst: false, // prefer worker delegation for substantial separable tasks (orchestrator guide only; not enforced)
 });
 
 const cloneDefaults = () => ({
@@ -92,6 +93,7 @@ export const VALIDATORS = {
   playtestMaxScreenshots: (v) => (Number.isInteger(v) && v >= 1 && v <= 100) || "playtestMaxScreenshots must be an integer between 1 and 100",
   playtestMaxMinutes: (v) => (Number.isInteger(v) && v >= 1 && v <= 30) || "playtestMaxMinutes must be an integer between 1 and 30",
   playtestAllowInput: (v) => typeof v === "boolean" || "playtestAllowInput must be true or false",
+  delegationFirst: (v) => typeof v === "boolean" || "delegationFirst must be true or false",
 };
 
 /** Clamp playtest maxCalls/maxScreenshots/maxMinutes to valid integers verified by VALIDATORS. */

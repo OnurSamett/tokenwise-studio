@@ -351,6 +351,55 @@ test("GET /api/pr and POST /api/commit (mode: pr) work end-to-end with stubbed g
   });
 });
 
+test("direct commit selects local branch and only pushes when requested", async () => {
+  await withTempHome(async () => {
+    const { bare, repo, g, cleanup } = initRepoWithBareRemote();
+    try {
+      g("branch", "feature/test");
+      fs.writeFileSync(path.join(repo, "change.txt"), "feature\n");
+      g("add", "change.txt");
+      initServer({ repo });
+      const pre = await callHandler("GET", "/api/pr");
+      assert.ok(pre.body.branches.includes("feature/test"));
+      const commit = await callHandler("POST", "/api/commit", { message: "Feature", branch: "feature/test", expectedBranch: "main", push: true });
+      assert.equal(commit.status, 200, JSON.stringify(commit.body));
+      assert.equal(commit.body.branch, "feature/test");
+      assert.equal(commit.body.pushed, true);
+      assert.equal(g("branch", "--show-current").trim(), "feature/test");
+      assert.equal(execFileSync("git", ["--git-dir", bare, "rev-parse", "refs/heads/feature/test"], { encoding: "utf8" }).trim(), g("rev-parse", "HEAD").trim());
+      fs.writeFileSync(path.join(repo, "second.txt"), "local\n");
+      g("add", "second.txt");
+      const stale = await callHandler("POST", "/api/commit", { message: "Local", branch: "feature/test", expectedBranch: "main" });
+      assert.equal(stale.status, 400);
+      assert.equal(g("diff", "--cached", "--name-only").trim(), "second.txt");
+      const local = await callHandler("POST", "/api/commit", { message: "Local", branch: "feature/test", expectedBranch: "feature/test" });
+      assert.equal(local.status, 200);
+      assert.equal(local.body.pushed, false);
+      assert.notEqual(execFileSync("git", ["--git-dir", bare, "rev-parse", "refs/heads/feature/test"], { encoding: "utf8" }).trim(), g("rev-parse", "HEAD").trim());
+    } finally { cleanup(); }
+  });
+});
+
+test("a failed push reports the local commit and allows a safe retry", async () => {
+  await withTempHome(async () => {
+    const { repo, g, cleanup } = initRepoWithBareRemote();
+    try {
+      fs.writeFileSync(path.join(repo, "change.txt"), "new\n");
+      g("add", "change.txt");
+      g("remote", "set-url", "origin", path.join(repo, "missing-origin.git"));
+      initServer({ repo });
+      const failed = await callHandler("POST", "/api/commit", { message: "Keep local", branch: "main", expectedBranch: "main", push: true });
+      assert.equal(failed.status, 400);
+      assert.equal(failed.body.details.committed, true);
+      assert.equal(failed.body.details.branch, "main");
+      assert.equal(g("log", "-1", "--pretty=%s").trim(), "Keep local");
+      assert.equal(g("diff", "--cached", "--name-only").trim(), "");
+      const staleRetry = await callHandler("POST", "/api/commit", { mode: "push", branch: "other" });
+      assert.equal(staleRetry.status, 400);
+    } finally { cleanup(); }
+  });
+});
+
 test("prNotice localizes EN/TR and MCP server exposes no PR/commit/push tool", () => {
   const enOpen = prNotice({ branch: "tokenwise/fix", prUrl: "https://github.com/a/b/pull/1", lang: "en" });
   assert.equal(enOpen.title, "Pull request opened");

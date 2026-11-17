@@ -17,11 +17,13 @@ import { findAgy, syncGeminiMcp, readAgyMcpState } from "./antigravity.js";
 import { normalize } from "./events.js";
 import { limits } from "./limits.js";
 import { claudePacing, getCooldown } from "./fallback.js";
-import { doctor, clearDoctorCache } from "./doctor.js";
+import { doctor, doctorAsync, doctorSnapshot, clearDoctorCache } from "./doctor.js";
 import { loadTeam, saveTeam, teamOptions, geminiFamilies } from "./team.js";
 import { CATALOG } from "./models.js";
 import { MENTIONS } from "../ui/mentions.js";
 import { listFreeModels } from "./freechat.js";
+import { cursorModels, cursorModelsSnapshot } from "./cursor.js";
+import { checkFreeConnection } from "./provider-health.js";
 import { loadSettings, saveSettings, settingsInfo } from "./settings.js";
 import { exportChat, backupAll } from "./export.js";
 import { loadInstructions, instructionsPath, workerNotes, INSTRUCTIONS_CAP, INSTRUCTIONS_FILE } from "./instructions.js";
@@ -36,10 +38,12 @@ import { getRobloxStudioStatus, locateStudioMcp } from "./studiomcp.js";
 import { resolvePlaytestImage, formatPlaytestFixPrompt } from "./playtest.js";
 import { listRepoFiles, readRepoTextFile, resolveRepoImage, worktreeDiff, splitDiff, chatFiles } from "./workspace.js";
 import { projectProblem, assertNotRealHomeInTests } from "./projectpath.js";
-import { prPreconditions, commitAndOpenPr, selectAppliedJobs, formatChangesBy } from "./pr.js";
+import { prPreconditions, commitAndOpenPr, selectAppliedJobs, formatChangesBy, pushCurrentBranch } from "./pr.js";
 import { notify, prNotice } from "./notify.js";
 import { startShootout, listShootouts, getShootout, pickShootout, discardShootout, pruneExpiredShootouts } from "./shootout.js";
 import { loadFolders, saveFolders, applyFolderAction } from "./folders.js";
+import { recentProjectChats } from "./recent-chats.js";
+import { projectRuntime, rememberRuntime, anyProjectBusy } from "./project-runtimes.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
@@ -59,6 +63,7 @@ let serverChatOpts = {};
 let serverPrOpts = {};
 let serverStudioOpts = {};
 let serverJobsOpts = {};
+let runtimeOptions = {};
 
 const RECENTS = path.join(os.homedir(), ".tokenwise-studio", "recents.json");
 function recents() {
@@ -105,7 +110,7 @@ function robloxInfo() {
 const state = () => {
   maybePruneShootouts(false);
   return {
-    version: LOADED_VERSION, platform: process.platform, features: platformFeatures(), notifications: pendingBrowserNotices(repo), repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit() }, recents: recents(), chats: chats.list(),
+    version: LOADED_VERSION, platform: process.platform, features: platformFeatures(), notifications: pendingBrowserNotices(repo), repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit(), ...projectGit() }, recents: recents(), chats: chats.list(), recentChats: recentProjectChats(recents(), repo),
     folders: loadFolders(jobs.home),
     jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
     shootouts: listShootouts(jobs),
@@ -116,6 +121,18 @@ const state = () => {
 };
 
 const gitIn = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+let gitHomeCache = { key: "", at: 0, value: { branch: "", dirty: false } };
+function projectGit() {
+  if (!jobs?.isGit()) return { branch: "", dirty: false };
+  if (gitHomeCache.key === repo && Date.now() - gitHomeCache.at < 4000) return gitHomeCache.value;
+  let value = { branch: "", dirty: false };
+  try {
+    const branch = gitIn("rev-parse", "--abbrev-ref", "HEAD").trim();
+    value = { branch: branch === "HEAD" ? "" : branch, dirty: gitIn("status", "--porcelain", "-uno").trim().length > 0 };
+  } catch {}
+  gitHomeCache = { key: repo, at: Date.now(), value };
+  return value;
+}
 const staged = () => { try { return gitIn("diff", "--cached", "--name-only").split("\n").filter(Boolean); } catch { return []; } };
 
 function jobTimeline(id, from = 0) {
@@ -285,7 +302,7 @@ let autoTimer = null;
 export function startAutoUpdater({ firstDelayMs = 60_000, everyMs = 3600_000 } = {}) {
   if (autoTimer || process.env.TOKENWISE_NO_AUTOUPDATE === "1") return;
   const tick = async () => {
-    const r = await runAutoUpdate({ busy: studioBusy });
+    const r = await runAutoUpdate({ busy: () => studioBusy() || anyProjectBusy() });
     if (r.action === "failed") logUpdate(`auto-update of ${r.version} failed; will try again in 24h`);
   };
   const first = setTimeout(() => { tick(); autoTimer = setInterval(tick, everyMs); autoTimer.unref?.(); }, firstDelayMs);
@@ -297,6 +314,7 @@ export function startAutoUpdater({ firstDelayMs = 60_000, everyMs = 3600_000 } =
 const exitSoon = (res) => { res.on?.("finish", () => setTimeout(() => hooks.exit(0), 100)); setTimeout(() => hooks.exit(0), 1500).unref?.(); };
 
 export function initServer({ repo: start, summarize, spawn, chatFn, freeRunner, exec, studioStatus, studioMcpPath, proxyScript, playtestDir, playtestDiscardGraceMs } = {}) {
+  runtimeOptions = { summarize, spawn, chatFn, freeRunner, exec, studioStatus, studioMcpPath, proxyScript, playtestDir, playtestDiscardGraceMs };
   serverChatOpts = {
     ...(summarize ? { summarize } : {}),
     ...(spawn ? { spawn } : {}),
@@ -315,6 +333,7 @@ export function initServer({ repo: start, summarize, spawn, chatFn, freeRunner, 
     ...(playtestDiscardGraceMs !== undefined ? { playtestDiscardGraceMs } : {}),
   };
   openProject(path.resolve(start || process.cwd()));
+  if (!process.env.NODE_TEST_CONTEXT) void doctorAsync().catch(() => {});
 }
 
 export const handler = async (req, res) => {
@@ -390,18 +409,20 @@ export const handler = async (req, res) => {
         const applied = selectAppliedJobs(jobs.list(), pre.stagedFiles, jobIds);
         return send(res, 200, { ...pre, changesBy: formatChangesBy(applied) });
       }
-      if (what === "doctor") return send(res, 200, doctor());
+      if (what === "doctor") return send(res, 200, process.env.NODE_TEST_CONTEXT ? doctor() : await doctorAsync());
       if (what === "team") {
         const orch = url.searchParams.get("orch") || "";
         const orchestratorAgent = loadSettings().freeMode ? "free" : modelToOrchAgent(orch || "opus");
-        return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions(await listFreeModels(), { home: jobs.home, orchestratorAgent }) });
+        const free = await Promise.race([listFreeModels(), new Promise((resolve) => setTimeout(() => resolve([]), 500))]);
+        return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions(free, { home: jobs.home, orchestratorAgent, doctorData: process.env.NODE_TEST_CONTEXT ? null : doctorSnapshot(), skipModelProbe: !process.env.NODE_TEST_CONTEXT }) });
       }
       if (what === "models") {
-        const d = doctor(), ok = (a) => !!(d[a] && d[a].installed && d[a].signedIn);
+        const d = process.env.NODE_TEST_CONTEXT ? doctor() : doctorSnapshot(), ok = (a) => !!(d[a] && d[a].installed && d[a].signedIn);
+        const free = await Promise.race([listFreeModels(), new Promise((resolve) => setTimeout(() => resolve([]), 500))]);
         return send(res, 200, {
           catalog: CATALOG,
-          available: { codex: ["luna", "terra", "sol", "astra"], claude: ["haiku", "sonnet", "opus"], gemini: geminiFamilies(), free: (await listFreeModels()).map((m) => m.id) },
-          ready: { codex: ok("codex"), claude: ok("claude"), gemini: ok("gemini"), free: ok("free") },
+          available: { codex: ["luna", "terra", "sol", "astra"], claude: ["haiku", "sonnet", "opus"], gemini: process.env.NODE_TEST_CONTEXT ? geminiFamilies() : ["hydrogen", "argon"], cursor: ok("cursor") ? (process.env.NODE_TEST_CONTEXT ? cursorModels() : cursorModelsSnapshot()) : [], free: free.map((m) => m.id) },
+          ready: { codex: ok("codex"), claude: ok("claude"), gemini: ok("gemini"), cursor: ok("cursor"), free: ok("free") },
           benchmarks: loadBenchmarks(),
         });
       }
@@ -410,7 +431,13 @@ export const handler = async (req, res) => {
       if (what === "settings") return send(res, 200, settingsPayload());
       if (what === "version") return send(res, 200, versionInfo());
       if (what === "limits") return send(res, 200, limits(jobs.home));
-      if (what === "orchestrator") return send(res, 200, orchestratorNow(url.searchParams.get("model"), url.searchParams.get("effort")));
+      if (what === "orchestrator") {
+        const model = url.searchParams.get("model");
+        // Explicit models are displayed without a provider probe; fallback decisions
+        // only need the provider being considered, never unrelated slow CLIs.
+        if (!process.env.NODE_TEST_CONTEXT && ![...CODEX_ORCH_MODELS, ...GEMINI_ORCH_MODELS, "free", "local", "auto"].includes(model)) await doctorAsync("claude");
+        return send(res, 200, orchestratorNow(url.searchParams.get("model"), url.searchParams.get("effort")));
+      }
       if (what === "chatlog") return send(res, 200, chatTimeline(id, from));
       if (what === "log") return send(res, 200, jobTimeline(id, from));
       if (what === "diff") return send(res, 200, { files: splitDiff(jobs.diff(id)), conflicts: jobs.conflicts(id) });
@@ -474,6 +501,7 @@ export const handler = async (req, res) => {
     }
     if (req.method === "POST") {
       const b = await readBody(req, what === "upload" ? UPLOAD_BODY_LIMIT : undefined);
+      if (what === "free-health-check") return send(res, 200, await checkFreeConnection());
       if (what === "upload") return send(res, 200, saveUpload(repo, b));
       if (what === "studiolog") {
         if (b?.action === "format") return send(res, 200, { message: formatStudioPrompt(b.selected) });
@@ -512,18 +540,25 @@ export const handler = async (req, res) => {
       }
       if (what === "team") return send(res, 200, { team: saveTeam(jobs.home, b) });
       if (what === "folders") return send(res, 200, b && Object.hasOwn(b, "action") ? applyFolderAction(jobs.home, b) : saveFolders(jobs.home, b));
-      if (what === "chat") { orchCache.clear(); return send(res, 200, chats.send(b)); }
+      if (what === "chat") {
+        if (!process.env.NODE_TEST_CONTEXT) {
+          const settings = loadSettings();
+          const selected = b.force || modelToOrchAgent(b.model || settings.defaultModel);
+          await doctorAsync(selected);
+        }
+        orchCache.clear(); return send(res, 200, chats.send(b));
+      }
       if (what === "stop") return send(res, 200, chats.stop(id));
       if (what === "merge") return send(res, 200, jobs.merge(id, b.files, { autoCheck: b.autoCheck !== false }));
       if (what === "rebase") return send(res, 200, jobs.rebase(id));
       if (what === "resolve") return send(res, 200, jobs.resolveConflict(id, b));
       if (what === "quit") {
-        if (studioBusy() && b.force !== true) return send(res, 409, { error: "busy", busy: true });
+        if ((studioBusy() || anyProjectBusy()) && b.force !== true) return send(res, 409, { error: "busy", busy: true });
         send(res, 200, { ok: true });
         return exitSoon(res);
       }
       if (what === "restart") {
-        if (studioBusy()) return send(res, 409, { error: "busy", busy: true });
+        if (studioBusy() || anyProjectBusy()) return send(res, 409, { error: "busy", busy: true });
         let setup = null;
         if (needsAppSetup()) { logUpdate("launcher changed: running setup --no-mcp"); setup = (await runSetup()).ok; logUpdate(`setup ${setup ? "ok" : "failed"}`); }
         const others = await quitStudioServers({ except: serverUrl });
@@ -537,6 +572,7 @@ export const handler = async (req, res) => {
       if (what === "compact") return send(res, 200, await chats.compact(id));
       if (what === "delete") return send(res, 200, chats.remove(id));
       if (what === "commit") {
+        if (b?.mode === "push") return send(res, 200, await pushCurrentBranch(repo, String(b.branch || ""), serverPrOpts));
         if (b?.mode === "pr") {
           const result = await commitAndOpenPr({
             repo,
@@ -555,21 +591,45 @@ export const handler = async (req, res) => {
         if (!message) throw new Error("commit message is empty");
         const files = staged();
         if (!files.length) throw new Error("nothing is staged");
+        const currentBranch = gitIn("symbolic-ref", "--short", "-q", "HEAD").trim();
+        if (b.expectedBranch && b.expectedBranch !== currentBranch) throw new Error("The current branch changed. Reopen the commit panel.");
+        const targetBranch = String(b.branch || currentBranch).trim();
+        if (targetBranch.startsWith("-")) throw new Error("invalid branch name");
+        gitIn("check-ref-format", "--branch", targetBranch);
+        if (b.push === true) gitIn("remote", "get-url", "origin");
+        if (targetBranch !== currentBranch) gitIn("switch", "--", targetBranch);
         createSnapshot(repo, "commit", files);
         gitIn("commit", "-m", message);
         const now = new Date().toISOString();
         for (const j of selectAppliedJobs(jobs.list(), files)) {
           try { jobs.save({ ...j, committedAt: now }); } catch {}
         }
-        return send(res, 200, { ok: true, sha: gitIn("rev-parse", "--short", "HEAD").trim(), files: files.length });
+        const result = { ok: true, sha: gitIn("rev-parse", "--short", "HEAD").trim(), files: files.length, branch: targetBranch, pushed: false };
+        if (b.push === true) {
+          try { await pushCurrentBranch(repo, targetBranch, serverPrOpts); result.pushed = true; }
+          catch { const err = new Error(`Committed ${result.sha} on ${targetBranch}, but push failed. Check your remote, credentials and branch status, then retry.`); err.details = { ...result, committed: true }; throw err; }
+        }
+        return send(res, 200, result);
       }
       if (what === "project") {
         const p = path.resolve(String(b.path || "").replace(/^~(?=$|[\\/])/, os.homedir()));
         const bad = projectProblem(p, { allowTemp: true });
         if (bad) throw new Error(bad);
+        // Reopening the same physical folder must not replace in-memory running handles.
+        let sameProject = !!repo && path.resolve(p) === path.resolve(repo);
+        try { sameProject ||= !!repo && fs.realpathSync(p) === fs.realpathSync(repo); } catch {}
+        if (sameProject) return send(res, 200, state());
+        if (studioBusy()) return send(res, 409, { error: "A task is running. Wait for it to finish or stop it before switching projects.", busy: true });
         openProject(p);
         if (serverUrl) registerServer(p, serverUrl);
         return send(res, 200, state());
+      }
+      if (what === "open-project-window") {
+        const p = path.resolve(String(b.path || "").replace(/^~(?=$|[\\/])/, os.homedir()));
+        const bad = projectProblem(p, { allowTemp: true });
+        if (bad) throw new Error(bad);
+        const entry = await projectRuntime(p, runtimeOptions);
+        return send(res, 200, { url: entry.url, repo: p });
       }
       if (what === "delegate") {
         const safe = {
@@ -587,6 +647,7 @@ export const handler = async (req, res) => {
           ...(b?.fixOf !== undefined ? { fixOf: b.fixOf } : {}),
           ...(b?.files !== undefined ? { files: b.files } : {}),
           parent: null,
+          noFallback: b?.singleModel === true,
         };
         if (safe.role === "playtest") {
           if (!loadSettings().playtestEnabled) {
@@ -701,6 +762,7 @@ export function startServer({ repo: start, port = 4777, summarize, spawn, chatFn
       activeServer = server;
       const url = `http://127.0.0.1:${server.address().port}`;
       registerServer(path.resolve(start || process.cwd()), url);
+      rememberRuntime(path.resolve(start || process.cwd()), url, studioBusy);
       resolve(url);
     });
   });

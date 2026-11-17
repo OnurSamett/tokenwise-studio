@@ -13,7 +13,7 @@ import { PLAYTEST_WORKER_SYSTEM_PROMPT, resolvePlaytestWorker, parsePlaytestRepo
 
 export { JOB_ROLES };
 const STUDIO_PROXY_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "studioproxy.js");
-import { RATE_LIMIT, available, nearLimit, nextAgent, recordProviderCooldown, clearCooldown, getCooldown, formatHHMM } from "./fallback.js";
+import { RATE_LIMIT, freeWorkerUnavailable, freeWorkerRefused, available, nearLimit, nextAgent, recordProviderCooldown, clearCooldown, getCooldown, formatHHMM } from "./fallback.js";
 import { recordGeminiRun } from "./gemini-usage.js";
 import { notify, jobNotice } from "./notify.js";
 import { withProjectNotes } from "./instructions.js";
@@ -293,13 +293,17 @@ export class Jobs {
         throw new Error("Codex playtest requires playtestModel to be explicitly set to codex:* in Settings (screenshots go to OpenAI)");
       }
     }
-    if (settings.freeMode && (agent === "codex" || agent === "claude" || agent === "gemini")) {
+    if (settings.freeMode && (agent === "codex" || agent === "claude" || agent === "gemini" || agent === "cursor")) {
       throw new Error(`Free mode is on (no plan usage): paid worker '${agent}' is disabled. Use agent='free' or agent='local' instead.`);
     }
     if (role === "images" && agent !== "codex") throw new Error("image generation needs Codex");
     const attachments = validateImages(this.repo, images);
     const team = loadTeam(this.home);
+    if (agent === "free" && !(settings.allowFree || settings.freeMode)) throw new Error("Hosted API workers are disabled. Enable them in Settings first.");
     if (agent === "free" && team.allow.free === false && !settings.freeMode) throw new Error("free workers are disabled in the team settings");
+    if (agent === "cursor" && !available("cursor", { write, role }, this.home)) {
+      throw new Error("Cursor Agent is not ready. Install the Cursor Agent CLI and run cursor-agent login; check free mode and role settings.");
+    }
     // Before starting: if this plan is near its limit, cooling down, or not usable, pick the next one in the chain.
     if (!noFallback && role !== "playtest") {
       const cd = getCooldown(agent);
@@ -312,7 +316,7 @@ export class Jobs {
         if (alt) { movedFrom = movedFrom || { agent, reason: why }; tried = [...tried, agent]; agent = alt; model = undefined; hint = null; provider = null; }
       }
     }
-    if (role === "research" && (agent === "free" || agent === "local")) {
+    if (role === "research" && (agent === "free" || agent === "local" || agent === "cursor")) {
       throw new Error(`${agent} does not support web research; use claude, gemini or codex`);
     }
     if (role === "playtest" && agent !== "claude" && agent !== "codex") {
@@ -400,7 +404,7 @@ export class Jobs {
     const workerTask = fixCtx
       ? buildFixRoundTask({ task, jobs: this, ...fixCtx })
       : withProjectMapSlice(withProjectNotes(task, this.repo), this.repo) + researchNote;
-    const { cmd, args, env: extraEnv } = command(spec, { task: workerTask, cwd, write, role: role || null, lastFile, images: attachments.map((i) => i.abs), playtest: playtestCfg });
+    const { cmd, args, env: extraEnv } = command(spec, { task: workerTask, cwd, write, role: role || null, lastFile, images: attachments.map((i) => i.abs), playtest: playtestCfg, strictModel: noFallback });
     const log = fs.createWriteStream(this.file(id, "log"), { flags: "a" });
     const write1 = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line: scrubBase64Images(line) }) + "\n");
     write1("meta", `$ ${cmd} ${args.map((a) => (a.length > 60 ? a.slice(0, 57) + "..." : a)).join(" ")}`);
@@ -409,8 +413,9 @@ export class Jobs {
 
     const child = spawn(cmd, args, { cwd, env: { ...process.env, ...(extraEnv || {}) }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     this.save({ ...job, pid: child.pid });
-    let lastText = null, buf = { out: "", err: "" };
+    let lastText = null, cursorText = "", freeError = null, buf = { out: "", err: "" };
     const onData = (stream) => (chunk) => {
+      if (spec.agent === "cursor" && stream === "out") cursorText = (cursorText + chunk.toString()).slice(-200000);
       buf[stream] += chunk.toString();
       let i;
       while ((i = buf[stream].indexOf("\n")) >= 0) {
@@ -421,6 +426,7 @@ export class Jobs {
           try {
             const o = JSON.parse(line), t = textOf(o);
             if (t) lastText = t;
+            if (spec.agent === "free" && o.type === "free.error") freeError = o;
             if (spec.agent === "free" && (o.type === "free.init" || o.type === "free.latency")) this._liveFreeModel(id, o); // show the model while the job runs
           } catch { lastText = line; }
         }
@@ -461,18 +467,24 @@ export class Jobs {
       // Hit a usage/rate limit? Record a cooldown and re-run the same task on the next worker in the chain.
       if (j.status === "failed") {
         let tail = ""; try { tail = fs.readFileSync(this.file(id, "log"), "utf8").slice(-30000); } catch {}
-        if (RATE_LIMIT.test(tail)) {
-          rateLimited = true;
-          recordProviderCooldown(j.agent, { text: tail, home: this.home, reason: "hit a rate limit" });
-          if (!noFallback && j.role !== "playtest") {
-            const alt = nextAgent({ tried: j.tried, write, role: j.role || null, home: this.home });
-            if (alt) {
-              try {
-                const nj = this.start({ agent: alt, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin: effTimeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason: "hit a rate limit" }, fixOf: job.fixOf || null, files, skipFixDetect, shootout: j.shootout || null });
-                j.status = "moved"; j.movedTo = nj.id;
-                write1("meta", `rate limit: moved to ${alt} (${nj.id})`);
-              } catch (e) { write1("meta", `fallback failed: ${e.message}`); }
-            }
+        rateLimited = RATE_LIMIT.test(tail) && !(j.agent === "free" && freeWorkerRefused(freeError));
+        const freeUnavailable = j.agent === "free" && freeWorkerUnavailable(freeError);
+        if (rateLimited) recordProviderCooldown(j.agent, { text: tail, home: this.home, reason: "hit a rate limit" });
+        if ((rateLimited || freeUnavailable) && !noFallback && j.role !== "playtest") {
+          const alt = nextAgent({ tried: j.tried, write, role: j.role || null, home: this.home });
+          if (alt) {
+            const reason = rateLimited ? "hit a rate limit" : "free provider or model unavailable";
+            try {
+              const retry = { agent: alt, model: alt === "codex" && freeUnavailable ? "terra" : undefined, effort, task, images: job.images, write, role: j.role || null, title, timeoutMin: effTimeoutMin, parent, tried: j.tried, movedFrom: { id, agent: j.agent, reason }, fixOf: job.fixOf || null, files, skipFixDetect, shootout: j.shootout || null };
+              let nj;
+              try { nj = this.start(retry); }
+              catch (e) {
+                if (retry.model !== "terra" || !/No Codex model found for family 'terra'/.test(e.message)) throw e;
+                nj = this.start({ ...retry, model: "sol" });
+              }
+              j.status = "moved"; j.movedTo = nj.id;
+              write1("meta", `${reason}: moved to ${alt} (${nj.id})`);
+            } catch (e) { write1("meta", `fallback failed: ${e.message}`); }
           }
         }
       } else {
@@ -482,7 +494,7 @@ export class Jobs {
       if (j.agent === "gemini") {
         recordGeminiRun({ tokens: j.tokens, model: j.model, via: j.via || null, rateLimited });
       }
-      j.final = (fs.existsSync(lastFile) && fs.readFileSync(lastFile, "utf8").trim()) || lastText;
+      j.final = (fs.existsSync(lastFile) && fs.readFileSync(lastFile, "utf8").trim()) || (j.agent === "cursor" ? cursorText.trim() : lastText);
       // Some CLIs answer with local file:// markdown links; keep just the link text.
       if (j.final) j.final = String(j.final).replace(/\[([^\]]+)\]\(file:\/\/[^)]*\)/g, "$1");
       if (j.role === "playtest" && playtestCfg && j.status !== "moved") {

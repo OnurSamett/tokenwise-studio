@@ -236,7 +236,10 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
   // or unavailable model mid-task just continues on the next candidate.
   const built = await buildFreePairs({
     providers, emit, probeTimeout,
-    pick: async (p, i) => ({ list: await pickModels(p, i === 0), forced: forcedModelFor(p, i === 0) }),
+    pick: async (p, i) => {
+      const forced = forcedModelFor(p, i === 0);
+      return { list: process.env.TOKENWISE_FREE_STRICT_MODEL === "1" && forced ? [forced] : await pickModels(p, i === 0), forced };
+    },
   });
   const { pairs, latency } = built;
   let fellFrom = built.fellFrom;
