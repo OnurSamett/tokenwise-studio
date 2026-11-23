@@ -67,7 +67,13 @@ function remoteLocalCheck(model) {
   if (probe.status === 401 || probe.status === 403) return bad("check OLLAMA_API_KEY");
   if (probe.status !== 200) return bad(`gateway unreachable: ${shown}`);
   if (!probe.ids.includes(model)) return bad(`ollama pull ${model} on the gateway host`);
-  return { installed: true, signedIn: true, model, fix: null, via: "gateway" };
+  // worker:false — the Codex worker still talks to the laptop's own Ollama; only gateway-backed paths (orchestrator, free agent) may use it.
+  return { installed: true, signedIn: true, model, fix: null, via: "gateway", worker: false };
+}
+
+/** Ready to run as a CLI worker (`worker: false` marks a check that only the gateway-backed orchestrator path can use). */
+export function workerReady(d) {
+  return !!(d && d.installed && d.signedIn && d.worker !== false);
 }
 
 // Free-tier chat API (read-only). Configured by a key; used only after the user opts in.

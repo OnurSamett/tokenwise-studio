@@ -6,7 +6,7 @@
 // - "local" (Ollama) is free and unlimited and can edit files.
 // - "free" (free-tier hosted APIs such as NVIDIA, driven by src/freeagent.js) can read and edit
 //   files in its worktree; opt-in (TOKENWISE_ALLOW_FREE=1) because free tiers may use prompts for training.
-import { doctor } from "./doctor.js";
+import { doctor, workerReady } from "./doctor.js";
 import { limits } from "./limits.js";
 import { loadTeam } from "./team.js";
 import { loadSettings } from "./settings.js";
@@ -110,7 +110,7 @@ export function available(agent, { write, role } = {}, home) {
   if (role === "playtest") return false;
   if (inCooldown(agent)) return false;
   const d = doctor(agent)[agent];
-  if (!d || !d.installed || !d.signedIn) return false;
+  if (!workerReady(d)) return false;
   if (agent === "free") return (s.freeMode || s.allowFree) && (!home || s.freeMode || loadTeam(home).allow.free !== false);
   return true;
 }

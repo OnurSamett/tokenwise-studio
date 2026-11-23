@@ -2,7 +2,7 @@
 // "manual" (the user picks agent/model/effort per role). Stored in <repo>/.tokenwise-studio/team.json.
 import fs from "node:fs";
 import path from "node:path";
-import { doctor } from "./doctor.js";
+import { doctor, workerReady } from "./doctor.js";
 import { agyModels } from "./antigravity.js";
 import { freeProviders } from "./freechat.js";
 import { CATALOG, describe } from "./models.js";
@@ -164,7 +164,7 @@ export function geminiFamilies() {
 export function teamOptions(freeModels = [], { home = null, orchestratorAgent = "claude", doctorData = null, skipModelProbe = false } = {}) {
   let d = {};
   try { d = doctorData || doctor() || {}; } catch {}
-  const ready = (a) => !!(d[a] && d[a].installed && d[a].signedIn);
+  const ready = (a) => workerReady(d[a]);
   let providers = [];
   try { providers = freeProviders().map((p) => p.name); } catch {}
   const fam = (agent) => Object.fromEntries(CATALOG.filter((c) => c.agent === agent).map((c) => [c.family, c.label]));

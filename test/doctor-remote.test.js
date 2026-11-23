@@ -34,7 +34,7 @@ test("remote gateway: model present is ready", async () => {
   process.env.TOKENWISE_OLLAMA_BASE = `http://127.0.0.1:${port}/`;
   process.env.OLLAMA_API_KEY = "secret";
   process.env.TOKENWISE_LOCAL_MODEL = "gpt-oss:20b";
-  assert.deepEqual(localCheck(), { installed: true, signedIn: true, model: "gpt-oss:20b", fix: null, via: "gateway" });
+  assert.deepEqual(localCheck(), { installed: true, signedIn: true, model: "gpt-oss:20b", fix: null, via: "gateway", worker: false });
 });
 
 test("remote gateway: base already ending in /v1 is not doubled", async () => {
