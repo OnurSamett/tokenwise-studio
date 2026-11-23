@@ -9,9 +9,9 @@ import os from "node:os";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 
-const run = (cmd, args, timeout = 8000) => {
+const run = (cmd, args, timeout = 8000, env) => {
   try {
-    const r = spawnSync(cmd, args, { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"] });
+    const r = spawnSync(cmd, args, { encoding: "utf8", timeout, ...(env ? { env } : {}), stdio: ["ignore", "pipe", "pipe"] });
     if (r.error) return null;
     return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
   } catch { return null; }
@@ -34,13 +34,39 @@ function checkAgent(agent) {
 }
 
 // Local model via Ollama (driven by Codex CLI's --oss mode): ready when the server answers and the model is pulled.
-function localCheck() {
+export function localCheck() {
   const model = process.env.TOKENWISE_LOCAL_MODEL || "gpt-oss:20b";
+  if (process.env.TOKENWISE_OLLAMA_BASE) return remoteLocalCheck(model);
   if (!installed("ollama")) return { installed: false, signedIn: false, model, fix: "brew install ollama" };
   const r = run("ollama", ["list"]);
   if (!r || r.code !== 0) return { installed: true, signedIn: false, model, fix: "brew services start ollama" };
   const has = r.out.split("\n").some((l) => l.split(/\s+/)[0] === model || l.startsWith(model + " "));
   return { installed: true, signedIn: has, model, fix: has ? null : `ollama pull ${model}` };
+}
+
+// Remote Ollama gateway (TOKENWISE_OLLAMA_BASE): ask GET {base}/v1/models, same base rule as freeagent.js.
+// Runs in a child node process so this stays synchronous; the key travels via env, never argv.
+const REMOTE_PROBE = `
+const url = process.env.TW_BASE + "/models";
+try {
+  const res = await fetch(url, { headers: { authorization: "Bearer " + (process.env.TW_KEY || "") }, signal: AbortSignal.timeout(8000) });
+  let ids = [];
+  if (res.ok) { const j = await res.json(); ids = (j.data || []).map((m) => m.id); }
+  process.stdout.write(JSON.stringify({ status: res.status, ids }));
+} catch (e) { process.stdout.write(JSON.stringify({ error: String(e && e.message || e) })); }
+`;
+function remoteLocalCheck(model) {
+  const baseRaw = process.env.TOKENWISE_OLLAMA_BASE.replace(/\/+$/, "");
+  const base = baseRaw.endsWith("/v1") ? baseRaw : `${baseRaw}/v1`;
+  const bad = (fix) => ({ installed: true, signedIn: false, model, fix, via: "gateway" });
+  const r = run(process.execPath, ["--input-type=module", "-e", REMOTE_PROBE], 10000, { ...process.env, TW_BASE: base, TW_KEY: process.env.OLLAMA_API_KEY || "" });
+  let probe = null;
+  try { probe = JSON.parse(r?.out || ""); } catch {}
+  if (!probe || probe.error) return bad(`gateway unreachable: ${baseRaw.replace(/\/v1$/, "")}`);
+  if (probe.status === 401 || probe.status === 403) return bad("check OLLAMA_API_KEY");
+  if (probe.status !== 200) return bad(`gateway unreachable: ${baseRaw.replace(/\/v1$/, "")}`);
+  if (!probe.ids.includes(model)) return bad(`ollama pull ${model} on the gateway host`);
+  return { installed: true, signedIn: true, model, fix: null, via: "gateway" };
 }
 
 // Free-tier chat API (read-only). Configured by a key; used only after the user opts in.
