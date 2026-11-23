@@ -170,7 +170,8 @@ export function orchAvailable(agent, home, settings = loadSettings()) {
     return freeProviders().length > 0;
   }
   if (agent === "local") {
-    return Boolean(doctor().local?.ready);
+    const l = doctor().local;
+    return Boolean(l?.installed && l?.signedIn);
   }
   return available(agent, { write: false }, home);
 }

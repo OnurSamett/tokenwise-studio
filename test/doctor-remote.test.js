@@ -89,3 +89,17 @@ test("without TOKENWISE_OLLAMA_BASE the original ollama path is used", () => {
   assert.equal(r.fix, "brew install ollama");
   assert.equal(r.via, undefined);
 });
+
+test("orchAvailable('local') follows the doctor result (installed && signedIn)", async () => {
+  const { orchAvailable } = await import("../src/orchestrator.js");
+  const good = await startServer("gpt-oss:20b");
+  process.env.TOKENWISE_LOCAL_MODEL = "gpt-oss:20b";
+  process.env.TOKENWISE_OLLAMA_BASE = `http://127.0.0.1:${good}`;
+  clearDoctorCache();
+  assert.equal(orchAvailable("local", undefined, {}), true);
+
+  const empty = await startServer("other");
+  process.env.TOKENWISE_OLLAMA_BASE = `http://127.0.0.1:${empty}`;
+  clearDoctorCache();
+  assert.equal(orchAvailable("local", undefined, {}), false);
+});

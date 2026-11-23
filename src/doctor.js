@@ -58,13 +58,14 @@ try {
 function remoteLocalCheck(model) {
   const baseRaw = process.env.TOKENWISE_OLLAMA_BASE.replace(/\/+$/, "");
   const base = baseRaw.endsWith("/v1") ? baseRaw : `${baseRaw}/v1`;
+  const shown = baseRaw.replace(/\/v1$/, "");
   const bad = (fix) => ({ installed: true, signedIn: false, model, fix, via: "gateway" });
   const r = run(process.execPath, ["--input-type=module", "-e", REMOTE_PROBE], 10000, { ...process.env, TW_BASE: base, TW_KEY: process.env.OLLAMA_API_KEY || "" });
   let probe = null;
   try { probe = JSON.parse(r?.out || ""); } catch {}
-  if (!probe || probe.error) return bad(`gateway unreachable: ${baseRaw.replace(/\/v1$/, "")}`);
+  if (!probe || probe.error) return bad(`gateway unreachable: ${shown}`);
   if (probe.status === 401 || probe.status === 403) return bad("check OLLAMA_API_KEY");
-  if (probe.status !== 200) return bad(`gateway unreachable: ${baseRaw.replace(/\/v1$/, "")}`);
+  if (probe.status !== 200) return bad(`gateway unreachable: ${shown}`);
   if (!probe.ids.includes(model)) return bad(`ollama pull ${model} on the gateway host`);
   return { installed: true, signedIn: true, model, fix: null, via: "gateway" };
 }
