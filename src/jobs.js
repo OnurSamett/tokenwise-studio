@@ -361,13 +361,14 @@ export class Jobs {
       : (timeoutMin ?? 20);
     const fixCtx = findFixRound(this, { task, write, parent, fixOf, files, skipFixDetect });
     const id = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14) + "-" + Math.random().toString(36).slice(2, 6);
-    let cwd = this.repo, branch = null;
+    let cwd = this.repo, branch = null, trustWorkspace = false;
     if (write) {
       if (!this.isGit()) throw new Error("write mode needs the project to be a git repository");
       cwd = path.join(this.home, "worktrees", id);
       addUntrustedDir(cwd);
       branch = `tokenwise/${id}`;
       git(this.repo, "worktree", "add", "-q", "-b", branch, cwd, "HEAD");
+      trustWorkspace = true; // created by Studio just now, in its own managed location
     }
     let playtestCfg = null;
     if (role === "playtest") {
@@ -430,7 +431,7 @@ export class Jobs {
     const workerTask = fixCtx
       ? buildFixRoundTask({ task, jobs: this, ...fixCtx })
       : withProjectMapSlice(withProjectNotes(task, this.repo), this.repo) + researchNote;
-    const { cmd, args, env: extraEnv } = command(spec, { task: workerTask, cwd, write, role: role || null, lastFile, images: attachments.map((i) => i.abs), playtest: playtestCfg, strictModel: noFallback });
+    const { cmd, args, env: extraEnv } = command(spec, { task: workerTask, cwd, write, role: role || null, lastFile, images: attachments.map((i) => i.abs), playtest: playtestCfg, strictModel: noFallback, trustWorkspace });
     const log = fs.createWriteStream(this.file(id, "log"), { flags: "a" });
     const write1 = (stream, line) => log.write(JSON.stringify({ t: Date.now(), stream, line: scrubBase64Images(line) }) + "\n");
     write1("meta", `$ ${cmd} ${args.map((a) => (a.length > 60 ? a.slice(0, 57) + "..." : a)).join(" ")}`);

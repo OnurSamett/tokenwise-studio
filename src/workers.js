@@ -152,13 +152,18 @@ export function resolve({ agent, model, effort, hint = null, provider = null, al
 }
 
 /** Build the CLI invocation. `lastFile` receives Codex's final message. */
-export function command({ agent, model, effort, via, hint: specHint, provider: specProvider }, { task, cwd, write, role = null, lastFile, images = [], playtest = null, strictModel = false }) {
+// Folder trust (`gemini --skip-trust`, `cursor-agent --trust`): both CLIs only load workspace config (.gemini/, .cursor/:
+// tool allow-lists, MCP servers, hooks) from folders the user trusted. Studio may only vouch for a folder it made itself:
+// `trustWorkspace` is set by Jobs.start only for the worktree it just created in <repo>/.tokenwise-studio/worktrees/<id>
+// with `git worktree add` (contents checked out by Studio, nothing run in it yet). The user's own repo (read-only jobs)
+// is never trusted on their behalf; trust it in the CLI itself if wanted.
+export function command({ agent, model, effort, via, hint: specHint, provider: specProvider }, { task, cwd, write, role = null, lastFile, images = [], playtest = null, strictModel = false, trustWorkspace = false }) {
   if (role === "playtest" && agent !== "claude" && agent !== "codex") {
     throw new Error(`${agent} does not support Roblox playtest; use claude or codex`);
   }
   if (agent === "cursor") {
     // Ask mode is Cursor's read-only mode; writes run only in the isolated worktree.
-    const args = ["-p", task, "--output-format", "text", "--workspace", cwd, "--trust", "--sandbox", "enabled"];
+    const args = ["-p", task, "--output-format", "text", "--workspace", cwd, ...(trustWorkspace ? ["--trust"] : []), "--sandbox", "enabled"];
     if (!write) args.push("--mode", "ask");
     if (model && model !== "auto") args.push("--model", model);
     return { cmd: cursorAgentBin(), args };
@@ -284,8 +289,8 @@ export function command({ agent, model, effort, via, hint: specHint, provider: s
     };
   }
   // gemini
-  // --skip-trust: headless Gemini refuses untrusted folders; workers already run read-only or in their own worktree.
-  const args = ["-p", task, "-o", "stream-json", "--skip-trust", "--approval-mode", write ? "auto_edit" : "plan"];
+  // --skip-trust only for a Studio-made worktree (see trustWorkspace above); headless Gemini refuses other untrusted folders.
+  const args = ["-p", task, "-o", "stream-json", ...(trustWorkspace ? ["--skip-trust"] : []), "--approval-mode", write ? "auto_edit" : "plan"];
   if (model) args.push("-m", model);
   return { cmd: "gemini", args };
 }

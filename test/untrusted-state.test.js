@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { Jobs, validJobRecord } from "../src/jobs.js";
+import { command, resolve } from "../src/workers.js";
 import { pruneExpiredShootouts, SHOOTOUT_TTL_MS } from "../src/shootout.js";
 
 const tmp = (p = "tw-untrusted-") => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), p)));
@@ -205,5 +206,38 @@ test("cleanup removes Studio's own worktree and branch; -d keeps an unmerged bra
       jobs.discard(c.id, { userRequested: true });
       assert.ok(!g("branch").includes(c.branch), "user discard force-deletes");
     } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
+});
+
+test("gemini/cursor folder-trust flags only for a worktree Studio created (M-2)", async () => {
+  const cur = resolve({ agent: "cursor" });
+  assert.ok(!command(cur, { task: "t", cwd: "/tmp/repo", write: false }).args.includes("--trust"));
+  assert.ok(command(cur, { task: "t", cwd: "/tmp/wt", write: true, trustWorkspace: true }).args.includes("--trust"));
+  const gem = { agent: "gemini", model: "gemini-2.5-pro", effort: "medium" };
+  assert.ok(!command(gem, { task: "t", cwd: "/tmp/repo", write: false }).args.includes("--skip-trust"));
+  assert.ok(command(gem, { task: "t", cwd: "/tmp/wt", write: true, trustWorkspace: true }).args.includes("--skip-trust"));
+
+  await withTempHome(async () => {
+    const { base, repo } = evilRepo();
+    const bin = path.join(base, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, "gemini"), `#!${process.execPath}\nconsole.log(JSON.stringify({ type: "result", result: "ok" }));\n`, { mode: 0o755 });
+    const prev = { PATH: process.env.PATH, AGY: process.env.TOKENWISE_AGY, GK: process.env.GEMINI_API_KEY };
+    process.env.PATH = `${bin}${path.delimiter}${prev.PATH}`; process.env.TOKENWISE_AGY = path.join(base, "no-agy"); delete process.env.GEMINI_API_KEY;
+    try {
+      const jobs = new Jobs(repo);
+      const argsOf = async (write) => {
+        const j = jobs.start({ agent: "gemini", model: "gemini-2.5-pro", task: "t", write, noFallback: true });
+        await jobs.wait(j.id, 10);
+        return fs.readFileSync(jobs.file(j.id, "log"), "utf8").split("\n")[0];
+      };
+      assert.ok(!(await argsOf(false)).includes("--skip-trust"), "read-only job in the user's repo is not trusted");
+      assert.ok((await argsOf(true)).includes("--skip-trust"), "Studio-made worktree is trusted");
+    } finally {
+      process.env.PATH = prev.PATH;
+      if (prev.AGY === undefined) delete process.env.TOKENWISE_AGY; else process.env.TOKENWISE_AGY = prev.AGY;
+      if (prev.GK !== undefined) process.env.GEMINI_API_KEY = prev.GK;
+      fs.rmSync(base, { recursive: true, force: true });
+    }
   });
 });
