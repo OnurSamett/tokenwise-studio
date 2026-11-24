@@ -16,6 +16,14 @@ const mdfindCache = new Map();
 export const defaultAppPath = (home = os.homedir()) => path.join(home, "Applications", APP_NAME);
 export const appJsonPath = (home = os.homedir()) => path.join(home, ".tokenwise-studio", "app.json");
 
+/** True when home lives under the OS temp dir (a test sandbox). Resolves symlinks (/var -> /private/var). */
+export function isTempHome(home, tmp = os.tmpdir()) {
+  const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(String(p || "")); } };
+  if (!home) return false;
+  const h = real(home), t = real(tmp);
+  return h === t || h.startsWith(t.endsWith(path.sep) ? t : t + path.sep);
+}
+
 /** Clear the cached mdfind lookup result (used by tests). */
 export function clearAppCache() {
   mdfindCache.clear();
@@ -104,8 +112,9 @@ export function findAppBundle(deps = {}) {
     if (verified) return { ...verified, source: "app.json" };
   } catch {}
 
-  // (b) Spotlight mdfind (cached)
-  const viaMdfind = mdfindLookup({ exec: runExec, home, fs: fsys, requireExecutable, now, cache });
+  // (b) Spotlight mdfind (cached). Skipped in tests / temp homes: mdfind ignores HOME and would find the user's real app.
+  const sandboxed = !(deps.exec || deps.execFileSync) && (process.env.TOKENWISE_TEST === "1" || isTempHome(home, deps.tmpdir));
+  const viaMdfind = sandboxed ? null : mdfindLookup({ exec: runExec, home, fs: fsys, requireExecutable, now, cache });
   if (viaMdfind) return viaMdfind;
 
   // (c) Fallback to ~/Applications/tokenwise studio.app
@@ -127,7 +136,7 @@ export function findOwnedAppBundles(deps = {}) {
     const raw = JSON.parse(fsys.readFileSync(appJsonPath(home), "utf8"));
     if (raw && (raw.bundlePath || raw.path)) candidates.push(raw.bundlePath || raw.path);
   } catch {}
-  candidates.push(...queryMdfind(runExec));
+  if (deps.exec || deps.execFileSync || !(process.env.TOKENWISE_TEST === "1" || isTempHome(home, deps.tmpdir))) candidates.push(...queryMdfind(runExec));
   candidates.push(defaultAppPath(home));
 
   const seen = new Set();

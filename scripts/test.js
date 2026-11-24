@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 const home = mkdtempSync(join(tmpdir(), "tw-test-home-"));
 const r = spawnSync(process.execPath, ["--test", "test/"], {
   stdio: "inherit",
-  env: { ...process.env, HOME: home, USERPROFILE: home, TOKENWISE_TEST: "1" },
+  env: { ...process.env, HOME: home, USERPROFILE: home, TOKENWISE_TEST: "1", TOKENWISE_NOTIFY: "0" },
 });
 try { rmSync(home, { recursive: true, force: true }); } catch {}
 process.exit(r.status ?? 1);

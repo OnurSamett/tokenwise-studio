@@ -14,6 +14,9 @@ import {
 import { VALIDATORS, DEFAULTS } from "../src/settings.js";
 import { Jobs } from "../src/jobs.js";
 
+// scripts/test.js sets TOKENWISE_NOTIFY=0 for safety; these tests drive the ledger with injected fakes.
+delete process.env.TOKENWISE_NOTIFY;
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const NOTIFY_URL = pathToFileURL(path.join(ROOT, "src", "notify.js")).href;
 const T0 = 1_800_000_000_000;

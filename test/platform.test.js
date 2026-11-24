@@ -10,6 +10,9 @@ import { notify, pendingBrowserNotices, resetNotifyState, flushNotifications } f
 import { decideAutoUpdate } from '../src/autoupdate.js';
 import { installSource } from '../src/version.js';
 
+// scripts/test.js sets TOKENWISE_NOTIFY=0 for safety; these tests drive the ledger with injected fakes.
+delete process.env.TOKENWISE_NOTIFY;
+
 test('Windows paths preserve drive, UNC, spaces and Unicode with injected platform', () => {
   assert.equal(pathsFor('win32'), path.win32);
   assert.equal(pathsFor('darwin'), path.posix);

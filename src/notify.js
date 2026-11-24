@@ -7,7 +7,7 @@ import path from "node:path";
 import { loadSettings, saveSettings, NOTIFY_LEVELS } from "./settings.js";
 import { t, tp, resolveLanguage, translateReason } from "../ui/i18n.js";
 import { formatHHMM } from "./cooldowns.js";
-import { BUNDLE_ID, findAppBundle } from "./appbundle.js";
+import { BUNDLE_ID, findAppBundle, isTempHome } from "./appbundle.js";
 
 export { loadSettings, saveSettings };
 
@@ -60,6 +60,15 @@ export function nativeNotifier(deps = {}) {
     }
     return findAppBundle(deps)?.binaryPath || null;
   } catch { return null; }
+}
+
+/**
+ * True when this process must never launch the native app: under tests (TOKENWISE_TEST=1), with
+ * TOKENWISE_NOTIFY=0, or when the effective home is a temp dir (a test sandbox). deps.tmpdir overrides os.tmpdir() (tests).
+ */
+export function nativeBlocked(deps = {}) {
+  if (process.env.TOKENWISE_TEST === "1" || process.env.TOKENWISE_NOTIFY === "0") return true;
+  return isTempHome(typeof deps.home === "function" ? deps.home() : (deps.home || os.homedir()), deps.tmpdir);
 }
 
 const nowOf = (deps = {}) => (typeof deps.now === "function" ? deps.now() : (deps.now ?? Date.now()));
@@ -216,6 +225,7 @@ function scheduleFlush(ms, deps = {}) {
 }
 
 function deliver(n, deps = {}) {
+  if (!deps.exec && nativeBlocked(deps)) return false; // never launch the real app from tests / temp homes
   const bin = deps.native !== undefined ? deps.native : nativeNotifier({ ...deps, exec: deps.execFileSync });
   if (!bin) return false;
   const run = deps.exec || execFile;
@@ -236,6 +246,8 @@ function deliver(n, deps = {}) {
 export function notify(ev = {}, deps = {}) {
   try {
     const { key } = ev;
+    // Tests and temp homes never reach the desktop (nor the user's real ledger); an injected exec is a fake, so it may run.
+    if (!deps.exec && (deps.platform || process.platform) === "darwin" && nativeBlocked(deps)) return false;
     // Routine model handoffs already appear in the chat.
     if (typeof key === "string" && key.startsWith("handoff:")) return false;
     if (key && seen.has(key)) return false;
@@ -283,6 +295,7 @@ export function notify(ev = {}, deps = {}) {
 /** Deliver every due group (one summary each) within the rate limit. Any process may flush; each group is sent once. */
 export function flushNotifications(deps = {}) {
   try {
+    if (!deps.exec && (deps.platform || process.platform) === "darwin" && nativeBlocked(deps)) return [];
     const now = nowOf(deps);
     const settings = deps.settings || loadSettings();
     const mac = (deps.platform || process.platform) === "darwin";

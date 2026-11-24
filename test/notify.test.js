@@ -34,6 +34,9 @@ import { clearDoctorCache } from "../src/doctor.js";
 import { Jobs } from "../src/jobs.js";
 import { Chats } from "../src/orchestrator.js";
 
+// scripts/test.js sets TOKENWISE_NOTIFY=0 for safety; these tests drive the ledger with injected fakes.
+delete process.env.TOKENWISE_NOTIFY;
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VALID_PLIST = `<plist><dict><key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string></dict></plist>`;
 const OTHER_PLIST = `<plist><dict><key>CFBundleIdentifier</key><string>com.example.other</string></dict></plist>`;

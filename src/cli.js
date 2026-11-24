@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // tokenwise-studio [path] [--port N] [--no-open] [--browser] [--pick]
 // tokenwise-studio export [--chat <id>] [--out <dir>]
-// tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-gemini] [--no-app] | uninstall [--dry-run] | update [--check]
+// tokenwise-studio doctor | setup [--dry-run] [--no-mcp] [--no-gemini] [--no-app] [--no-notify] | uninstall [--dry-run] | update [--check]
 import { projectProblem } from "./projectpath.js";
 import path from "node:path";
 import fs from "node:fs";
@@ -11,6 +11,8 @@ import { spawn, spawnSync, execFileSync } from "./process.js";
 import { launcherHash, quitStudioServers } from "./autoupdate.js";
 import { installArgs } from "./version.js";
 import { BUNDLE_ID, APP_NAME, EXE, defaultAppPath, appJsonPath, findAppBundle, findOwnedAppBundles, verifyAppBundle } from "./appbundle.js";
+import { loadSettings } from "./settings.js";
+import { notifyLevel } from "./notify.js";
 import { findAgy, agyMcpAddArgs, agyMcpRemoveArgs, syncGeminiMcp } from "./antigravity.js";
 
 const SRC = path.dirname(fileURLToPath(import.meta.url));
@@ -26,7 +28,7 @@ Usage:
                                                    opens in the tokenwise studio app if installed, --browser forces a browser tab
   tokenwise-studio --pick                          choose the project in a macOS folder dialog
   tokenwise-studio doctor                          check which workers are ready
-  tokenwise-studio setup [--dry-run] [--no-mcp] [--no-gemini] [--no-app]
+  tokenwise-studio setup [--dry-run] [--no-mcp] [--no-gemini] [--no-app] [--no-notify]
                                                    register the MCP server with Claude Code and Antigravity (Gemini)
                                                    and, on macOS, create ~/Applications/tokenwise studio.app
   tokenwise-studio uninstall [--dry-run]           undo what setup did
@@ -132,7 +134,7 @@ function buildIcon(resourcesDir) {
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
-export function buildApp(target = appPath(), { selfContained = false, sparkleDir = null, sparklePublicKey = null } = {}) {
+export function buildApp(target = appPath(), { selfContained = false, sparkleDir = null, sparklePublicKey = null, firstNotify = true } = {}) {
   if (selfContained && (!sparkleDir || !/^[A-Za-z0-9+/]{43}=$/.test(sparklePublicKey || ""))) {
     throw new Error("DMG builds require verified Sparkle and launcher/sparkle-public-key.txt; run scripts/sparkle-keys.sh");
   }
@@ -226,6 +228,7 @@ ${selfContained ? `  <key>SUFeedURL</key><string>https://tokenwise.site/appcast.
     // LaunchServices; a binary run directly is refused silently. Register the app, then post a first
     // notification through `open` so the permission prompt shows up now.
     run("/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister", ["-f", app]);
+    if (!firstNotify) return app; // --no-notify / tests / notifications off: no first notification
     const o = run("open", ["-n", "-a", app, "--args", "--notify", "--title", "tokenwise studio", "--message", "Notifications are on. Click one to open the studio.", "--subtitle", "Setup"]);
     console.log(o.ok ? "  asked macOS for notification permission (click Allow if prompted)" : "  could not request notification permission; desktop notifications may not appear");
   }
@@ -275,7 +278,7 @@ export async function doSetup(opts = {}) {
       log(r.ok ? "registered MCP server with Antigravity" : `Antigravity MCP registration failed: ${r.error || "unknown error"}`);
     }
     if (wantApp) {
-      try { log(`created ${buildApp(targetApp)}`); } catch (e) { console.error(`could not create the launcher app: ${e.message}`); }
+      try { log(`created ${buildApp(targetApp, { firstNotify: !flag("--no-notify") && !(opts.settings ? notifyLevel(opts.settings) === "off" : notifyLevel(loadSettings()) === "off") && process.env.TOKENWISE_TEST !== "1" })}`); } catch (e) { console.error(`could not create the launcher app: ${e.message}`); }
     }
     log("");
   }
