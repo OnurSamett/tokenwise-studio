@@ -579,7 +579,8 @@ export class Chats {
       let readyJobs = 0;
       try { readyJobs = this.jobs.list().filter((j) => j.parent === id && j.write && j.status === "done" && j.created >= turn.started).length; } catch {}
       const n = turnNotice({ turn: cur.turns[ti], chatTitle: cur.title, failed, stopped: stopped || cur.status === "stopped", readyJobs });
-      if (n) notify({ ...n, repo: this.jobs.repo, key: `turn:${id}:${ti}` });
+      const durationMs = Date.parse(cur.turns[ti].finished) - Date.parse(turn.started || "");
+      if (n) notify({ ...n, repo: this.jobs.repo, chat: id, key: `turn:${id}:${ti}`, durationMs: Number.isFinite(durationMs) ? durationMs : undefined });
     };
     if (turn.handoff) {
       if (pick.isLimit) notifyLimitHandoff({ provider: turn.handoff.from, toAgent: turn.agent, resetsAt: pick.resetsAt, subtitle: c.title, repo: this.jobs.repo });

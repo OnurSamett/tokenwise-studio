@@ -3,6 +3,7 @@
 ## 0.10.2
 
 - Connect models: guided setup and sign-in instructions for Claude, Codex and Gemini, plus optional NVIDIA and Ollama guidance.
+- Calmer notifications: every studio process (project windows and MCP servers) shares one ledger in ~/.tokenwise-studio/notify-ledger.json, so an event is sent once; events for a project within 20 s arrive as one summary ("3 jobs ready for review in web-app"), at most 1 per 20 s (burst 3). Settings → Notifications: Important only (default), All, Off, plus Do not disturb while the app is focused (default on). Jobs that Claude Code, Codex or Gemini start over MCP stay quiet unless they run over 2 minutes; an orchestrator's own jobs are covered by its turn notice. A bell in the top bar lists every event, including the ones kept off the desktop.
 - Add Spanish, German and French interface and macOS welcome translations, including locale-aware dates, plural forms and dictation language selection. Translations were machine-generated and should receive native-speaker review.
 
 ## 0.10.1

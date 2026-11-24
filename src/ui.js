@@ -3,7 +3,7 @@
 // Binds to 127.0.0.1 only.
 import "./env-init.js"; // must stay first: loads API keys / PATH from the login shell
 import { platformFeatures } from "./platform.js";
-import { pendingBrowserNotices } from "./notify.js";
+import { pendingBrowserNotices, noticeCenter, markNoticesRead, reportFocus, startNotifyPump } from "./notify.js";
 import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
@@ -110,7 +110,7 @@ function robloxInfo() {
 const state = () => {
   maybePruneShootouts(false);
   return {
-    version: LOADED_VERSION, platform: process.platform, features: platformFeatures(), notifications: pendingBrowserNotices(repo), repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit(), ...projectGit() }, recents: recents(), chats: chats.list(), recentChats: recentProjectChats(recents(), repo),
+    version: LOADED_VERSION, platform: process.platform, features: platformFeatures(), notifications: pendingBrowserNotices(repo), notices: noticeCenter(repo, { limit: 40 }), repo, project: { path: repo, name: path.basename(repo), isGit: jobs.isGit(), ...projectGit() }, recents: recents(), chats: chats.list(), recentChats: recentProjectChats(recents(), repo),
     folders: loadFolders(jobs.home),
     jobs: jobs.list().map(({ test, applyPost, ...j }) => (test ? { ...j, test: { ...test, tail: undefined } } : j)),
     shootouts: listShootouts(jobs),
@@ -428,6 +428,7 @@ export const handler = async (req, res) => {
       }
       if (what === "mentions") return send(res, 200, { mentions: MENTIONS });
       if (what === "folders") return send(res, 200, loadFolders(jobs.home));
+      if (what === "notices") return send(res, 200, noticeCenter(repo, { limit: 40 }));
       if (what === "settings") return send(res, 200, settingsPayload());
       if (what === "version") return send(res, 200, versionInfo());
       if (what === "limits") return send(res, 200, limits(jobs.home));
@@ -502,6 +503,11 @@ export const handler = async (req, res) => {
     if (req.method === "POST") {
       const b = await readBody(req, what === "upload" ? UPLOAD_BODY_LIMIT : undefined);
       if (what === "free-health-check") return send(res, 200, await checkFreeConnection());
+      if (what === "focus") return send(res, 200, { ok: reportFocus(repo, b?.focused === true) });
+      if (what === "notices") {
+        if (b?.action === "read") markNoticesRead(repo);
+        return send(res, 200, noticeCenter(repo, { limit: 40 }));
+      }
       if (what === "upload") return send(res, 200, saveUpload(repo, b));
       if (what === "studiolog") {
         if (b?.action === "format") return send(res, 200, { message: formatStudioPrompt(b.selected) });
@@ -584,7 +590,7 @@ export const handler = async (req, res) => {
             ...serverPrOpts,
           });
           const n = prNotice({ branch: result.branch, prUrl: result.prUrl, compareUrl: result.compareUrl });
-          notify({ ...n, subtitle: path.basename(repo), repo, key: `pr:${result.branch}:${result.sha}` });
+          notify({ ...n, kind: "pr", subtitle: path.basename(repo), repo, key: `pr:${result.branch}:${result.sha}` });
           return send(res, 200, result);
         }
         const message = String(b.message || "").trim();
@@ -748,9 +754,11 @@ function registerServer(repoPath, url) {
 }
 
 let activeServer = null;
+let notifyPumpTimer = null;
 let shootoutPruneTimer = null;
 export function startServer({ repo: start, port = 4777, summarize, spawn, chatFn, freeRunner, exec } = {}) {
   initServer({ repo: start, summarize, spawn, chatFn, freeRunner, exec });
+  if (!notifyPumpTimer && !process.env.NODE_TEST_CONTEXT) notifyPumpTimer = startNotifyPump();
   if (!shootoutPruneTimer) {
     shootoutPruneTimer = setInterval(() => maybePruneShootouts(true), 15 * 60 * 1000);
     shootoutPruneTimer.unref?.();

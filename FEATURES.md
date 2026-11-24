@@ -67,6 +67,7 @@ Version 0.10.1: verified commit-pinned updates, hardened Windows tool resolution
 - **Desktop notifications.** Ready for review, finished, failed, one per orchestrator turn, and a Codex takeover. Clicking opens that project's window. Why: you can leave long runs alone.
 - **Open folder in the app, and a lighter UI.** Choose a project from the app itself.
 - **Restore and welcome window.** The app reopens your last projects; with none, a welcome window lists recent projects instead of a folder dialog. Why: you land where you left off.
+- **Calm notifications.** One ledger across every studio process sends each event once, batches a project's events into one summary, and rate limits the rest. Levels: Important only (default), All, Off; Do not disturb while the app is focused. A bell lists everything, including what stayed quiet. Why: long runs still reach you, without a burst of alerts.
 - **App-only notifications.** Notifications come only from the tokenwise studio app (no script fallback), with one limit notice per window. Why: quieter, and clicks open the right project.
 - **Downloads** go to `~/Downloads` without overwriting files, and the file is shown in Finder. Why: exports work in the app window.
 - **Servers outlive the window.** Why: terminal and app share the same state.

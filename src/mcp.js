@@ -17,10 +17,11 @@ import { normalizeFreeModelArg } from "./workers.js";
 import { queryProjectMap } from "./projectmap.js";
 import { resolveTurnShootoutId } from "./shootout.js";
 import { resolvePlaytestWorker } from "./playtest.js";
+import { startNotifyPump } from "./notify.js";
 
 const repo = process.env.TOKENWISE_REPO || process.cwd();
 let jobsInstance = null;
-const getJobs = () => (jobsInstance ||= new Jobs(repo));
+const getJobs = () => (jobsInstance ||= new Jobs(repo, { origin: "mcp" }));
 const server = new McpServer({ name: "tokenwise-studio", version: "0.1.0" });
 
 const PAID_AGENTS = new Set(["codex", "claude", "gemini", "cursor"]);
@@ -476,5 +477,6 @@ server.registerTool("project_map", {
 }, (a) => defaultTools.handlers.project_map(a));
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  startNotifyPump();
   await server.connect(new StdioServerTransport());
 }
