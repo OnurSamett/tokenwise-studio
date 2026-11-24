@@ -151,6 +151,37 @@ export function resolve({ agent, model, effort, hint = null, provider = null, al
   return { agent, model: m, effort: eff };
 }
 
+// Worker environments are allow-listed: a prompt-injected worker that can run commands must not see every API key
+// and token of the user (GH_TOKEN, NPM_TOKEN, other providers' keys...). Each worker gets the basics plus its own
+// provider's variables; TOKENWISE_* settings pass, except secrets (only the free worker gets TOKENWISE_FREE_KEY).
+const BASE_ENV = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "TERM", "TZ", "LANG", "LANGUAGE",
+  "__CF_USER_TEXT_ENCODING", "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+  "USERPROFILE", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "HOMEDRIVE", "HOMEPATH",
+  "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS"]);
+const BASE_ENV_RE = /^(LC_[A-Z]+|XDG_[A-Z_]+)$/;
+const SECRETISH_RE = /(_KEY|_TOKEN|_SECRET)$/;
+const WORKER_ENV = {
+  codex: /^(OPENAI_|CODEX_)/,
+  local: /^(CODEX_|OLLAMA_)/,
+  claude: /^(ANTHROPIC_|CLAUDE_)/,
+  gemini: /^(GEMINI_|GOOGLE_)/,
+  antigravity: /^(GEMINI_|GOOGLE_|ANTIGRAVITY_|AGY_)/,
+  cursor: /^CURSOR_/,
+  free: /^(NVIDIA_API_KEY|OPENROUTER_API_KEY|GROQ_API_KEY|MISTRAL_API_KEY|TOKENWISE_FREE_KEY|OLLAMA_API_KEY|OLLAMA_HOST)$/,
+};
+/** The environment a worker process gets: an allow-list per worker type, everything else dropped. */
+export function workerEnv(agent, via = null, env = process.env) {
+  const own = WORKER_ENV[via === "antigravity" ? "antigravity" : agent] || null;
+  const bedrock = agent === "claude" && env.CLAUDE_CODE_USE_BEDROCK, vertex = agent === "claude" && env.CLAUDE_CODE_USE_VERTEX;
+  const out = {};
+  for (const [k, v] of Object.entries(env)) {
+    const K = k.toUpperCase();
+    if (BASE_ENV.has(K) || BASE_ENV_RE.test(K) || (own && own.test(K)) || (K.startsWith("TOKENWISE_") && !SECRETISH_RE.test(K))
+      || (bedrock && K.startsWith("AWS_")) || (vertex && /^(GOOGLE_|CLOUD_ML_REGION$)/.test(K))) out[k] = v;
+  }
+  return out;
+}
+
 /** Build the CLI invocation. `lastFile` receives Codex's final message. */
 // Folder trust (`gemini --skip-trust`, `cursor-agent --trust`): both CLIs only load workspace config (.gemini/, .cursor/:
 // tool allow-lists, MCP servers, hooks) from folders the user trusted. Studio may only vouch for a folder it made itself:

@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { command, resolve, textOf } from "./workers.js";
+import { command, resolve, textOf, workerEnv } from "./workers.js";
 import { loadTeam, ROLES, JOB_ROLES } from "./team.js";
 import { allowedToolSet, scrubBase64Images, setStopFlag } from "./studioproxy.js";
 import { PLAYTEST_WORKER_SYSTEM_PROMPT, resolvePlaytestWorker, parsePlaytestReport } from "./playtest.js";
@@ -438,7 +438,7 @@ export class Jobs {
 
     if (attachments.length && !["codex", "claude"].includes(spec.agent)) write1("meta", `${spec.agent}: images are not supported; continuing without images`);
 
-    const child = spawn(cmd, args, { cwd, env: { ...process.env, ...(extraEnv || {}) }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const child = spawn(cmd, args, { cwd, env: { ...workerEnv(spec.agent, spec.via), ...(extraEnv || {}) }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     this.save({ ...job, pid: child.pid, pidId: procIdentity(child.pid) });
     let lastText = null, cursorText = "", freeError = null, buf = { out: "", err: "" };
     const onData = (stream) => (chunk) => {

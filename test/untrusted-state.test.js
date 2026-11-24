@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { Jobs, validJobRecord } from "../src/jobs.js";
-import { command, resolve } from "../src/workers.js";
+import { command, resolve, workerEnv } from "../src/workers.js";
 import { pruneExpiredShootouts, SHOOTOUT_TTL_MS } from "../src/shootout.js";
 
 const tmp = (p = "tw-untrusted-") => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), p)));
@@ -238,6 +238,44 @@ test("gemini/cursor folder-trust flags only for a worktree Studio created (M-2)"
       if (prev.AGY === undefined) delete process.env.TOKENWISE_AGY; else process.env.TOKENWISE_AGY = prev.AGY;
       if (prev.GK !== undefined) process.env.GEMINI_API_KEY = prev.GK;
       fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+});
+
+test("workers get an allow-listed environment: only their own provider's keys (L-1)", async () => {
+  const env = { PATH: "/bin", HOME: "/h", LANG: "C", LC_ALL: "C", HTTPS_PROXY: "http://p", GH_TOKEN: "x", GITHUB_TOKEN: "x", NPM_TOKEN: "x",
+    OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a", GEMINI_API_KEY: "g", NVIDIA_API_KEY: "n", OLLAMA_API_KEY: "l", CURSOR_API_KEY: "c",
+    AWS_SECRET_ACCESS_KEY: "s", TOKENWISE_FREE_KEY: "f", TOKENWISE_FREE_BASE: "https://b", HF_TOKEN: "h", SSH_AUTH_SOCK: "/s" };
+  const keys = (agent, via) => Object.keys(workerEnv(agent, via, env)).sort();
+  const base = ["HOME", "HTTPS_PROXY", "LANG", "LC_ALL", "PATH", "TOKENWISE_FREE_BASE"];
+  assert.deepEqual(keys("codex"), [...base, "OPENAI_API_KEY"].sort());
+  assert.deepEqual(keys("claude"), [...base, "ANTHROPIC_API_KEY"].sort());
+  assert.deepEqual(keys("gemini"), [...base, "GEMINI_API_KEY"].sort());
+  assert.deepEqual(keys("gemini", "antigravity"), [...base, "GEMINI_API_KEY"].sort());
+  assert.deepEqual(keys("cursor"), [...base, "CURSOR_API_KEY"].sort());
+  assert.deepEqual(keys("local"), [...base, "OLLAMA_API_KEY"].sort());
+  assert.deepEqual(keys("free"), [...base, "NVIDIA_API_KEY", "OLLAMA_API_KEY", "TOKENWISE_FREE_KEY"].sort());
+  assert.ok(workerEnv("claude", null, { ...env, CLAUDE_CODE_USE_BEDROCK: "1" }).AWS_SECRET_ACCESS_KEY, "Bedrock users keep AWS credentials for claude");
+
+  // End to end: a spawned worker does not see GH_TOKEN.
+  await withTempHome(async () => {
+    const { base: dir, repo } = evilRepo();
+    const bin = path.join(dir, "bin"), out = path.join(dir, "env.json");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, "claude"), `#!${process.execPath}\nrequire("fs").writeFileSync(${JSON.stringify(out)}, JSON.stringify(process.env));\nconsole.log(JSON.stringify({ type: "result", result: "ok" }));\n`, { mode: 0o755 });
+    const prev = { PATH: process.env.PATH, GH: process.env.GH_TOKEN, AK: process.env.ANTHROPIC_API_KEY };
+    process.env.PATH = `${bin}${path.delimiter}${prev.PATH}`; process.env.GH_TOKEN = "ghp_secret"; process.env.ANTHROPIC_API_KEY = "sk-ant";
+    try {
+      const jobs = new Jobs(repo);
+      const j = jobs.start({ agent: "claude", model: "haiku", task: "t", noFallback: true });
+      await jobs.wait(j.id, 10);
+      const seen = JSON.parse(fs.readFileSync(out, "utf8"));
+      assert.equal(seen.GH_TOKEN, undefined);
+      assert.equal(seen.ANTHROPIC_API_KEY, "sk-ant");
+    } finally {
+      process.env.PATH = prev.PATH;
+      for (const [k, v] of [["GH_TOKEN", prev.GH], ["ANTHROPIC_API_KEY", prev.AK]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

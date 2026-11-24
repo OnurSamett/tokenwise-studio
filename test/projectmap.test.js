@@ -474,9 +474,9 @@ test("fix rounds pass only previous diff and failing check output instead of who
         'const path = require("node:path");',
         'const idx = process.argv.indexOf("-p");',
         'const prompt = idx >= 0 ? process.argv[idx + 1] : "";',
-        'const dump = process.env.TW_DUMP_FILE;',
+        'const dump = process.env.TOKENWISE_TEST_DUMP_FILE;',
         'fs.writeFileSync(dump, prompt);',
-        'if (process.env.TW_ROUND === "1") {',
+        'if (process.env.TOKENWISE_TEST_ROUND === "1") {',
         '  const dmg = path.join(process.cwd(), "src/shared/Combat/DamageCalc.luau");',
         '  fs.writeFileSync(dmg, fs.readFileSync(dmg, "utf8").replace("BaseCrit = 1.5", "BaseCrit = 1.75"));',
         '  const sp = path.join(process.cwd(), "vendor/Special.lua");',
@@ -490,8 +490,8 @@ test("fix rounds pass only previous diff and failing check output instead of who
       saveTestOverride(jobs.home, `${process.execPath} check.mjs`);
 
       // Round 1: initial write job gets full worker notes + Rojo map slice
-      process.env.TW_DUMP_FILE = dump1;
-      process.env.TW_ROUND = "1";
+      process.env.TOKENWISE_TEST_DUMP_FILE = dump1;
+      process.env.TOKENWISE_TEST_ROUND = "1";
       const j1 = jobs.start({
         agent: "claude",
         model: "haiku",
@@ -514,8 +514,8 @@ test("fix rounds pass only previous diff and failing check output instead of who
       assert.equal(tested.test.status, "fail");
 
       // Round 2: follow-up job for the same file (DamageCalc.luau) automatically detects fix round
-      process.env.TW_DUMP_FILE = dump2;
-      process.env.TW_ROUND = "2";
+      process.env.TOKENWISE_TEST_DUMP_FILE = dump2;
+      process.env.TOKENWISE_TEST_ROUND = "2";
       const j2 = jobs.start({
         agent: "claude",
         model: "haiku",
@@ -546,7 +546,7 @@ test("fix rounds pass only previous diff and failing check output instead of who
       assert.equal(cc.status, "fail");
 
       const dump3 = path.join(binDir, "task3.txt");
-      process.env.TW_DUMP_FILE = dump3;
+      process.env.TOKENWISE_TEST_DUMP_FILE = dump3;
       const j3 = jobs.start({
         agent: "claude",
         model: "haiku",
@@ -564,8 +564,8 @@ test("fix rounds pass only previous diff and failing check output instead of who
       assert.match(prompt3, /CHECK_FAIL: expected BaseCrit = 2\.0/);
       assert.match(prompt3, /BaseCrit = 1\.75/);
     } finally {
-      delete process.env.TW_DUMP_FILE;
-      delete process.env.TW_ROUND;
+      delete process.env.TOKENWISE_TEST_DUMP_FILE;
+      delete process.env.TOKENWISE_TEST_ROUND;
       process.env.PATH = prevPath;
       fs.rmSync(binDir, { recursive: true, force: true });
       fs.rmSync(repo, { recursive: true, force: true });

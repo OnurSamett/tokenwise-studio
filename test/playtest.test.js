@@ -1217,7 +1217,7 @@ console.log(JSON.stringify({ type: "item.completed", item: { type: "agent_messag
 
   fs.writeFileSync(path.join(binDir, "claude"), `#!/usr/bin/env node
 if (process.argv[2] === "auth") { console.log(JSON.stringify({ loggedIn: true })); process.exit(0); }
-if (process.env.FAKE_CLAUDE_SLEEP === "1") { setTimeout(() => process.exit(0), 10000); }
+if (process.env.TOKENWISE_TEST_CLAUDE_SLEEP === "1") { setTimeout(() => process.exit(0), 10000); }
 else {
   console.error("You've hit your limit · resets 5pm");
   process.exit(1);
@@ -1292,7 +1292,7 @@ else {
     assert.equal(fs.existsSync(codexCalledFile), false);
 
     // 3. Discard sets stop.flag and waits grace period before signaling process group
-    process.env.FAKE_CLAUDE_SLEEP = "1";
+    process.env.TOKENWISE_TEST_CLAUDE_SLEEP = "1";
     const sleepJob = jobs.start({
       task: "Long running playtest to discard",
       write: false,
@@ -1304,7 +1304,7 @@ else {
     assert.equal(fs.existsSync(stopFlagPath), true, "discard must set stop.flag immediately");
     await jobs.wait(sleepJob.id, 10);
   } finally {
-    delete process.env.FAKE_CLAUDE_SLEEP;
+    delete process.env.TOKENWISE_TEST_CLAUDE_SLEEP;
     clearCooldown("claude");
     saveSettings({ playtestEnabled: false, playtestModel: "sonnet", playtestMaxMinutes: 10 });
     process.env.PATH = prevPath;

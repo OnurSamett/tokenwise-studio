@@ -94,7 +94,7 @@ test("discard kills worker process group and close after discard does not touch 
     const binDir = tmp("tw-bin-");
     const pidFile = path.join(binDir, "pids.json");
     const prevPath = process.env.PATH;
-    const prevPidFile = process.env.TW_TEST_PID_FILE;
+    const prevPidFile = process.env.TOKENWISE_TEST_PID_FILE;
     let grandchildPid = null;
 
     try {
@@ -106,13 +106,13 @@ test("discard kills worker process group and close after discard does not touch 
         'const fs = require("node:fs");',
         'const { spawn } = require("node:child_process");',
         'const sub = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });',
-        'fs.writeFileSync(process.env.TW_TEST_PID_FILE, JSON.stringify({ pid: process.pid, sub: sub.pid }));',
+        'fs.writeFileSync(process.env.TOKENWISE_TEST_PID_FILE, JSON.stringify({ pid: process.pid, sub: sub.pid }));',
         'process.on("SIGTERM", () => { setTimeout(() => process.exit(143), 80); });',
         'setInterval(() => {}, 1000);',
       ].join("\n"), { mode: 0o755 });
 
       process.env.PATH = `${binDir}${path.delimiter}${prevPath}`;
-      process.env.TW_TEST_PID_FILE = pidFile;
+      process.env.TOKENWISE_TEST_PID_FILE = pidFile;
 
       const jobs = new Jobs(repo);
       const job = jobs.start({
@@ -152,8 +152,8 @@ test("discard kills worker process group and close after discard does not touch 
         try { process.kill(grandchildPid, "SIGKILL"); } catch {}
       }
       process.env.PATH = prevPath;
-      if (prevPidFile === undefined) delete process.env.TW_TEST_PID_FILE;
-      else process.env.TW_TEST_PID_FILE = prevPidFile;
+      if (prevPidFile === undefined) delete process.env.TOKENWISE_TEST_PID_FILE;
+      else process.env.TOKENWISE_TEST_PID_FILE = prevPidFile;
       fs.rmSync(binDir, { recursive: true, force: true });
       fs.rmSync(repo, { recursive: true, force: true });
     }
