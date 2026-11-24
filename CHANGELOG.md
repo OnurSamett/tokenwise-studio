@@ -2,8 +2,12 @@
 
 ## 0.10.2
 
+- Compact orchestrator guide: rewrote `buildGuide` into a short core of absolute rules plus conditional state-only sections (playtest only on Rojo projects with playtest enabled, research only when a research role exists, Free mode notes only in Free mode, budget only when set), cutting typical per-turn prompt size by ~49%.
+- Free/local worker guard rails: `delegate` rejects command, test, build, and install tasks for `free`/`local` workers (suggesting `job_test` or another agent), and free workers (`src/freeagent.js`) cap at 25 tool steps with early stop after 3 identical failing tool calls.
+- Chat search: full-text search across chat titles, user messages, and replies (`GET /api/search?q=`, `src/search.js`) with Turkish (`ı/İ/ş/ğ/ü/ö/ç`) and diacritic-insensitive matching, ranked snippets with highlighted matches, sidebar search box, `⌘K` palette Messages section, and scroll-to-message navigation.
 - Connect models: guided setup and sign-in instructions for Claude, Codex and Gemini, plus optional NVIDIA and Ollama guidance.
 - Calmer notifications: every studio process (project windows and MCP servers) shares one ledger in ~/.tokenwise-studio/notify-ledger.json, so an event is sent once; events for a project within 20 s arrive as one summary ("3 jobs ready for review in web-app"), at most 1 per 20 s (burst 3). Settings → Notifications: Important only (default), All, Off, plus Do not disturb while the app is focused (default on). Jobs that Claude Code, Codex or Gemini start over MCP stay quiet unless they run over 2 minutes; an orchestrator's own jobs are covered by its turn notice. A bell in the top bar lists every event, including the ones kept off the desktop.
+- Notifications never fire from tests: the native app is never launched under `TOKENWISE_TEST=1`, `TOKENWISE_NOTIFY=0` or a temp-dir home, `mdfind` is skipped there so a test can no longer find the installed app, `setup` skips its first notification with `--no-notify` (and in tests or when notifications are off), `npm test` sets `TOKENWISE_NOTIFY=0`, and a canary test (`test/notify-safety.test.js`) fails if any path launches a stub app.
 - Add Spanish, German and French interface and macOS welcome translations, including locale-aware dates, plural forms and dictation language selection. Translations were machine-generated and should receive native-speaker review.
 
 ## 0.10.1

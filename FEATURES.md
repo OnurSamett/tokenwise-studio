@@ -75,6 +75,7 @@ Version 0.10.1: verified commit-pinned updates, hardened Windows tool resolution
 
 ### Chat and workflow
 - **Chat folders, pinning and date groups.** Create, rename, pin, collapse and delete per-project folders (stored in `.tokenwise-studio/folders.json`; deleting a folder keeps its chats unfiled). Drag chats into folders or use "Move to folder" in the chat menu for keyboard navigation, with Today, Yesterday, Previous 7 days and Older date groups inside each folder and for unfiled chats. Why: long-lived projects stay organised without hiding active tasks.
+- **Chat search.** Full-text search in the sidebar and `⌘K` command palette (`GET /api/search?q=`, `src/search.js`) across chat titles, user messages and replies, with case- and diacritic-insensitive matching (including Turkish `ı/İ/ş/ğ/ü/ö/ç`), ranked snippets with safe highlighted matches, and click-to-jump scrolling to the matched message. Why: find past decisions and fixes across long-running projects in seconds.
 - **Command palette and shortcuts sheet.** Press `⌘K` (`Ctrl+K` elsewhere) for fuzzy search over chats, folders, actions and recent files from the side panel, or `?` for a full keyboard-shortcuts sheet. Why: jump anywhere or trigger actions without leaving the keyboard.
 - **Effort-aware working animations.** Running turns scale indicator motion and worker card progress speed with turn/worker effort (`low` through `xhigh`), paired with a sticky "Working · Stop" banner at the top of the chat, `prefers-reduced-motion` support, and a Settings toggle (`animations`). Why: clear live progress cues without visual noise.
 - **Rojo project map and Studio error import.** Builds a compact Rojo-aware project map (`project_map`), imports Studio Output logs with Rojo file:line stack mapping, and runs read-only playtests directly through Roblox Studio's `StudioMCP` (`src/studiomcp.js`, `src/studioproxy.js`, `src/playtest.js`). Why: debug and verify Roblox experiences without letting any worker edit the `.rbxl` outside Rojo.
@@ -93,7 +94,7 @@ Version 0.10.1: verified commit-pinned updates, hardened Windows tool resolution
 
 ### Safety
 - **Reviewed changes only.** Workers write to their worktree; you apply.
-- **Free-model tool loop.** Read, search, edit and allowlisted tests; no arbitrary commands; paths confined to the worktree, with symlinks, `.git` and secret files blocked. Free hosted models are used only after you opt in, because free tiers may train on prompts.
+- **Free-model tool loop.** Read, search and edit in an isolated worktree; no arbitrary commands (`delegate` rejects command/test/build/install tasks for `free`/`local` workers and suggests `job_test` or another agent); capped at 25 tool steps with early stop after 3 identical failing calls; paths confined to the worktree, with symlinks, `.git` and secret files blocked. Free hosted models are used only after you opt in, because free tiers may train on prompts.
 - **Local-only server.** Binds to `127.0.0.1`, with CSRF and Host checks.
 - **Upload validation** (PNG, JPEG, WebP, GIF; size and count caps) and **sandboxed workers** (Gemini write jobs run commands only inside Antigravity's terminal sandbox).
 - **`max` and `ultra` effort are refused**; Codex astra is blocked unless enabled.
@@ -152,7 +153,7 @@ The studio was built with tokenwise. The main Claude session acted only as orche
 - **Computer control through Roblox Studio's MCP:** StudioMCP playtesting (read-only, signature-verified, allowlisted, capped, stoppable) is now shipped; desktop browser/app visual verification flows remain planned.
 - **Mobile access:** an opt-in remote view of the existing UI over Tailscale, with pairing by QR code, device revocation and read-only by default. Not a native app, and never exposed to the public internet.
 
-**Later, from the roadmap:** session replay, multi-project queue, Linux, chat search.
+**Later, from the roadmap:** session replay, multi-project queue, Linux.
 
 ## 8. Version history
 

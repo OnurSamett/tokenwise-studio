@@ -18,7 +18,8 @@ import {
 } from "../src/freechat.js";
 import { runFreeAgent } from "../src/freeagent.js";
 import { command, parseFreeModel, resolve } from "../src/workers.js";
-import { prepareDelegateArgs } from "../src/mcp.js";
+import { prepareDelegateArgs, createOrchestratorTools, detectCommandTask } from "../src/mcp.js";
+import { Jobs } from "../src/jobs.js";
 import { buildGuide } from "../src/orchestrator.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -363,4 +364,178 @@ test("orchestrator GUIDE and MCP delegate description specify auto or nvidia:<id
   const mcpSrc = fs.readFileSync(path.join(ROOT, "src", "mcp.js"), "utf8");
   assert.match(mcpSrc, /model='auto'/);
   assert.match(mcpSrc, /nvidia:<id>/);
+});
+
+test("mcp.js rejects command-running tasks delegated to free or local workers and suggests job_test or another agent", () => {
+  const badTasks = [
+    "Run npm test and report failures",
+    "Run the unit tests in this repo",
+    "Execute pytest -q on the test suite",
+    "Install dependencies before editing",
+    "Build the project and verify output",
+    "Run cargo test on workspace",
+    "Run go test ./...",
+    "Run rojo build to check the place file",
+    "Lint src with selene",
+    "Format scripts with stylua",
+  ];
+  for (const agent of ["free", "local"]) {
+    for (const task of badTasks) {
+      assert.ok(detectCommandTask(task), `expected detectCommandTask to match: ${task}`);
+      assert.throws(
+        () => prepareDelegateArgs({ agent, model: agent === "free" ? "auto" : "local", task }),
+        /job_test.*another agent/i,
+      );
+    }
+    // Non-command tasks and explicit negative disclaimers are allowed
+    assert.doesNotThrow(() =>
+      prepareDelegateArgs({ agent, model: agent === "free" ? "auto" : "local", task: "Inspect test/free.test.js and summarize the assertions" }),
+    );
+    assert.doesNotThrow(() =>
+      prepareDelegateArgs({ agent, model: agent === "free" ? "auto" : "local", task: "Update src/math.js to fix rounding. Do not run tests." }),
+    );
+  }
+  // Paid agents may receive command-running tasks
+  assert.doesNotThrow(() =>
+    prepareDelegateArgs({ agent: "codex", model: "sol", task: "Run npm test and fix failures" }),
+  );
+
+  // delegate handler returns isError with clear guidance
+  const repo = tmp("tw-mcp-free-cmd-");
+  try {
+    const jobs = new Jobs(repo);
+    const tools = createOrchestratorTools({ jobs, parent: null, permissionMode: "ask" });
+    return tools.callTool("delegate", { agent: "free", model: "auto", task: "Run npm test and fix errors", write: true }).then((res) => {
+      assert.equal(res.isError, true);
+      assert.match(res.text, /cannot run commands/i);
+      assert.match(res.text, /job_test/);
+    });
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("runFreeAgent caps free workers at 25 tool steps", async () => {
+  const repo = tmp("tw-free-cap-");
+  fs.writeFileSync(path.join(repo, "a.txt"), "hello\n");
+  try {
+    let calls = 0;
+    const events = [];
+    const res = await runFreeAgent({
+      task: "Inspect files",
+      root: repo,
+      emit: (e) => events.push(e),
+      chatFn: async () => {
+        calls++;
+        return {
+          choices: [{
+            message: {
+              content: null,
+              tool_calls: [{ id: `c${calls}`, function: { name: "list_dir", arguments: '{"path":"."}' } }],
+            },
+          }],
+          usage: { prompt_tokens: 5, completion_tokens: 5 },
+        };
+      },
+    });
+    assert.equal(res.ok, false);
+    assert.equal(calls, 25);
+    assert.match(res.message, /stopped after 25 tool steps/i);
+    assert.equal(events.filter((e) => e.type === "free.tool").length, 25);
+
+    // Also caps burst tool calls within a single model response at 25 tool steps
+    let burstExecuted = 0;
+    const burstRes = await runFreeAgent({
+      task: "Inspect files",
+      root: repo,
+      emit: (e) => { if (e.type === "free.tool") burstExecuted++; },
+      chatFn: async () => ({
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: Array.from({ length: 30 }, (_, i) => ({
+              id: `b${i}`,
+              function: { name: "list_dir", arguments: '{"path":"."}' },
+            })),
+          },
+        }],
+      }),
+    });
+    assert.equal(burstRes.ok, false);
+    assert.equal(burstExecuted, 25);
+    assert.match(burstRes.message, /stopped after 25 tool steps/i);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("runFreeAgent stops early when the same failing tool call repeats 3 times", async () => {
+  const repo = tmp("tw-free-repeat-");
+  fs.writeFileSync(path.join(repo, "code.js"), "const x = 1;\n");
+  try {
+    let turn = 0;
+    const events = [];
+    const res = await runFreeAgent({
+      task: "Edit code.js",
+      write: true,
+      root: repo,
+      emit: (e) => events.push(e),
+      chatFn: async () => {
+        turn++;
+        // Alternate key order on the 2nd call to verify canonical argument matching
+        const args = turn === 2
+          ? JSON.stringify({ new_text: "const x = 2;", old_text: "missing", path: "code.js" })
+          : JSON.stringify({ path: "code.js", old_text: "missing", new_text: "const x = 2;" });
+        return {
+          choices: [{
+            message: {
+              content: null,
+              tool_calls: [{ id: `f${turn}`, function: { name: "replace_in_file", arguments: args } }],
+            },
+          }],
+        };
+      },
+    });
+    assert.equal(res.ok, false);
+    assert.equal(turn, 3);
+    assert.match(res.message, /repeated 3 times/i);
+    assert.equal(events.filter((e) => e.type === "free.tool" && e.error).length, 3);
+
+    // Two failures followed by a different successful call and final answer must NOT stop early
+    let seq = 0;
+    const okRes = await runFreeAgent({
+      task: "Edit code.js",
+      write: true,
+      root: repo,
+      emit: () => {},
+      chatFn: async () => {
+        seq++;
+        if (seq <= 2) {
+          return {
+            choices: [{
+              message: {
+                content: null,
+                tool_calls: [{ id: `r${seq}`, function: { name: "read_file", arguments: '{"path":"missing.js"}' } }],
+              },
+            }],
+          };
+        }
+        if (seq === 3) {
+          return {
+            choices: [{
+              message: {
+                content: null,
+                tool_calls: [{ id: `r${seq}`, function: { name: "read_file", arguments: '{"path":"code.js"}' } }],
+              },
+            }],
+          };
+        }
+        return { choices: [{ message: { content: "done" } }] };
+      },
+    });
+    assert.equal(okRes.ok, true);
+    assert.equal(okRes.text, "done");
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });

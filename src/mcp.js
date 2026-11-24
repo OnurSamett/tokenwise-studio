@@ -25,6 +25,15 @@ const getJobs = () => (jobsInstance ||= new Jobs(repo, { origin: "mcp" }));
 const server = new McpServer({ name: "tokenwise-studio", version: "0.1.0" });
 
 const PAID_AGENTS = new Set(["codex", "claude", "gemini", "cursor"]);
+const NEGATED_CMD_RE = /\b(?:do not|don't|never|cannot|can't|won't|avoid|without)\s+(?:run(?:ning)?|execut(?:e|ing)|install(?:ing)?|build(?:ing)?|test(?:ing)?)\b[^.\n]*/gi;
+const CMD_INTENT_RE = /\b(?:run|execute|exec|invoke|launch)\s+(?:(?:the|all|any|a|this|these|unit|integration|e2e|end-to-end|project|full|local|failing|existing)\s+)*(?:command|commands|cmd|shell|bash|zsh|sh|script|scripts|test|tests|suite|specs?|build|compile|bundle|lint|linter|checks?|install|npm|yarn|pnpm|bun|npx|node|python|python3|pytest|cargo|go|rojo|selene|stylua|make|gradle|mvn)\b|\b(?:run|execute)\s+`[^`]+`|\b(?:npm|yarn|pnpm|bun)\s+(?:test|run|install|ci|build|exec|start|lint|check|i)\b|\bnpx\b|\b(?:pytest|selene|stylua)\b|\bcargo\s+(?:test|build|check|run|clippy|fmt|install|bench)\b|\bgo\s+(?:test|build|run|vet)\b|\brojo\s+(?:build|serve|sourcemap|upload|plugin)\b|\b(?:pip|pip3|uv|poetry|brew|make)\s+(?:install|run|test|build)\b|\binstall\s+(?:the\s+)?(?:dependencies|packages|deps|modules|node_modules|requirements|npm|pip)\b|\b(?:build|compile)\s+(?:the\s+)?(?:project|app|bundle|package|dmg|binary|dist)\b/i;
+
+/** Detect when a task asks a worker to run commands, tests, builds, or installs. */
+export function detectCommandTask(task) {
+  const cleaned = String(task || "").replace(NEGATED_CMD_RE, " ");
+  const m = cleaned.match(CMD_INTENT_RE);
+  return m ? m[0].trim() : null;
+}
 
 /** Validate and resolve per-chat context from an explicit `chat_id` argument or `TOKENWISE_PARENT` env. */
 export function resolveChatId(argChatId, envParent = process.env.TOKENWISE_PARENT, home = null) {
@@ -68,6 +77,14 @@ export function prepareDelegateArgs(a, opts = {}) {
     throw new Error(
       `Free mode is on (no plan usage): paid worker '${next.agent}' is disabled. Delegate with agent="free" (model="auto") or agent="local" instead.`,
     );
+  }
+  if (next.agent === "free" || next.agent === "local") {
+    const cmdMatch = detectCommandTask(next.task);
+    if (cmdMatch) {
+      throw new Error(
+        `Free/local workers cannot run commands, tests, builds, or installs (matched "${cmdMatch}"). Use job_test to run project tests on a finished write job, or delegate to another agent (codex, claude, or gemini).`,
+      );
+    }
   }
   if (next.agent !== "free") return next;
   const { model, hint, provider } = normalizeFreeModelArg(next.model);
@@ -392,7 +409,7 @@ server.registerTool("delegate", {
   description: [
     "Start a self-contained task on another AI agent CLI and return a job id immediately (it runs in the background).",
     "agent: 'codex' (models: terra, sol [default], or a full slug; astra is blocked unless the user opted in),",
-    "'local' (Ollama model via Codex, free and unlimited, can edit files), 'free' (free hosted models via a safe tool loop; pass model='auto' [default] or a full 'nvidia:<id>' / '<provider>:<id>' from the team options — never a bare alias like 'deepseek'; reads and, with write=true, edits files; it cannot run commands; opt-in),",
+    "'local' (Ollama model via Codex, free and unlimited, can edit files; do not assign command/test/build/install tasks — use job_test or another agent), 'free' (free hosted models via a safe tool loop; pass model='auto' [default] or a full 'nvidia:<id>' / '<provider>:<id>' from the team options — never a bare alias like 'deepseek'; reads and, with write=true, edits files; cannot run commands/tests/builds/installs; opt-in),",
     "'claude' (haiku [default], sonnet, opus), 'gemini' (hydrogen or argon), or 'cursor' (Cursor Agent CLI, auto model; effort is controlled by Cursor). effort: low|medium|high|xhigh.",
     "write=false: read-only answer. write=true: the worker edits files in its own git worktree branched from HEAD",
     "(uncommitted changes in the main tree are NOT visible to it); review with job_diff, then job_merge or job_discard.",
