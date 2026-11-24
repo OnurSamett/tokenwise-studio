@@ -44,6 +44,7 @@ import { startShootout, listShootouts, getShootout, pickShootout, discardShootou
 import { loadFolders, saveFolders, applyFolderAction } from "./folders.js";
 import { recentProjectChats } from "./recent-chats.js";
 import { projectRuntime, rememberRuntime, anyProjectBusy } from "./project-runtimes.js";
+import { searchChats } from "./search.js";
 
 
 const htmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
@@ -428,6 +429,14 @@ export const handler = async (req, res) => {
       }
       if (what === "mentions") return send(res, 200, { mentions: MENTIONS });
       if (what === "folders") return send(res, 200, loadFolders(jobs.home));
+      if (what === "search") {
+        return send(res, 200, searchChats({
+          chats,
+          repo,
+          query: url.searchParams.get("q") || "",
+          limit: url.searchParams.get("limit"),
+        }));
+      }
       if (what === "settings") return send(res, 200, settingsPayload());
       if (what === "version") return send(res, 200, versionInfo());
       if (what === "limits") return send(res, 200, limits(jobs.home));

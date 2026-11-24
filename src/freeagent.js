@@ -22,6 +22,7 @@ import { loadSettings } from "./settings.js";
 import { parseFreeModel } from "./workers.js";
 
 const MAX_STEPS = Number(process.env.TOKENWISE_FREE_MAX_STEPS || 40);
+const WORKER_MAX_STEPS = Number(process.env.TOKENWISE_FREE_WORKER_MAX_STEPS || process.env.TOKENWISE_FREE_MAX_STEPS || 25);
 const MAX_MINUTES = Number(process.env.TOKENWISE_FREE_MAX_MINUTES) > 0 ? Number(process.env.TOKENWISE_FREE_MAX_MINUTES) : 15;
 const MAX_READ = 2 << 20, MAX_WRITE = 1 << 20, MAX_SEARCH_FILE = 1_000_000, MAX_SEARCH_TOTAL = 50 << 20, MAX_HITS = 120;
 const SKIP_DIRS = new Set([".git", "node_modules", ".tokenwise-studio", "__pycache__", ".venv", "venv", "dist", "build", ".next", "target"]);
@@ -119,19 +120,19 @@ function search(pattern, p = ".", root = ROOT) {
   walk(safePath(p, { root }));
   return hits.join("\n") || "(no matches)";
 }
-function writeFile(p, content) {
-  const abs = safePath(p, { file: true });
-  writeText(abs, String(content));
-  return `wrote ${relp(abs)} (${String(content).length} chars)`;
+function writeFile(p, content, root = ROOT) {
+  const abs = safePath(p, { file: true, root });
+  writeText(abs, String(content), root);
+  return `wrote ${relp(abs, root)} (${String(content).length} chars)`;
 }
-function replaceInFile(p, oldText, newText) {
-  const abs = safePath(p, { file: true });
-  const s = readText(abs, MAX_READ);
+function replaceInFile(p, oldText, newText, root = ROOT) {
+  const abs = safePath(p, { file: true, root });
+  const s = readText(abs, MAX_READ, root);
   const n = s.split(String(oldText)).length - 1;
   if (n === 0) throw new Error("old_text not found; read the file again and copy the exact text");
   if (n > 1) throw new Error(`old_text appears ${n} times; include more surrounding lines to make it unique`);
-  writeText(abs, s.replace(String(oldText), () => String(newText)));
-  return `edited ${relp(abs)}`;
+  writeText(abs, s.replace(String(oldText), () => String(newText)), root);
+  return `edited ${relp(abs, root)}`;
 }
 
 const fn = (name, description, properties, required) => ({ type: "function", function: { name, description, parameters: { type: "object", properties, required } } });
@@ -152,10 +153,16 @@ function callTool(name, a, root = ROOT) {
     case "list_dir": return listDir(a.path, root);
     case "read_file": return readFile(a.path, a.start_line, a.end_line, root);
     case "search": return search(a.pattern, a.path, root);
-    case "replace_in_file": return replaceInFile(a.path, a.old_text, a.new_text);
-    case "write_file": return writeFile(a.path, a.content);
+    case "replace_in_file": return replaceInFile(a.path, a.old_text, a.new_text, root);
+    case "write_file": return writeFile(a.path, a.content, root);
     default: throw new Error(`unknown tool ${name}`);
   }
+}
+
+function stableJson(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map(stableJson).join(",") + "]";
+  return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + stableJson(v[k])).join(",") + "}";
 }
 const toolEvent = (name, a) => {
   if (name === "delegate") {
@@ -215,9 +222,11 @@ async function buildFreePairs({ providers, emit, probeTimeout, pick }) {
   return { pairs, latency, fellFrom };
 }
 
-export async function runFreeAgent({ task, write = false, emit = out, probeTimeout } = {}) {
+export async function runFreeAgent({ task, write = false, emit = out, probeTimeout, maxSteps, chatFn = null, root = ROOT } = {}) {
+  const workRoot = fs.realpathSync(root);
+  const workerMaxSteps = Number(maxSteps) > 0 ? Number(maxSteps) : WORKER_MAX_STEPS;
   const providers = freeProviders();
-  if (!providers.length) {
+  if (!providers.length && !chatFn) {
     const message = "no free provider: set NVIDIA_API_KEY, OPENROUTER_API_KEY, GROQ_API_KEY or MISTRAL_API_KEY";
     emit({ type: "free.error", status: 0, message });
     return { ok: false, exitCode: 2, status: 0, message };
@@ -234,15 +243,23 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
   ];
   // Candidate (provider, model, isForced) tuples in order; the conversation is portable, so a rate limit
   // or unavailable model mid-task just continues on the next candidate.
-  const built = await buildFreePairs({
-    providers, emit, probeTimeout,
-    pick: async (p, i) => {
-      const forced = forcedModelFor(p, i === 0);
-      return { list: process.env.TOKENWISE_FREE_STRICT_MODEL === "1" && forced ? [forced] : await pickModels(p, i === 0), forced };
-    },
-  });
-  const { pairs, latency } = built;
-  let fellFrom = built.fellFrom;
+  const pairs = [];
+  const latency = new Map();
+  let fellFrom = null;
+  if (chatFn) {
+    pairs.push([{ name: "stub", base: "http://stub.local/v1", key: "stub" }, "stub-free-model", true]);
+  } else {
+    const built = await buildFreePairs({
+      providers, emit, probeTimeout,
+      pick: async (p, i) => {
+        const forced = forcedModelFor(p, i === 0);
+        return { list: process.env.TOKENWISE_FREE_STRICT_MODEL === "1" && forced ? [forced] : await pickModels(p, i === 0), forced };
+      },
+    });
+    pairs.push(...built.pairs);
+    for (const [key, v] of built.latency) latency.set(key, v);
+    fellFrom = built.fellFrom;
+  }
   const firstOk = new Set();
   if (!pairs.length) {
     emit({ type: "free.error", status: 0, message: "no usable free model" });
@@ -250,6 +267,8 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
   }
 
   let k = 0, usage = { prompt_tokens: 0, completion_tokens: 0 }, announced = -1, last = null;
+  let toolSteps = 0;
+  const failCounts = new Map();
   const deadline = Date.now() + MAX_MINUTES * 60_000;
   const checkTimeUp = () => {
     if (Date.now() < deadline) return null;
@@ -258,7 +277,7 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
     emit({ type: "free.error", status: 0, message });
     return { ok: false, exitCode: 1, status: 0, message, usage };
   };
-  for (let step = 0; step < MAX_STEPS; step++) {
+  for (let step = 0; step < workerMaxSteps; step++) {
     const expired = checkTimeUp();
     if (expired) return expired;
     if (k >= pairs.length) break;
@@ -270,13 +289,16 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
     const hasNext = k + 1 < pairs.length;
     let data;
     try {
-      data = await chat(p, model, messages, tools, Math.max(1000, Math.min(hasNext ? 90_000 : 180_000, deadline - Date.now())), hasNext ? 20_000 : 60_000);
-      recordModelHealth(p.name, model, true, "ok");
+      const timeoutMs = Math.max(1000, Math.min(hasNext ? 90_000 : 180_000, deadline - Date.now()));
+      data = chatFn
+        ? (chatFn.length >= 3 ? await chatFn(p, model, messages, tools, timeoutMs, step) : await chatFn({ provider: p, model, messages, tools, timeoutMs, step }))
+        : await chat(p, model, messages, tools, timeoutMs, hasNext ? 20_000 : 60_000);
+      if (!chatFn) recordModelHealth(p.name, model, true, "ok");
       if (!firstOk.has(k)) { firstOk.add(k); if (data?._latency) emit({ type: "free.latency", provider: p.name, model, ms: data._latency.firstMs }); }
     } catch (e) {
       const status = Number(e?.status) || 0;
       const message = skipMsg(p, e);
-      if (isDownError(e)) recordModelHealth(p.name, model, false, message);
+      if (!chatFn && isDownError(e)) recordModelHealth(p.name, model, false, message);
       last = { status, message };
       fellFrom ||= { from: `${p.name}:${model}`, reason: message };
       emit({ type: "free.skip", provider: p.name, model, status, message });
@@ -286,7 +308,7 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
     }
     usage.prompt_tokens += data?.usage?.prompt_tokens || 0;
     usage.completion_tokens += data?.usage?.completion_tokens || 0;
-    const msg = normalizeMessage(data?.choices?.[0]?.message || {});
+    const msg = normalizeMessage(data?.choices?.[0]?.message || data?.message || data?.msg || data || {});
     if (typeof msg.reasoning_content === "string" && msg.reasoning_content.trim()) emit({ type: "free.think", text: msg.reasoning_content.trim().slice(0, 64 * 1024) });
     const calls = msg.tool_calls || [];
     if (!calls.length) {
@@ -300,23 +322,45 @@ export async function runFreeAgent({ task, write = false, emit = out, probeTimeo
       const expired2 = checkTimeUp();
       if (expired2) return expired2;
       if (!c || typeof c !== "object") continue;
-      let a = {}; try { a = JSON.parse(c.function?.arguments || "{}"); } catch {}
+      if (toolSteps >= workerMaxSteps) {
+        const message = `stopped after ${workerMaxSteps} tool steps without finishing`;
+        emit({ type: "free.usage", usage });
+        emit({ type: "free.error", status: 0, message });
+        return { ok: false, exitCode: 1, status: 0, message, usage };
+      }
+      toolSteps++;
+      let a = {};
+      if (typeof c.function?.arguments === "string") {
+        try { a = JSON.parse(c.function.arguments || "{}"); } catch {}
+      } else if (c.function?.arguments && typeof c.function.arguments === "object") {
+        a = c.function.arguments;
+      }
       if (!a || typeof a !== "object" || Array.isArray(a)) a = {};
       const name = c.function?.name;
+      const failKey = `${name || ""}:${stableJson(a)}`;
       let result;
       try {
         if (!tools.some((t) => t.function.name === name)) throw new Error(`tool ${name} is not available in this mode`);
-        result = callTool(name, a);
+        result = callTool(name, a, workRoot);
+        failCounts.delete(failKey);
         emit({ type: "free.tool", ...toolEvent(name, a) });
       } catch (e) {
+        const repeats = (failCounts.get(failKey) || 0) + 1;
+        failCounts.set(failKey, repeats);
         result = `ERROR: ${e.message}`;
         emit({ type: "free.tool", ...toolEvent(name, a), error: e.message });
+        if (repeats >= 3) {
+          const message = `stopped early: failing tool call ${name} repeated 3 times (${e.message})`;
+          emit({ type: "free.usage", usage });
+          emit({ type: "free.error", status: 0, message });
+          return { ok: false, exitCode: 1, status: 0, message, usage };
+        }
       }
-      messages.push({ role: "tool", tool_call_id: c.id, content: String(result) });
+      messages.push({ role: "tool", tool_call_id: c.id || name, content: String(result) });
     }
   }
   emit({ type: "free.usage", usage });
-  const message = last ? (last.status === 429 || /rate limit/i.test(last.message) ? `rate limit reached on every free provider (${last.message})` : last.message) : `stopped after ${MAX_STEPS} steps without finishing`;
+  const message = last ? (last.status === 429 || /rate limit/i.test(last.message) ? `rate limit reached on every free provider (${last.message})` : last.message) : `stopped after ${workerMaxSteps} tool steps without finishing`;
   emit({ type: "free.error", status: last?.status || 0, message });
   return { ok: false, exitCode: 1, status: last?.status || 0, message, usage };
 }

@@ -882,9 +882,30 @@
   @media (max-width: 640px) { .roles { grid-template-columns: 1fr; } .crow .hint { display: none; } }
 
   /* Sidebar search, folders, date groups, drag & drop */
-  .side-search { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--s1); color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
-  .side-search:hover { border-color: var(--accent); color: var(--text); }
-  .side-search .kbd { margin-left: auto; font: 500 11px/1 var(--mono); padding: 2px 5px; border-radius: 4px; background: var(--s2); border: 1px solid var(--line); color: var(--muted); }
+  .side-search { display: flex; align-items: center; gap: 7px; width: 100%; height: 32px; padding: 0 8px 0 10px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--s1); color: var(--muted); font: inherit; font-size: 12.5px; }
+  .side-search:hover, .side-search:focus-within { border-color: var(--accent); color: var(--text); }
+  .side-search svg { flex: none; color: var(--muted); }
+  .side-search-in { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 12.5px; outline: none; padding: 0; }
+  .side-search-in::placeholder { color: var(--dim); }
+  .side-search-clr { border: 0; background: none; color: var(--muted); font-size: 14px; line-height: 1; padding: 1px 4px; border-radius: 4px; cursor: pointer; flex: none; }
+  .side-search-clr:hover { background: var(--s2); color: var(--text); }
+  .side-search .kbd { flex: none; font: 500 11px/1 var(--mono); padding: 2px 5px; border-radius: 4px; background: var(--s2); border: 1px solid var(--line); color: var(--muted); cursor: pointer; }
+  .side-search .kbd:hover { border-color: var(--accent); color: var(--text); }
+  .srch-meta { font-size: 11px; color: var(--muted); padding: 4px 8px 6px; }
+  .srch-item { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 9px; padding: 8px 9px; color: var(--text); cursor: pointer; }
+  .srch-item:hover { background: var(--s1); border-color: var(--line); }
+  .srch-item.on { background: var(--s2); border-color: var(--line2); }
+  .srch-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .srch-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; }
+  .srch-kind { font: 500 10px/1.2 var(--mono); padding: 1px 5px; border-radius: 99px; background: var(--s2); border: 1px solid var(--line); color: var(--muted); flex: none; }
+  .srch-when { font-size: 11px; color: var(--dim); flex: none; }
+  .srch-snip { font-size: 12px; color: var(--muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+  mark.srch-hl { background: var(--accent-soft); color: var(--accent); border-radius: 3px; padding: 0 2px; font-weight: 600; }
+  .search-flash { animation: srch-flash 1.8s ease-out; }
+  @keyframes srch-flash {
+    0% { box-shadow: 0 0 0 2px var(--accent); background: var(--accent-soft); border-radius: 10px; }
+    100% { box-shadow: 0 0 0 0 transparent; background: transparent; }
+  }
   .sechead { display: flex; align-items: center; justify-content: space-between; padding: 8px 6px 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
   .sechead .add { width: 20px; height: 20px; border: 0; border-radius: 5px; background: none; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
   .sechead .add:hover { background: var(--s2); color: var(--text); }
@@ -1018,7 +1039,7 @@
 <aside class="side" id="side">
   <div class="brand"><img src="/logo.png" alt="">tokenwise <span>studio</span></div>
   <button class="newtask" id="newtask"><span style="font-size:17px;line-height:1">+</span> <span id="newtasklbl">New task</span></button>
-  <button class="side-search" id="searchbtn" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span id="searchlbl">Search chats…</span><span class="kbd" id="searchkbd">⌘K</span></button>
+  <div class="side-search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input class="side-search-in" id="side-search-in" type="text" placeholder="Search chats &amp; messages…" autocomplete="off" spellcheck="false" aria-label="Search chats &amp; messages"><button class="side-search-clr" id="side-search-clr" type="button" aria-label="Clear search" hidden>×</button><button class="kbd" id="searchbtn" type="button">⌘K</button></div>
   <div class="chats" id="chats"></div>
   <div class="sidefoot"><div class="updready" id="updready" hidden></div><button class="newver" id="newver" hidden></button><div class="footcard"><div class="usage" id="usage" hidden></div><button type="button" class="limit-strip" id="limitsbtn" aria-expanded="false"><span class="ls-row"><span id="limitslbl">Plan limits</span><span class="ls-meta" id="limitsmeta"></span></span><span class="ls-track" id="limitstrack"><i></i></span></button><button type="button" class="more-row" id="morebtn" aria-expanded="false" aria-controls="footmenu"><span id="sidemorelbl">More</span><span class="ls-chev" aria-hidden="true">›</span></button><div class="foot-menu" id="footmenu" hidden><button type="button" id="settingslink"></button><button type="button" id="setuplink"></button><button type="button" id="modelslink"></button><button type="button" id="usagelink"></button><button type="button" id="directlink"></button></div></div></div>
 </aside>
@@ -1125,8 +1146,12 @@ const effortLabel = (e) => t(`effort.${e}`) || e;
 function applyStaticI18n() {
   document.documentElement.lang = lang;
   $("#newtasklbl").textContent = t("side.newTask");
-  $("#searchlbl").textContent = t("side.searchChats");
-  $("#searchkbd").textContent = isMac ? "⌘K" : "Ctrl+K";
+  $("#side-search-in").placeholder = t("search.placeholder");
+  $("#side-search-in").setAttribute("aria-label", t("search.placeholder"));
+  $("#side-search-clr").title = t("search.clear");
+  $("#side-search-clr").setAttribute("aria-label", t("search.clear"));
+  $("#searchbtn").textContent = isMac ? "⌘K" : "Ctrl+K";
+  $("#searchbtn").title = t("pal.aria");
   if (!$("#limitslbl").dataset.live) $("#limitslbl").textContent = t("side.planLimits");
   $("#sidemorelbl").textContent = t("side.more");
   $("#settingslink").textContent = t("side.settings");
@@ -1707,10 +1732,112 @@ function openMoveFolderMenu(anchor, c) {
   });
 }
 
+function renderMatchedText(text, matches = [], hlClass = "srch-hl") {
+  const s = String(text || "");
+  if (!matches || !matches.length) return [s];
+  const out = [];
+  let pos = 0;
+  for (const [rawA, rawB] of matches) {
+    const a = Math.max(pos, Math.min(s.length, Number(rawA) || 0));
+    const b = Math.max(a, Math.min(s.length, Number(rawB) || 0));
+    if (a > pos) out.push(s.slice(pos, a));
+    if (b > a) out.push(h("mark", { class: hlClass }, s.slice(a, b)));
+    pos = b;
+  }
+  if (pos < s.length) out.push(s.slice(pos));
+  return out;
+}
+
+let sideSearchQuery = "", sideSearchData = null, sideSearchLoading = false, sideSearchError = "", sideSearchTimer = null, sideSearchSeq = 0;
+function clearSideSearch() {
+  clearTimeout(sideSearchTimer);
+  sideSearchSeq++;
+  sideSearchQuery = "";
+  sideSearchData = null;
+  sideSearchLoading = false;
+  sideSearchError = "";
+  const inp = $("#side-search-in");
+  if (inp) inp.value = "";
+  const clr = $("#side-search-clr");
+  if (clr) clr.hidden = true;
+  delete drawn.side;
+  renderSide();
+}
+function runSideSearch(raw) {
+  sideSearchQuery = raw;
+  const q = raw.trim();
+  const clr = $("#side-search-clr");
+  if (clr) clr.hidden = !raw.length;
+  clearTimeout(sideSearchTimer);
+  if (!q) {
+    sideSearchSeq++;
+    sideSearchData = null;
+    sideSearchLoading = false;
+    sideSearchError = "";
+    delete drawn.side;
+    renderSide();
+    return;
+  }
+  const seq = ++sideSearchSeq;
+  sideSearchLoading = true;
+  sideSearchError = "";
+  delete drawn.side;
+  renderSide();
+  sideSearchTimer = setTimeout(async () => {
+    try {
+      const data = await api(`search?q=${encodeURIComponent(q)}&limit=20`);
+      if (seq !== sideSearchSeq) return;
+      sideSearchData = data;
+      sideSearchLoading = false;
+      delete drawn.side;
+      renderSide();
+    } catch (e) {
+      if (seq !== sideSearchSeq) return;
+      sideSearchLoading = false;
+      sideSearchError = e?.message || t("search.failed");
+      delete drawn.side;
+      renderSide();
+    }
+  }, 160);
+}
+
 const openProjectGroups = new Set();
 function renderSide() {
   const rev = (c) => S.jobs.filter((j) => j.parent === c.id && j.write && j.status === "done" && (j.files || []).length).length;
-  const ago = (tm) => { const m = Math.round((Date.now() - new Date(tm)) / 60000); return m < 1 ? t("side.ago.now") : m < 60 ? t("side.ago.m", { n: m }) : m < 1440 ? t("side.ago.h", { n: Math.round(m / 60) }) : t("side.ago.d", { n: Math.round(m / 1440) }); };
+  const ago = (tm) => { if (!tm) return ""; const m = Math.round((Date.now() - new Date(tm)) / 60000); return m < 1 ? t("side.ago.now") : m < 60 ? t("side.ago.m", { n: m }) : m < 1440 ? t("side.ago.h", { n: Math.round(m / 60) }) : t("side.ago.d", { n: Math.round(m / 1440) }); };
+  const activeSearch = sideSearchQuery.trim();
+  if (activeSearch) {
+    if (!changed("side", ["search", chatId, lang, activeSearch, sideSearchLoading, sideSearchError, sideSearchData])) return;
+    const list = [];
+    if (sideSearchLoading) {
+      list.push(h("div", { class: "srch-meta" }, t("search.searching")));
+    } else if (sideSearchError) {
+      list.push(h("div", { class: "srch-meta" }, sideSearchError));
+    } else {
+      const results = sideSearchData?.results || [];
+      list.push(h("div", { class: "srch-meta" }, tp("search.resultsCount", results.length)));
+      if (!results.length) {
+        list.push(h("div", { class: "label" }, t("search.empty")));
+      } else {
+        for (const r of results) {
+          list.push(h("button", {
+            type: "button",
+            class: "srch-item" + (r.chatId === chatId ? " on" : ""),
+            onclick: () => { openChat(r.chatId, { scrollToTurn: r.turn, scrollKind: r.kind }); document.body.classList.remove("side-open"); },
+          },
+            h("div", { class: "srch-top" },
+              h("span", { class: "srch-title" }, ...renderMatchedText(r.title, r.titleMatches)),
+              h("span", { class: "srch-kind" }, t(`search.kind.${r.kind}`)),
+              r.timestamp ? h("span", { class: "srch-when" }, ago(r.timestamp)) : null),
+            r.kind !== "title" && r.snippet
+              ? h("div", { class: "srch-snip" }, ...renderMatchedText(r.snippet, r.matches))
+              : null));
+        }
+      }
+    }
+    set($("#chats"), list);
+    return;
+  }
   const fs = folderState();
   if (!changed("side", [
     chatId,
@@ -2403,7 +2530,24 @@ function renderTop() {
   document.title = (busy ? "● " : nrev ? `(${nrev}) ` : "") + "tokenwise studio";
 }
 
-let chatGen = 0, chatBusy = false; // one request at a time; results for a chat that was reopened or switched are dropped
+let chatGen = 0, chatBusy = false, pendingScrollTarget = null; // one request at a time; results for a chat that was reopened or switched are dropped
+function scrollToTurnTarget(target) {
+  if (!target || target.turn == null) return false;
+  const tb = turns[target.turn];
+  if (!tb) return false;
+  const el = target.kind === "user"
+    ? tb.user
+    : target.kind === "reply"
+      ? (tb.replies.firstElementChild || tb.replies || tb.el)
+      : tb.el;
+  if (!el || !el.isConnected) return false;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.remove("search-flash");
+  void el.offsetWidth;
+  el.classList.add("search-flash");
+  setTimeout(() => el.classList.remove("search-flash"), 1900);
+  return true;
+}
 async function pollChat() {
   if (!chatId || chatBusy) return;
   const gen = chatGen, id = chatId, from = chatFrom; chatBusy = true;
@@ -2413,10 +2557,14 @@ async function pollChat() {
   if (gen !== chatGen) return;
   r.items.forEach(addItem); chatFrom = r.next;
   renderTurnChrome();
-  if (r.items.length) {
+  if (pendingScrollTarget) {
+    const target = pendingScrollTarget;
+    pendingScrollTarget = null;
+    requestAnimationFrame(() => scrollToTurnTarget(target));
+  } else if (r.items.length) {
     if (atBottom || r.items.some((i) => i.kind === "user")) sc.scrollTop = sc.scrollHeight; else $("#jump").hidden = false;
-    if (ws.open && ws.tab === "chat") loadWsChatFiles(false);
   }
+  if (r.items.length && ws.open && ws.tab === "chat") loadWsChatFiles(false);
 }
 
 async function switchProjectView(project, targetChat = "") {
@@ -2435,10 +2583,16 @@ async function switchProjectView(project, targetChat = "") {
 }
 async function openRecentProjectChat(c) { return switchProjectView(c.project, c.id); }
 
-function openChat(id) {
+function openChat(id, opts = {}) {
   if (sending) return;
+  if (opts?.scrollToTurn != null && id === chatId && turns[opts.scrollToTurn]) {
+    scrollToTurnTarget({ turn: opts.scrollToTurn, kind: opts.scrollKind || null });
+    return;
+  }
   clearAttachments();
-  chatId = id; chatFrom = 0; turns = []; chatGen++; chatBusy = false; set($("#col")); for (const k in drawn) delete drawn[k];
+  chatId = id; chatFrom = 0; turns = []; chatGen++; chatBusy = false;
+  pendingScrollTarget = opts?.scrollToTurn != null ? { turn: opts.scrollToTurn, kind: opts.scrollKind || null } : null;
+  set($("#col")); for (const k in drawn) delete drawn[k];
   resetWsChatFiles(id);
   renderSide(); renderTop(); renderBanner(); syncHomeFocus(); pollChat();
 }
@@ -5432,11 +5586,13 @@ $("#jump").onclick = () => { const sc = $("#scroll"); sc.scrollTo({ top: sc.scro
 $("#scroll").addEventListener("scroll", () => { const sc = $("#scroll"); if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 60) $("#jump").hidden = true; });
 // ---------- command palette & shortcuts sheet ----------
 let palOpen = false, palQuery = "", palSel = 0, palLastFocus = null;
+let palSearchQuery = "", palSearchResults = [], palSearchLoading = false, palSearchTimer = null, palSearchSeq = 0;
 let keysOpen = false, keysLastFocus = null;
 
 const palGroupLabel = (g) => ({
   actions: t("pal.grp.actions"),
   chats: t("pal.grp.chats"),
+  messages: t("pal.grp.messages"),
   folders: t("pal.grp.folders"),
   files: t("pal.grp.files"),
 }[g] || g);
@@ -5444,6 +5600,9 @@ const palGroupLabel = (g) => ({
 const palBadgeLabel = (k) => ({
   action: t("pal.badge.action"),
   chat: t("pal.badge.chat"),
+  title: t("search.kind.title"),
+  user: t("search.kind.user"),
+  reply: t("search.kind.reply"),
   folder: t("pal.badge.folder"),
   file: t("pal.badge.file"),
 }[k] || k);
@@ -5592,23 +5751,53 @@ let palVisible = [];
 function renderPalette() {
   const ov = $("#pal-overlay");
   if (!ov || !palOpen) return;
-  const results = filterPaletteItems(palQuery, buildPaletteItems());
+  const localResults = filterPaletteItems(palQuery, buildPaletteItems());
+  const qTrim = palQuery.trim();
+  const msgResults = [];
+  if (qTrim && palSearchQuery === qTrim && palSearchResults.length) {
+    const localChatIds = new Set(localResults.filter((x) => x.item.kind === "chat").map((x) => x.item.id.slice(5)));
+    for (const r of palSearchResults) {
+      if (r.kind === "title" && localChatIds.has(r.chatId)) continue;
+      msgResults.push({
+        item: {
+          id: `msg:${r.chatId}:${r.kind}:${r.turn}`,
+          group: "messages",
+          kind: r.kind,
+          icon: r.kind === "user" ? "›" : r.kind === "reply" ? "✦" : "💬",
+          label: r.title,
+          titleMatches: r.titleMatches || [],
+          snippet: r.snippet || "",
+          matches: r.matches || [],
+          run: () => { openChat(r.chatId, { scrollToTurn: r.turn, scrollKind: r.kind }); document.body.classList.remove("side-open"); },
+        },
+        indices: [],
+        isServerSearch: true,
+      });
+    }
+  }
+  const results = [...localResults, ...msgResults];
   palVisible = results;
   if (palSel >= results.length) palSel = Math.max(0, results.length - 1);
   const list = $("#pal-list");
   if (!list) return;
   if (!results.length) {
-    set(list, h("div", { class: "pal-empty" }, t("pal.empty")));
+    set(list, h("div", { class: "pal-empty" }, palSearchLoading ? t("search.searching") : t("pal.empty")));
     return;
   }
   const nodes = [];
   let lastGrp = null;
-  results.forEach(({ item, indices }, idx) => {
-    if (!palQuery.trim() && item.group !== lastGrp) {
+  results.forEach(({ item, indices, isServerSearch }, idx) => {
+    if ((!qTrim && item.group !== lastGrp) || (isServerSearch && item.group !== lastGrp)) {
       lastGrp = item.group;
       nodes.push(h("div", { class: "pal-grp" }, palGroupLabel(item.group)));
     }
     const keys = item.shortcut ? formatShortcut(item.shortcut, isMac) : [];
+    const labelKids = isServerSearch
+      ? renderMatchedText(item.label, item.titleMatches, "pal-hl")
+      : renderHighlighted(item.label, indices);
+    const subKids = isServerSearch && item.kind !== "title" && item.snippet
+      ? renderMatchedText(item.snippet, item.matches, "pal-hl")
+      : item.sub ? [item.sub] : null;
     const btn = h("button", {
       type: "button",
       class: "pal-it" + (idx === palSel ? " sel" : ""),
@@ -5626,12 +5815,16 @@ function renderPalette() {
     },
       h("span", { class: "pal-ic" }, item.icon || "·"),
       h("span", { class: "pal-tx" },
-        h("span", { class: "pal-lb" }, ...renderHighlighted(item.label, indices)),
-        item.sub ? h("span", { class: "pal-sub" }, item.sub) : null),
+        h("span", { class: "pal-lb" }, ...labelKids),
+        subKids ? h("span", { class: "pal-sub" }, ...subKids) : null),
       h("span", { class: "pal-cat" }, palBadgeLabel(item.kind)),
       keys.length ? h("span", { class: "pal-kbd" }, keys.map((k) => h("kbd", {}, k))) : null);
     nodes.push(btn);
   });
+  if (qTrim && palSearchLoading) {
+    nodes.push(h("div", { class: "pal-grp" }, palGroupLabel("messages")));
+    nodes.push(h("div", { class: "pal-sub", style: "padding:6px 10px" }, t("search.searching")));
+  }
   set(list, nodes);
   list.querySelector(".pal-it.sel")?.scrollIntoView({ block: "nearest" });
 }
@@ -5650,6 +5843,11 @@ function openPalette() {
   palOpen = true;
   palQuery = "";
   palSel = 0;
+  clearTimeout(palSearchTimer);
+  palSearchSeq++;
+  palSearchQuery = "";
+  palSearchResults = [];
+  palSearchLoading = false;
   const ov = $("#pal-overlay");
   ov.hidden = false;
   const inp = h("input", {
@@ -5670,7 +5868,37 @@ function openPalette() {
     list);
   set(ov, box);
   ov.onclick = closePalette;
-  inp.addEventListener("input", () => { palQuery = inp.value; palSel = 0; renderPalette(); });
+  inp.addEventListener("input", () => {
+    palQuery = inp.value;
+    palSel = 0;
+    clearTimeout(palSearchTimer);
+    const q = palQuery.trim();
+    if (!q) {
+      palSearchSeq++;
+      palSearchQuery = "";
+      palSearchResults = [];
+      palSearchLoading = false;
+      renderPalette();
+      return;
+    }
+    const seq = ++palSearchSeq;
+    palSearchLoading = true;
+    palSearchTimer = setTimeout(async () => {
+      try {
+        const res = await api(`search?q=${encodeURIComponent(q)}&limit=10`);
+        if (!palOpen || seq !== palSearchSeq) return;
+        palSearchQuery = q;
+        palSearchResults = res.results || [];
+        palSearchLoading = false;
+        renderPalette();
+      } catch {
+        if (!palOpen || seq !== palSearchSeq) return;
+        palSearchLoading = false;
+        renderPalette();
+      }
+    }, 140);
+    renderPalette();
+  });
   inp.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown") { e.preventDefault(); if (palVisible.length) { palSel = (palSel + 1) % palVisible.length; renderPalette(); } }
     else if (e.key === "ArrowUp") { e.preventDefault(); if (palVisible.length) { palSel = (palSel - 1 + palVisible.length) % palVisible.length; renderPalette(); } }
@@ -5686,6 +5914,8 @@ function openPalette() {
 function closePalette() {
   if (!palOpen) return;
   palOpen = false;
+  clearTimeout(palSearchTimer);
+  palSearchSeq++;
   const ov = $("#pal-overlay");
   if (ov) { ov.hidden = true; set(ov); }
   if (palLastFocus && palLastFocus.isConnected && typeof palLastFocus.focus === "function") palLastFocus.focus();
@@ -5763,6 +5993,15 @@ document.addEventListener("keydown", (e) => {
   if (mod && !e.shiftKey && key === "t") { e.preventDefault(); $("#teambtn")?.click(); return; }
 });
 $("#searchbtn").onclick = openPalette;
+$("#side-search-in").addEventListener("input", (e) => runSideSearch(e.currentTarget.value));
+$("#side-search-in").addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("#side-search-in").value) {
+    e.preventDefault();
+    e.stopPropagation();
+    clearSideSearch();
+  }
+});
+$("#side-search-clr").onclick = () => { clearSideSearch(); $("#side-search-in")?.focus(); };
 $("#send").onclick = send;
 $("#stop").onclick = () => chatId && api(`stop/${chatId}`, {}).then(refresh);
 $("#newtask").onclick = () => newTask();

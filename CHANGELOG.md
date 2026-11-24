@@ -1,7 +1,10 @@
 # Changelog
 
-## 0.10.2
+## 0.10.2 (unreleased)
 
+- Compact orchestrator guide: rewrote `buildGuide` into a short core of absolute rules plus conditional state-only sections (playtest only on Rojo projects with playtest enabled, research only when a research role exists, Free mode notes only in Free mode, budget only when set), cutting typical per-turn prompt size by ~49%.
+- Free/local worker guard rails: `delegate` rejects command, test, build, and install tasks for `free`/`local` workers (suggesting `job_test` or another agent), and free workers (`src/freeagent.js`) cap at 25 tool steps with early stop after 3 identical failing tool calls.
+- Chat search: full-text search across chat titles, user messages, and replies (`GET /api/search?q=`, `src/search.js`) with Turkish (`ı/İ/ş/ğ/ü/ö/ç`) and diacritic-insensitive matching, ranked snippets with highlighted matches, sidebar search box, `⌘K` palette Messages section, and scroll-to-message navigation.
 - Connect models: guided setup and sign-in instructions for Claude, Codex and Gemini, plus optional NVIDIA and Ollama guidance.
 - Add Spanish, German and French interface and macOS welcome translations, including locale-aware dates, plural forms and dictation language selection. Translations were machine-generated and should receive native-speaker review.
 

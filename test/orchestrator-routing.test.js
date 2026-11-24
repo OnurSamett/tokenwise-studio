@@ -20,3 +20,35 @@ test("orchestrator delegates routine work and preserves free mode", () => {
     assert.match(guide, /only free and local workers are allowed/i);
   }
 });
+
+test("buildGuide is compact (>= 40% smaller) and includes optional sections only when active", () => {
+  const typical = buildGuide("ask");
+  assert.ok(typical.length <= 2670, `expected compact guide <= 2670 chars, got ${typical.length}`);
+  assert.match(typical, /Every code change/i);
+  assert.match(typical, /untrusted data/i);
+  assert.match(typical, /Do NOT call job_merge/);
+  assert.match(typical, /Free\/local cannot run commands/i);
+  assert.doesNotMatch(typical, /FREE MODE IS ON/);
+  assert.doesNotMatch(typical, /ROBLOX STUDIO PLAYTEST READY/);
+  assert.doesNotMatch(typical, /TURN TOKEN BUDGET/);
+  assert.doesNotMatch(typical, /NON-GIT PROJECT/);
+  assert.doesNotMatch(typical, /MODEL SHOOTOUT OPTED IN/);
+
+  // Playtest appears ONLY when enabled AND project is a Rojo project
+  const playtestNoRojo = buildGuide("ask", { robloxPlaytest: { enabled: true, rojo: false, studioMcpFound: true } });
+  assert.doesNotMatch(playtestNoRojo, /role="playtest"/);
+  assert.doesNotMatch(playtestNoRojo, /ROBLOX STUDIO PLAYTEST READY/);
+
+  const playtestWithRojo = buildGuide("ask", { robloxPlaytest: { enabled: true, rojo: true, studioMcpFound: true } });
+  assert.match(playtestWithRojo, /ROBLOX STUDIO PLAYTEST READY/);
+  assert.match(playtestWithRojo, /role="playtest"/);
+
+  // Research omitted in Free mode or when research role does not exist
+  assert.doesNotMatch(buildGuide("ask", { freeMode: true }), /role="research"/);
+  assert.doesNotMatch(buildGuide("ask", { research: false }), /role="research"/);
+  assert.doesNotMatch(buildGuide("ask", { team: { roles: { code: { agent: "codex" } } } }), /role="research"/);
+  assert.match(buildGuide("ask"), /role="research"/);
+
+  // Budget only when turnBudget > 0
+  assert.match(buildGuide("ask", { turnBudget: 100_000 }), /TURN TOKEN BUDGET/);
+});
