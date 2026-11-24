@@ -73,3 +73,11 @@ test('release Node selection respects engines, LTS, both architectures and expli
     assert.equal(select('').status, 1);
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
+
+test('Windows build ships no .pdb and embeds no local build path', () => {
+  const s = fs.readFileSync(path.join(root, 'scripts', 'build-windows.sh'), 'utf8');
+  assert.match(s, /-p:DebugType=none/);
+  assert.match(s, /-p:PathMap=\$WORK\/project=\/src/);
+  assert.match(s, /find "\$STAGE" -name '\*\.pdb' -delete/);
+  assert.ok(s.indexOf("-name '*.pdb' -delete") < s.indexOf('zip -qr'), 'pdb removed before zipping');
+});

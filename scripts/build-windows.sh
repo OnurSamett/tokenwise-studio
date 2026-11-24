@@ -40,7 +40,12 @@ node scripts/png-to-ico.mjs "$WORK/logo-256.png" "$WORK/app.ico"
 cp -R windows/TokenwiseStudio "$WORK/project"
 rm -rf "$WORK/project/bin" "$WORK/project/obj"
 cp "$WORK/app.ico" "$WORK/project/app.ico"
-dotnet publish "$WORK/project/TokenwiseStudio.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o "$STAGE"
+# No debug symbols and no local build paths in the shipped binaries (the .pdb and the DLL's debug directory would
+# otherwise carry the absolute path of this checkout).
+dotnet publish "$WORK/project/TokenwiseStudio.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false \
+  -p:DebugType=none -p:DebugSymbols=false -p:Deterministic=true -p:ContinuousIntegrationBuild=true \
+  "-p:PathMap=$WORK/project=/src" -o "$STAGE"
+find "$STAGE" -name '*.pdb' -delete
 cp "$WORK/app.ico" "$STAGE/app.ico"
 cp "$WORK/node-$NODE_RELEASE-win-x64/node.exe" "$STAGE/node/node.exe"
 cp "$WORK/node-$NODE_RELEASE-win-x64/LICENSE" "$STAGE/node/LICENSE"
