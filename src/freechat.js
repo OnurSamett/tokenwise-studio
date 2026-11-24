@@ -46,6 +46,23 @@ export function freeProviders({ providers: providerFilter } = {}) {
 }
 export const freeProvider = () => freeProviders()[0] || null;
 
+// OLLAMA_API_KEY goes only to https:// or to this machine (127.0.0.1, ::1, localhost): over plain http on a LAN anyone
+// on the path could read it. Tailscale addresses (100.64.0.0/10) are deliberately not exempt: the same range is used for
+// ISP carrier-grade NAT, where http is not encrypted. Put a tailnet gateway behind `tailscale serve` to get https.
+export const OLLAMA_KEY_HTTP_REFUSED = "refusing to send OLLAMA_API_KEY over plain http — use https:// or loopback";
+export function ollamaKeyAllowed(url) {
+  let u;
+  try { u = new URL(url); } catch { return false; }
+  if (u.protocol === "https:") return true;
+  if (u.protocol !== "http:") return false;
+  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+}
+/** A base URL for display: no user:password@ part. */
+export function displayUrl(url) {
+  try { const u = new URL(url); u.username = ""; u.password = ""; return u.toString().replace(/\/+$/, ""); } catch { return String(url).replace(/\/\/[^/@]*@/, "//"); }
+}
+
 const picked = new Map();
 const DOWN_TTL_MS = 4 * 60 * 60 * 1000;
 const PROBE_TTL_MS = 60 * 60 * 1000;

@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { chatCompletion, normalizeMessage, forcedModelFor, freeProviders, isDownError, isTimeoutError, pickModels, recordModelHealth, selectReady } from "./freechat.js";
+import { chatCompletion, normalizeMessage, forcedModelFor, freeProviders, isDownError, isTimeoutError, pickModels, recordModelHealth, selectReady, ollamaKeyAllowed, OLLAMA_KEY_HTTP_REFUSED } from "./freechat.js";
 import { createOrchestratorTools, getOrchToolSpecs } from "./mcp.js";
 import { loadSettings } from "./settings.js";
 import { parseFreeModel } from "./workers.js";
@@ -363,6 +363,10 @@ export async function runFreeOrchestrator({
     const localModel = model && model !== "local" && model !== "auto" && model !== "free"
       ? model
       : (process.env.TOKENWISE_LOCAL_MODEL || "gpt-oss:20b");
+    if (process.env.OLLAMA_API_KEY && !ollamaKeyAllowed(base)) {
+      emit({ type: "free.error", status: 0, message: OLLAMA_KEY_HTTP_REFUSED });
+      return { ok: false, exitCode: 2, status: 0, message: OLLAMA_KEY_HTTP_REFUSED };
+    }
     pairs.push([{ name: "ollama", base, key: process.env.OLLAMA_API_KEY || "ollama" }, localModel, true]);
   } else {
     const parsed = parseFreeModel(model === "free" ? "auto" : model);

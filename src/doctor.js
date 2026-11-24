@@ -2,7 +2,7 @@
 import { spawnSync } from "./process.js";
 import { cursorAgentBin } from "./cursor.js";
 import { findAgy, agyModels } from "./antigravity.js";
-import { freeProviders } from "./freechat.js";
+import { freeProviders, ollamaKeyAllowed, displayUrl, OLLAMA_KEY_HTTP_REFUSED } from "./freechat.js";
 import { loadSettings } from "./settings.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -58,8 +58,9 @@ try {
 function remoteLocalCheck(model) {
   const baseRaw = process.env.TOKENWISE_OLLAMA_BASE.replace(/\/+$/, "");
   const base = baseRaw.endsWith("/v1") ? baseRaw : `${baseRaw}/v1`;
-  const shown = baseRaw.replace(/\/v1$/, "");
+  const shown = displayUrl(baseRaw.replace(/\/v1$/, ""));
   const bad = (fix) => ({ installed: true, signedIn: false, model, fix, via: "gateway" });
+  if (process.env.OLLAMA_API_KEY && !ollamaKeyAllowed(base)) return bad(OLLAMA_KEY_HTTP_REFUSED);
   const r = run(process.execPath, ["--input-type=module", "-e", REMOTE_PROBE], 10000, { ...process.env, TW_BASE: base, TW_KEY: process.env.OLLAMA_API_KEY || "" });
   let probe = null;
   try { probe = JSON.parse(r?.out || ""); } catch {}
