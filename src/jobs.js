@@ -232,8 +232,9 @@ function buildFixRoundTask({ task, jobs, prev, matchedFiles, failingOutput }) {
 }
 
 export class Jobs {
-  constructor(repo, { proxyScript = null, playtestDir = null, playtestDiscardGraceMs = 3000 } = {}) {
+  constructor(repo, { proxyScript = null, playtestDir = null, playtestDiscardGraceMs = 3000, origin = "app" } = {}) {
     this.repo = path.resolve(repo);
+    this.origin = origin; // "mcp" when an MCP client (Claude Code, Codex, Gemini) starts the jobs: it reports them itself
     addUntrustedDir(this.repo);
     this.home = path.join(this.repo, ".tokenwise-studio");
     for (const d of ["jobs", "logs", "worktrees"]) fs.mkdirSync(path.join(this.home, d), { recursive: true });
@@ -526,7 +527,8 @@ export class Jobs {
       }
       if (!j.parent && (j.status === "done" || j.status === "failed")) {
         const n = jobNotice(j, write ? j.files.length : undefined);
-        if (n) notify({ ...n, subtitle: path.basename(this.repo), repo: this.repo, key: `job:${id}:${j.status}` });
+        const durationMs = Date.parse(j.finished || "") - Date.parse(j.created || "");
+        if (n) notify({ ...n, subtitle: path.basename(this.repo), repo: this.repo, key: `job:${id}:${j.status}`, durationMs: Number.isFinite(durationMs) ? durationMs : undefined, origin: this.origin });
       }
       res(j);
     }));

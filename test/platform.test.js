@@ -6,7 +6,7 @@ import path from 'node:path';
 import { pathsFor, samePath, withinPath, gitCommonDir, systemProjectPath, platformFeatures } from '../src/platform.js';
 import { rel } from '../src/events.js';
 import { normalizeChatFilePath } from '../src/workspace.js';
-import { notify, pendingBrowserNotices, resetNotifyState } from '../src/notify.js';
+import { notify, pendingBrowserNotices, resetNotifyState, flushNotifications } from '../src/notify.js';
 import { decideAutoUpdate } from '../src/autoupdate.js';
 import { installSource } from '../src/version.js';
 
@@ -52,15 +52,21 @@ test('worker paths render relative Windows worktrees and repository paths', () =
 
 test('non-Mac notifications queue by project, honor settings, and deduplicate', () => {
   resetNotifyState();
-  const deps = { platform: 'win32', settings: { notifications: true }, exec: () => { throw new Error('must not invoke macOS'); } };
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tw-browser-notices-'));
+  let now = 1_700_000_000_000;
+  const deps = { platform: 'win32', home, now: () => now, schedule: false, settings: { notifications: true, notifyFocusDnd: false }, exec: () => { throw new Error('must not invoke macOS'); } };
   assert.equal(notify({ title: 'Done', message: 'Ready', repo: 'C:\\repo', key: 'job:1' }, deps), true);
   assert.equal(notify({ title: 'Again', repo: 'C:\\repo', key: 'job:1' }, deps), false);
-  assert.equal(pendingBrowserNotices('C:\\repo').length, 1);
-  assert.equal(pendingBrowserNotices('C:\\other').length, 0);
+  assert.equal(pendingBrowserNotices('C:\\repo', { home }).length, 0, 'batched, not instant');
+  now += 30_000; flushNotifications(deps);
+  assert.equal(pendingBrowserNotices('C:\\repo', { home }).length, 1);
+  assert.equal(pendingBrowserNotices('C:\\other', { home }).length, 0);
   assert.equal(notify({ title: 'Off' }, { ...deps, settings: { notifications: false } }), false);
   assert.equal(notify({ title: 'Linux' }, { ...deps, platform: 'linux' }), true);
-  assert.equal(pendingBrowserNotices('C:\\repo').length, 2);
+  now += 30_000; flushNotifications({ ...deps, platform: 'linux' });
+  assert.equal(pendingBrowserNotices('C:\\repo', { home }).length, 2);
   resetNotifyState();
+  fs.rmSync(home, { recursive: true, force: true });
 });
 
 test('Windows bundle is recognized and never attempts an npm self-update', () => {

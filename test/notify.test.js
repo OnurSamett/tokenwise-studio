@@ -21,6 +21,7 @@ import {
   nativeNotifier,
   notify,
   resetNotifyState,
+  flushNotifications,
   shouldNotifyLimit,
   recordLimitNotified,
   limitHandoffNotice,
@@ -188,6 +189,8 @@ test("notify() removes osascript fallback: returns false and logs once when no n
     const deps = {
       platform: "darwin",
       native: null,
+      home: fs.mkdtempSync(path.join(os.tmpdir(), "tw-noapp-home-")),
+      schedule: false,
       settings: { notifications: true, language: "en" },
       exec: (...args) => execCalls.push(args),
       log: (msg) => logs.push(msg),
@@ -205,9 +208,11 @@ test("notify() removes osascript fallback: returns false and logs once when no n
 
 test("routine model handoffs stay in chat without duplicate desktop alerts", () => {
   resetNotifyState();
-  const deps = { platform: "linux", settings: { notifications: true } };
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "tw-handoff-home-"));
+  const deps = { platform: "linux", home, schedule: false, settings: { notifications: true, notifyFocusDnd: false } };
   assert.equal(notify({ title: "Switching models", key: "handoff:chat:1" }, deps), false);
   assert.equal(notify({ title: "Turn complete", key: "turn:chat:1" }, deps), true);
+  fs.rmSync(home, { recursive: true, force: true });
   resetNotifyState();
 });
 
@@ -253,13 +258,18 @@ test("limit notification formatting (EN/TR) and deduplication in notified.json a
     const baseDeps = {
       platform: "darwin",
       native: "/Applications/tokenwise studio.app/Contents/MacOS/tokenwise-studio",
-      settings: { notifications: true, language: "en" },
+      settings: { notifications: true, language: "en", notifyFocusDnd: false },
       home: tmpHome,
+      schedule: false,
       exec: (bin, args) => sentCalls.push({ bin, args }),
     };
+    // Notices are batched for COALESCE_MS, then delivered by whichever process flushes first.
+    const flushAt = (t) => flushNotifications({ ...baseDeps, now: t + 60_000 });
 
     // First limit hit sends notification and persists ~/.tokenwise-studio/notified.json
     assert.equal(notifyLimitHandoff({ provider: "claude", resetsAt, subtitle: "Chat 1" }, { ...baseDeps, now }), true);
+    assert.equal(sentCalls.length, 0, "not instant: waits for the coalescing window");
+    flushAt(now);
     assert.equal(sentCalls.length, 1);
     const saved = JSON.parse(fs.readFileSync(notifiedFile(tmpHome), "utf8"));
     assert.equal(saved["limit:claude"].resetsAt, resetsAt);
@@ -267,11 +277,13 @@ test("limit notification formatting (EN/TR) and deduplication in notified.json a
     // Second chat / turn before reset does NOT send another notification (even after resetNotifyState)
     resetNotifyState();
     assert.equal(notifyLimitHandoff({ provider: "claude", resetsAt, subtitle: "Chat 2" }, { ...baseDeps, now: now + 60_000 }), false);
+    flushAt(now + 60_000);
     assert.equal(sentCalls.length, 1);
 
     // After resetsAt passes, notifies once for the new window
     const nextReset = resetsAt + 5 * 3600 * 1000;
     assert.equal(notifyLimitHandoff({ provider: "claude", resetsAt: nextReset, subtitle: "Chat 3" }, { ...baseDeps, now: resetsAt + 1000 }), true);
+    flushAt(resetsAt + 1000);
     assert.equal(sentCalls.length, 2);
 
     // Unknown resetsAt uses 5h window

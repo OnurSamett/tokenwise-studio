@@ -536,6 +536,25 @@
   .envlock { font-size: 11px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; font-weight: 550; letter-spacing: 0; text-transform: none; }
   .shelp { font-size: 12.5px; color: var(--dim); margin: -2px 0 10px; line-height: 1.45; }
   .seg.three { grid-template-columns: repeat(3, 1fr); }
+  .bell { margin-left: auto; position: relative; background: var(--s2); border: 1px solid var(--line); color: var(--muted); border-radius: 9px; padding: 5px 8px; display: inline-flex; align-items: center; flex: none; cursor: pointer; }
+  .bell:hover { color: var(--text); }
+  .bell + .ws-toggle { margin-left: 0; }
+  .bell-count { position: absolute; top: -5px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent, #6366f1); color: #fff; font-size: 10px; font-weight: 650; line-height: 16px; text-align: center; }
+  .pop.bellpop { width: min(360px, calc(100vw - 16px)); max-height: min(70vh, 520px); padding: 0; overflow: hidden; }
+  .bell-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .bell-head b { flex: 1; font-size: 13px; }
+  .bell-head button { background: none; border: 0; color: var(--muted); font-size: 12px; cursor: pointer; padding: 0; }
+  .bell-head button:hover { color: var(--text); }
+  .bell-list { overflow-y: auto; max-height: calc(min(70vh, 520px) - 42px); }
+  .bell-item { padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .bell-item:last-child { border-bottom: 0; }
+  .bell-item.unread { background: color-mix(in srgb, var(--accent, #6366f1) 8%, transparent); }
+  .bell-row { display: flex; gap: 8px; align-items: baseline; }
+  .bell-row b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bell-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .bell-msg { color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+  .bell-sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .bell-empty { padding: 18px 12px; color: var(--muted); font-size: 12.5px; text-align: center; }
   .seg button:disabled { opacity: .55; cursor: default; }
   .sgrid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .sfield { display: grid; gap: 5px; }
@@ -1028,6 +1047,7 @@
     <button class="menu-btn" id="menubtn" aria-label="Menu">☰</button>
     <h1><button class="projbtn" id="project" title="Switch project"><span id="projname">project</span><span class="car">▾</span></button></h1>
     <span class="sub" id="chattitle"></span>
+    <button class="bell" id="bellbtn" type="button" aria-label="Notifications" aria-haspopup="dialog"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="bell-count" id="bellcount" hidden></span></button>
     <button class="ws-toggle" id="wstoggle" title="Toggle workspace panel (⌘\)" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg><span id="wstogglelbl">Workspace</span></button>
   </div>
   <div class="workbanner" id="workbanner" hidden></div>
@@ -2401,7 +2421,63 @@ function renderTop() {
   const busy = S.chats.some((x) => x.status === "running") || S.jobs.some((j) => j.status === "running");
   const nrev = S.jobs.filter((j) => j.write && j.status === "done" && (j.files || []).length).length;
   document.title = (busy ? "● " : nrev ? `(${nrev}) ` : "") + "tokenwise studio";
+  renderBell();
 }
+
+// ---------- notification center (bell) ----------
+// Every notification event lands here, including the ones kept off the desktop (focused window, quiet level, MCP).
+function renderBell() {
+  const btn = $("#bellbtn"), count = $("#bellcount");
+  if (!btn || !count) return;
+  const n = S?.notices?.unread || 0;
+  count.textContent = n > 99 ? "99+" : String(n);
+  count.hidden = !n;
+  btn.title = t("bell.title");
+  btn.setAttribute("aria-label", n ? `${t("bell.title")} (${n})` : t("bell.title"));
+}
+function bellItem(n) {
+  const when = new Date(n.at).toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit" });
+  const status = n.status && n.status !== "sent" ? " · " + t(`bell.status.${n.status}`) : "";
+  return h("div", { class: "bell-item" + (n.read ? "" : " unread") },
+    h("div", { class: "bell-row" }, h("b", { title: n.title }, n.title), h("span", { class: "bell-meta" }, when + status)),
+    n.message ? h("div", { class: "bell-msg" }, n.message) : null,
+    n.subtitle ? h("div", { class: "bell-sub" }, n.subtitle) : null);
+}
+async function markBellRead() {
+  try { S.notices = await api("notices", { action: "read" }); } catch {}
+  renderBell();
+}
+function openBell() {
+  const items = S?.notices?.items || [];
+  const pop = popover($("#bellbtn"),
+    h("div", { class: "bell-head" }, h("b", {}, t("bell.title")),
+      h("button", { type: "button", onclick: () => { closePop(); markBellRead(); } }, t("bell.markRead")),
+      h("button", { type: "button", onclick: () => { closePop(); openDrawer("settings"); } }, t("bell.settings"))),
+    items.length ? h("div", { class: "bell-list" }, items.map(bellItem)) : h("div", { class: "bell-empty" }, t("bell.empty")));
+  pop.classList.add("bellpop");
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", t("bell.title"));
+  const r = $("#bellbtn").getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8)) + "px";
+  if (S?.notices?.unread) markBellRead();
+}
+$("#bellbtn").addEventListener("click", (e) => { e.stopPropagation(); if (popEl?.classList.contains("bellpop")) closePop(); else openBell(); });
+
+// The server keeps desktop notifications quiet for a project whose window is focused (Do not disturb).
+let focusSent = null, focusSentAt = 0;
+function reportWindowFocus(force = false, override = null) {
+  const focused = override ?? (document.visibilityState === "visible" && document.hasFocus());
+  const now = Date.now();
+  if (!force && focused === focusSent && (!focused || now - focusSentAt < 60000)) return;
+  focusSent = focused; focusSentAt = now;
+  fetch("/api/focus", { method: "POST", keepalive: true, headers: { "content-type": "application/json", "x-tokenwise": "1" }, body: JSON.stringify({ focused }) }).catch(() => {});
+}
+window.addEventListener("focus", () => reportWindowFocus());
+window.addEventListener("blur", () => reportWindowFocus());
+document.addEventListener("visibilitychange", () => reportWindowFocus());
+window.addEventListener("pagehide", () => reportWindowFocus(true, false));
+setInterval(() => reportWindowFocus(), 30000);
+reportWindowFocus(true);
 
 let chatGen = 0, chatBusy = false; // one request at a time; results for a chat that was reopened or switched are dropped
 async function pollChat() {
@@ -3544,9 +3620,15 @@ async function renderDrawer(full) {
           backupInfo ? h("p", { class: "sline", style: "margin-top:10px" }, t("settings.backupSavedTo", { chats: tp("settings.backupChats", backupInfo.chats), images: tp("settings.backupImages", backupInfo.uploads) }), h("code", {}, backupInfo.path)) : null),
         h("div", { class: "section" },
           h("div", { class: "shead" }, h("h4", {}, t("settings.notifUpdates"))),
-          h("label", { class: "toggle" + (lock.notifications ? " disabled" : "") },
-            h("input", { type: "checkbox", checked: s.notifications ? true : null, disabled: !!lock.notifications, onchange: (e) => applyPatch({ notifications: e.target.checked }) }),
-            h("span", {}, [t("settings.desktopNotif"), envBadge("notifications")], h("small", {}, t("settings.desktopNotifDesc")))),
+          h("p", { class: "shelp" }, h("b", {}, t("settings.notifLevel")), envBadge("notifications"), " ", t("settings.notifLevelHelp")),
+          h("div", { class: "seg three" }, [["important", "settings.notifLevel.important", "settings.notifLevel.importantDesc"], ["all", "settings.notifLevel.all", "settings.notifLevel.allDesc"], ["off", "settings.notifLevel.off", "settings.notifLevel.offDesc"]].map(([val, tk, dk]) =>
+            h("button", { class: (s.notifications === false ? "off" : (s.notifyLevel || "important")) === val ? "on" : "", disabled: lock.notifications && (val === "off") !== !s.notifications ? true : null, onclick: async () => {
+              if (val !== "off" && !isMac && "Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch {} }
+              applyPatch(lock.notifications ? { notifyLevel: val } : { notifyLevel: val, notifications: val !== "off" });
+            } }, h("b", {}, t(tk)), h("span", {}, t(dk))))),
+          h("label", { class: "toggle" + (s.notifications === false ? " disabled" : ""), style: "margin-top:10px" },
+            h("input", { type: "checkbox", checked: s.notifyFocusDnd !== false ? true : null, disabled: s.notifications === false ? true : null, onchange: (e) => applyPatch({ notifyFocusDnd: e.target.checked }) }),
+            h("span", {}, t("settings.notifDnd"), h("small", {}, t("settings.notifDndDesc")))),
           h("label", { class: "toggle" + (lock.updateCheck ? " disabled" : "") },
             h("input", { type: "checkbox", checked: s.updateCheck ? true : null, disabled: !!lock.updateCheck, onchange: (e) => applyPatch({ updateCheck: e.target.checked }) }),
             h("span", {}, [t("settings.checkUpdates"), envBadge("updateCheck")], h("small", {}, t("settings.checkUpdatesDesc")))),

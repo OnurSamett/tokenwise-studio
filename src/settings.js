@@ -12,6 +12,7 @@ export const EFFORTS = ["low", "medium", "high", "xhigh"];
 export const ORCH_FALLBACK_MODES = ["auto", "ask", "off"];
 export const LANGUAGES = ["auto", "en", "tr", "es", "de", "fr"];
 export const AUTO_UPDATE_MODES = ["auto", "notify", "off"];
+export const NOTIFY_LEVELS = ["important", "all", "off"];
 export const PLAYTEST_MODELS = ["sonnet", "haiku", "opus", "codex:sol", "codex:terra"];
 
 export const DEFAULTS = Object.freeze({
@@ -30,6 +31,8 @@ export const DEFAULTS = Object.freeze({
   allowFree: false,
   fastMode: false,
   notifications: true,
+  notifyLevel: "important", // important: long turns (>= 60 s), reviews, failures, limits; all: every finished worker/turn; off: in-app list only
+  notifyFocusDnd: true, // no desktop alert for a project whose window is focused (it still shows in the bell list)
   updateCheck: true,
   autoUpdate: "notify", // notify: only tell (default); auto: install verified GitHub releases in the background; off: neither
   autoUpdateMigrated: false, // internal: true once the user has chosen an update mode themselves (a stored "auto" from before v0.10.1 is read as "notify" until then)
@@ -77,6 +80,8 @@ export const VALIDATORS = {
   allowFree: (v) => typeof v === "boolean" || "allowFree must be true or false",
   fastMode: (v) => typeof v === "boolean" || "fastMode must be true or false",
   notifications: (v) => typeof v === "boolean" || "notifications must be true or false",
+  notifyLevel: (v) => NOTIFY_LEVELS.includes(v) || `notifyLevel must be one of ${NOTIFY_LEVELS.join(", ")}`,
+  notifyFocusDnd: (v) => typeof v === "boolean" || "notifyFocusDnd must be true or false",
   autoUpdate: (v) => AUTO_UPDATE_MODES.includes(v) || `autoUpdate must be one of ${AUTO_UPDATE_MODES.join(", ")}`,
   autoUpdateMigrated: (v) => typeof v === "boolean" || "autoUpdateMigrated must be true or false",
   autoUpdateNoteSeen: (v) => typeof v === "boolean" || "autoUpdateNoteSeen must be true or false",
