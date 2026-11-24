@@ -1,12 +1,13 @@
 // Regression tests: job records in <repo>/.tokenwise-studio/ can be shipped by a cloned repository and are untrusted.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { Jobs, validJobRecord } from "../src/jobs.js";
+import { pruneExpiredShootouts, SHOOTOUT_TTL_MS } from "../src/shootout.js";
 
 const tmp = (p = "tw-untrusted-") => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), p)));
 
@@ -52,6 +53,8 @@ function plant(jobs, job) {
   fs.writeFileSync(jobs.file(job.id, "job"), JSON.stringify(job, null, 2));
   return job;
 }
+
+const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 test("Undo of a planted job refuses to write or delete through a symlinked directory (H-1 PoC)", () => {
   withTempHome(() => {
@@ -123,3 +126,84 @@ test("job records with bad ids or unsafe paths are ignored on load", () => {
   });
 });
 
+test("opening a project with planted shootout/discard data deletes no user branch and kills no PID (M-1 PoC)", async () => {
+  await withTempHome(async () => {
+    const { base, repo, g } = evilRepo();
+    const sleeper = spawn("sleep", ["30"], { stdio: "ignore", detached: true });
+    try {
+      g("branch", "feature-y");
+      g("checkout", "-q", "-b", "feature-x"); fs.writeFileSync(path.join(repo, "w.txt"), "unmerged\n"); g("add", "w.txt"); g("commit", "-qm", "wip"); g("checkout", "-q", "-");
+      // A user's own linked worktree that a planted job points at.
+      const userWt = path.join(base, "user-wt");
+      g("worktree", "add", "-q", "-b", "feature-z", userWt, "HEAD");
+      fs.writeFileSync(path.join(userWt, "dirty.txt"), "uncommitted\n");
+
+      const jobs = new Jobs(repo);
+      const old = new Date(Date.now() - SHOOTOUT_TTL_MS - 3600e3).toISOString();
+      plant(jobs, { id: "20260101000000-aaaa", created: old, status: "done", write: true, shootout: "so-evil", branch: "feature-y", cwd: path.join(jobs.home, "worktrees", "20260101000000-aaaa") });
+      plant(jobs, { id: "20260101000000-bbbb", created: old, status: "running", write: true, shootout: "so-evil", branch: "feature-x", cwd: userWt, pid: sleeper.pid });
+      pruneExpiredShootouts(jobs);
+      jobs.discard("20260101000000-bbbb", { userRequested: true });
+
+      const branches = g("branch", "--format=%(refname:short)").split("\n");
+      for (const b of ["feature-x", "feature-y", "feature-z"]) assert.ok(branches.includes(b), `branch ${b} kept`);
+      assert.equal(fs.readFileSync(path.join(userWt, "dirty.txt"), "utf8"), "uncommitted\n", "user worktree untouched");
+      await new Promise((r) => setTimeout(r, 100));
+      assert.ok(pidAlive(sleeper.pid), "PID from the job file was not signalled");
+    } finally {
+      try { process.kill(sleeper.pid, "SIGKILL"); } catch {}
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+});
+
+test("a PID recorded with its process identity by a Studio process is still stopped on discard", { skip: process.platform === "win32" }, async () => {
+  await withTempHome(async () => {
+    const { base, repo } = evilRepo();
+    const sleeper = spawn("sleep", ["30"], { stdio: "ignore", detached: true });
+    try {
+      const pidId = execFileSync("ps", ["-o", "lstart=,comm=", "-p", String(sleeper.pid)], { encoding: "utf8" }).trim();
+      const jobs = new Jobs(repo);
+      plant(jobs, { id: "20260101000000-cccc", created: "2026-01-01T00:00:00.000Z", status: "running", write: false, pid: sleeper.pid, pidId: "Thu Jan  1 00:00:00 1970 sleep" });
+      jobs.discard("20260101000000-cccc");
+      await new Promise((r) => setTimeout(r, 100));
+      assert.ok(pidAlive(sleeper.pid), "identity mismatch: not signalled");
+      plant(jobs, { id: "20260101000000-dddd", created: "2026-01-01T00:00:00.000Z", status: "running", write: false, pid: sleeper.pid, pidId });
+      jobs.discard("20260101000000-dddd");
+      const end = Date.now() + 2000;
+      while (pidAlive(sleeper.pid) && Date.now() < end) await new Promise((r) => setTimeout(r, 20));
+      assert.equal(pidAlive(sleeper.pid), false);
+    } finally {
+      try { process.kill(sleeper.pid, "SIGKILL"); } catch {}
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+});
+
+test("cleanup removes Studio's own worktree and branch; -d keeps an unmerged branch unless the user discarded", () => {
+  withTempHome(() => {
+    const { base, repo, g } = evilRepo();
+    try {
+      const jobs = new Jobs(repo);
+      const mk = (id) => {
+        const cwd = path.join(jobs.home, "worktrees", id), branch = `tokenwise/${id}`;
+        g("worktree", "add", "-q", "-b", branch, cwd, "HEAD");
+        return plant(jobs, { id, created: "2026-01-01T00:00:00.000Z", status: "done", write: true, cwd, branch });
+      };
+      const a = mk("20260101000000-a1a1");
+      jobs.discard(a.id);
+      assert.equal(fs.existsSync(a.cwd), false);
+      assert.ok(!g("branch").includes(a.branch), "merged branch deleted with -d");
+
+      const b = mk("20260101000000-b2b2");
+      execFileSync("git", ["-C", b.cwd, "-c", "user.name=T", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "worker commit"]);
+      jobs.discard(b.id);
+      assert.ok(g("branch").includes(b.branch), "unmerged branch kept without explicit user discard");
+
+      const c = mk("20260101000000-c3c3");
+      execFileSync("git", ["-C", c.cwd, "-c", "user.name=T", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "worker commit"]);
+      jobs.discard(c.id, { userRequested: true });
+      assert.ok(!g("branch").includes(c.branch), "user discard force-deletes");
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
+});

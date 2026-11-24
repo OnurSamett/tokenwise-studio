@@ -111,7 +111,7 @@ echo '{"type":"result","result":"Implemented by fake gemini","stats":{"input_tok
 
 function makeCandidateJob(repo, jobs, id, agent, model, shootoutId, editFn, extra = {}) {
   const wt = path.join(jobs.home, "worktrees", id);
-  const br = `tw/${id}`;
+  const br = `tokenwise/${id}`;
   const head = execFileSync("git", ["-C", repo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   execFileSync("git", ["-C", repo, "worktree", "add", "-q", "-b", br, wt, "HEAD"], { stdio: "pipe" });
   editFn(wt);

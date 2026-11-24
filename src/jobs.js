@@ -44,6 +44,14 @@ export function validJobRecord(j) {
   return true;
 }
 
+/** "lstart command" of a live process (or null): recorded at spawn so a PID from a job file is only signalled if it is still that same process. */
+function procIdentity(pid) {
+  if (process.platform === "win32" || !(pid > 0)) return null;
+  try {
+    return execFileSync("ps", ["-o", "lstart=,comm=", "-p", String(pid)], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
+  } catch { return null; }
+}
+
 function killGroup(target, sig) {
   const pid = typeof target === "number" ? target : target?.pid;
   if (!(pid > 0)) return;
@@ -430,7 +438,7 @@ export class Jobs {
     if (attachments.length && !["codex", "claude"].includes(spec.agent)) write1("meta", `${spec.agent}: images are not supported; continuing without images`);
 
     const child = spawn(cmd, args, { cwd, env: { ...process.env, ...(extraEnv || {}) }, stdio: ["ignore", "pipe", "pipe"], detached: true });
-    this.save({ ...job, pid: child.pid });
+    this.save({ ...job, pid: child.pid, pidId: procIdentity(child.pid) });
     let lastText = null, cursorText = "", freeError = null, buf = { out: "", err: "" };
     const onData = (stream) => (chunk) => {
       if (spec.agent === "cursor" && stream === "out") cursorText = (cursorText + chunk.toString()).slice(-200000);
@@ -468,7 +476,7 @@ export class Jobs {
       if (playtestCfg?.mcpConfigFile) { try { fs.unlinkSync(playtestCfg.mcpConfigFile); } catch {} }
       if (playtestCfg?.codexHome) { try { fs.rmSync(playtestCfg.codexHome, { recursive: true, force: true }); } catch {} }
       const j = this.get(id);
-      j.exitCode = code; j.finished = new Date().toISOString(); j.pid = null;
+      j.exitCode = code; j.finished = new Date().toISOString(); j.pid = null; j.pidId = null;
       if (j.status === "discarded") {
         Object.assign(j, this.usage(id));
         if (j.role === "playtest" && playtestCfg) {
@@ -736,7 +744,8 @@ export class Jobs {
     return { ok: true, id, stopFlag: flag };
   }
 
-  discard(id) {
+  /** Discard a job. `userRequested` (an explicit Discard click) allows force-deleting its branch. */
+  discard(id, { userRequested = false } = {}) {
     const j = this.get(id);
     const r = this.running.get(id);
     const signalGroup = () => {
@@ -747,7 +756,9 @@ export class Jobs {
           if (r.child.exitCode === null) killGroup(r.child, "SIGKILL");
         }, 5000);
         r.discardTimer.unref?.();
-      } else if (j.pid) {
+      } else if (j.pid && j.pidId && procIdentity(j.pid) === j.pidId) {
+        // Started by another Studio process: only signal it if the PID is still the process recorded at spawn
+        // (same start time and command), never a bare PID from the job file.
         killGroup(j.pid, "SIGTERM");
       }
     };
@@ -768,13 +779,38 @@ export class Jobs {
     } else if (r || (j.status === "running" && j.pid)) {
       signalGroup();
     }
-    if (j.write) this.cleanup(j);
+    if (j.write) this.cleanup(j, { force: userRequested });
     j.status = "discarded"; return this.save(j);
   }
 
-  cleanup(j) {
+  /**
+   * Remove a write job's worktree and branch. Job files are untrusted, so this only touches what Studio itself
+   * created for the job: a worktree registered in `git worktree list` at <home>/worktrees/<id>[-rb-...], and its
+   * branch only if it is tokenwise/<that same name> and checked out in that worktree. The branch is deleted with
+   * -d (refused if unmerged) unless `force` (the user explicitly discarded the job).
+   */
+  cleanup(j, { force = false } = {}) {
+    if (!j || typeof j.id !== "string" || !JOB_ID_RE.test(j.id)) return;
     stopTests(this, j.id);
-    try { git(this.repo, "worktree", "remove", "--force", j.cwd); } catch {}
-    try { git(this.repo, "branch", "-D", j.branch); } catch {}
+    this.removeWorktree(j.id, j.cwd, j.branch, { force });
+  }
+
+  removeWorktree(id, cwd, branch, { force = false } = {}) {
+    if (typeof cwd !== "string" || path.dirname(cwd) !== path.join(this.home, "worktrees")) return;
+    const name = path.basename(cwd);
+    if (!JOB_ID_RE.test(name) || !(name === id || name.startsWith(`${id}-rb-`))) return;
+    const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+    let registered = null;
+    try {
+      for (const block of git(this.repo, "worktree", "list", "--porcelain").split("\n\n")) {
+        const wt = block.match(/^worktree (.+)$/m)?.[1];
+        if (wt && real(wt) === real(cwd)) registered = block.match(/^branch (.+)$/m)?.[1] || "";
+      }
+    } catch {}
+    if (registered === null) return; // not one of this repo's worktrees (or already removed): touch nothing
+    try { git(this.repo, "worktree", "remove", "--force", "--", cwd); } catch {}
+    if (branch !== `tokenwise/${name}` || registered !== `refs/heads/${branch}`) return;
+    try { git(this.repo, "check-ref-format", "--branch", branch); } catch { return; }
+    try { git(this.repo, "branch", force ? "-D" : "-d", "--end-of-options", branch); } catch {}
   }
 }

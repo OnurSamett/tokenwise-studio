@@ -567,7 +567,7 @@ export const handler = async (req, res) => {
         return exitSoon(res);
       }
       if (what === "undo") return send(res, 200, jobs.undo(id));
-      if (what === "discard") return send(res, 200, jobs.discard(id));
+      if (what === "discard") return send(res, 200, jobs.discard(id, { userRequested: true }));
       if (what === "rename") return send(res, 200, chats.rename(id, b.title));
       if (what === "compact") return send(res, 200, await chats.compact(id));
       if (what === "delete") return send(res, 200, chats.remove(id));

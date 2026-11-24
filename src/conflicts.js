@@ -373,12 +373,8 @@ export function rebaseJob(jobs, id, { artifacts = [], onImages } = {}) {
   }
   const saved = jobs.save(j);
 
-  if (oldCwd && oldCwd !== newCwd) {
-    try { git(jobs.repo, ["worktree", "remove", "--force", oldCwd]); } catch {}
-  }
-  if (oldBranch && oldBranch !== newBranch) {
-    try { git(jobs.repo, ["branch", "-D", oldBranch]); } catch {}
-  }
+  // The old worktree/branch come from the job file: only remove them if Studio created them for this job.
+  if (oldCwd && oldCwd !== newCwd) jobs.removeWorktree(j.id, oldCwd, oldBranch, { force: true });
 
   return {
     ok: true,
