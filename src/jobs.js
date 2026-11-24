@@ -30,6 +30,20 @@ const ARTIFACTS = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", "**/n
   "**/.mypy_cache/**", "**/.ruff_cache/**", "**/target/debug/**", "**/.next/**", "**/coverage/**"];
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
+// Job records are read from <repo>/.tokenwise-studio/jobs/, which a cloned repository can ship: validate them.
+const JOB_ID_RE = /^[A-Za-z0-9_-]+$/;
+const isRelPath = (p) => typeof p === "string" && !!p && !path.isAbsolute(p) && !/^[A-Za-z]:|^[\\/]/.test(p) && !p.replace(/\\/g, "/").split("/").includes("..");
+const optString = (v) => v === undefined || v === null || typeof v === "string";
+/** Basic shape check for a job record loaded from disk. Records that fail it are ignored. */
+export function validJobRecord(j) {
+  if (!j || typeof j !== "object" || Array.isArray(j)) return false;
+  if (typeof j.id !== "string" || !JOB_ID_RE.test(j.id) || typeof j.created !== "string") return false;
+  if (!optString(j.cwd) || !optString(j.branch) || !optString(j.applySnapshot) || !optString(j.status)) return false;
+  if (j.pid !== undefined && j.pid !== null && !(Number.isInteger(j.pid) && j.pid > 0)) return false;
+  for (const k of ["applied", "files"]) if (j[k] !== undefined && j[k] !== null && !(Array.isArray(j[k]) && j[k].every(isRelPath))) return false;
+  return true;
+}
+
 function killGroup(target, sig) {
   const pid = typeof target === "number" ? target : target?.pid;
   if (!(pid > 0)) return;
@@ -263,12 +277,16 @@ export class Jobs {
 
   save(job) { fs.writeFileSync(this.file(job.id, "job"), JSON.stringify(job, null, 2)); this._listCache.delete(`${job.id}.json`); return job; }
   get(id) {
+    if (typeof id !== "string" || !JOB_ID_RE.test(id)) throw new Error(`unknown job ${id}`);
     const f = this.file(id, "job");
     if (!fs.existsSync(f)) throw new Error(`unknown job ${id}`);
-    return JSON.parse(fs.readFileSync(f, "utf8"));
+    const j = JSON.parse(fs.readFileSync(f, "utf8"));
+    if (!validJobRecord(j) || j.id !== id) throw new Error(`invalid job record ${id}`);
+    return j;
   }
   list() {
     return listJsonCached(path.join(this.home, "jobs"), /^[\w-]+\.json$/, this._listCache)
+      .filter(validJobRecord)
       .sort((a, b) => a.created.localeCompare(b.created));
   }
 

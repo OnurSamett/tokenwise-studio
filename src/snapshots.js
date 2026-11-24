@@ -47,6 +47,31 @@ function safeRepoPath(repo, rel) {
   return abs;
 }
 
+/**
+ * Resolve a repo-relative path for writing during Undo. Job records live in <repo>/.tokenwise-studio/ and a
+ * cloned repository can ship them, so the path is untrusted: every parent directory must be a real directory
+ * (not a symlink) whose realpath stays inside the real project root. The final entry itself may be a symlink;
+ * callers unlink it instead of writing through it.
+ */
+function confinedRepoPath(repo, rel) {
+  const abs = safeRepoPath(repo, rel);
+  const root = fs.realpathSync(repo);
+  const parts = path.relative(path.resolve(repo), abs).split(path.sep);
+  let cur = root;
+  for (const part of parts.slice(0, -1)) {
+    cur = path.join(cur, part);
+    let st;
+    try { st = fs.lstatSync(cur); } catch (e) {
+      if (e?.code === "ENOENT") break; // created later by mkdir, under a checked real directory
+      throw e;
+    }
+    if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`unsafe repo path (goes through a symlink or non-directory): ${rel}`);
+    const real = fs.realpathSync(cur);
+    if (real !== root && !real.startsWith(root + path.sep)) throw new Error(`path escapes repo: ${rel}`);
+  }
+  return path.join(root, ...parts);
+}
+
 function lsTreeEntry(repo, treeish, rel) {
   let out = "";
   try {
@@ -221,6 +246,14 @@ export function restoreSnapshot(repo, job) {
   if (job.status !== "merged") throw new Error(`job is ${job.status}; only applied jobs can be undone`);
   const ref = job.applySnapshot;
   if (!ref) throw new Error("no pre-apply snapshot recorded for this job");
+  // Only refs Studio itself writes (createSnapshot), never a raw SHA or other revision from the job file.
+  if (typeof ref !== "string" || !/^refs\/tokenwise\/pre-apply\/[A-Za-z0-9._-]+$/.test(ref) || ref.includes("..")) {
+    throw new Error("invalid pre-apply snapshot ref");
+  }
+  const touched = Array.isArray(job.applied) ? job.applied : [];
+  // Validate every target before anything is written: refuse the whole undo if one path is unsafe.
+  const targets = new Map();
+  for (const rel of touched) targets.set(rel, confinedRepoPath(repo, rel));
 
   let worktreeCommit;
   try {
@@ -234,7 +267,6 @@ export function restoreSnapshot(repo, job) {
   if (!parents.length) throw new Error("pre-apply snapshot is missing index state");
   const indexCommit = parents[parents.length - 1];
 
-  const touched = Array.isArray(job.applied) ? job.applied : [];
   if (job.applyPost && touched.length) {
     const current = captureFileStates(repo, touched);
     const modified = touched.filter((p) => JSON.stringify(current[p]) !== JSON.stringify(job.applyPost[p]));
@@ -244,10 +276,11 @@ export function restoreSnapshot(repo, job) {
   }
 
   for (const rel of touched) {
-    const abs = safeRepoPath(repo, rel);
+    const abs = targets.get(rel);
     const wt = lsTreeEntry(repo, worktreeCommit, rel);
     if (wt) {
       fs.mkdirSync(path.dirname(abs), { recursive: true });
+      confinedRepoPath(repo, rel); // re-check after mkdir: still no symlinked parent
       try { if (fs.lstatSync(abs).isSymbolicLink()) fs.unlinkSync(abs); } catch {}
       if (wt.mode === "120000") {
         const target = gitBuf(repo, ["cat-file", "blob", wt.sha]).toString("utf8");
@@ -260,7 +293,7 @@ export function restoreSnapshot(repo, job) {
       }
     } else {
       fs.rmSync(abs, { force: true });
-      removeEmptyParents(repo, abs);
+      removeEmptyParents(fs.realpathSync(repo), abs);
     }
 
     const idx = lsTreeEntry(repo, indexCommit, rel);
