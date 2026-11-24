@@ -8,6 +8,7 @@ import path from "node:path";
 
 import { Jobs, validJobRecord } from "../src/jobs.js";
 import { command, resolve, workerEnv } from "../src/workers.js";
+import { codexCommand } from "../src/orchestrator.js";
 import { pruneExpiredShootouts, SHOOTOUT_TTL_MS } from "../src/shootout.js";
 
 const tmp = (p = "tw-untrusted-") => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), p)));
@@ -278,4 +279,16 @@ test("workers get an allow-listed environment: only their own provider's keys (L
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+test("a planted codex thread id cannot become a flag of `codex exec resume` (L-2)", () => {
+  const base = { repo: "/tmp/r", chatId: "c1", model: "sol", effort: "low", prompt: "hi" };
+  const ok = codexCommand({ ...base, thread: "0199a213-81c0-7800-8aa1-bbab2a035a53" }).args;
+  assert.deepEqual(ok.slice(0, 2), ["exec", "resume"]);
+  assert.deepEqual(ok.slice(-3), ["--", "0199a213-81c0-7800-8aa1-bbab2a035a53", "hi"]);
+  for (const bad of ["--dangerously-bypass-approvals-and-sandbox", "-c", "x", "a b c d e f g h", "../../etc/passwd", 42]) {
+    const a = codexCommand({ ...base, thread: bad }).args;
+    assert.ok(!a.includes("resume"), `invalid thread ${bad} starts a new session`);
+    assert.deepEqual(a.slice(-2), ["--", "hi"]);
+  }
 });

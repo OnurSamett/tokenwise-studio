@@ -311,7 +311,13 @@ export function shouldHandOff({ agent, code, isError, lines = [], stopped, fallb
   return RATE_LIMIT.test(lines.slice(-50).join("\n"));
 }
 
-function codexCommand({ repo, chatId, model, effort, thread, prompt, images = [], fastMode = false }) {
+// Session/thread ids come from chat files in <repo>/.tokenwise-studio/chats/, which a repository can ship: never let one
+// become a CLI flag. Anything else starts a new session.
+export const SESSION_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
+const validSessionId = (v) => (typeof v === "string" && SESSION_ID_RE.test(v) && !v.startsWith("-") ? v : null);
+
+export function codexCommand({ repo, chatId, model, effort, thread, prompt, images = [], fastMode = false }) {
+  thread = validSessionId(thread);
   const slug = resolve({ agent: "codex", model, effort }).model;
   const cfg = [
     `model_reasoning_effort=${JSON.stringify(effort)}`,
@@ -323,7 +329,7 @@ function codexCommand({ repo, chatId, model, effort, thread, prompt, images = []
   ].flatMap((v) => ["-c", v]);
   // `exec resume` does not accept -C/--sandbox: cwd comes from spawn, the sandbox from config.
   const args = thread
-    ? ["exec", "resume", thread, "--json", "--skip-git-repo-check", "-m", slug, "-c", 'sandbox_mode="read-only"', ...cfg, ...images.flatMap((p) => ["-i", p]), "--", prompt]
+    ? ["exec", "resume", "--json", "--skip-git-repo-check", "-m", slug, "-c", 'sandbox_mode="read-only"', ...cfg, ...images.flatMap((p) => ["-i", p]), "--", thread, prompt]
     : ["exec", "--json", "--skip-git-repo-check", "-C", repo, "--sandbox", "read-only", "-m", slug, ...cfg, ...images.flatMap((p) => ["-i", p]), "--", prompt];
   return { cmd: "codex", args };
 }
@@ -704,7 +710,7 @@ export class Chats {
           "--append-system-prompt", guide,
           ...(settings.fastMode ? ["--settings", JSON.stringify({ fastMode: true })] : []),
           "--allowedTools", ...allowedTools];
-        if (c.sessionId) args.push("--resume", c.sessionId);
+        if (validSessionId(c.sessionId)) args.push("--resume", c.sessionId);
       }
       const child = this.spawn(cmd, args, { cwd: this.jobs.repo, env: childEnv, stdio: ["ignore", "pipe", "pipe"] });
       this.running.set(id, child);
