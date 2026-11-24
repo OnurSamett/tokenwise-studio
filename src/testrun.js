@@ -102,7 +102,7 @@ export function confirmTestConfig(home) {
 }
 
 const SECRET_ENV = new Set(["NVIDIA_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "TOKENWISE_FREE_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GH_TOKEN", "GITHUB_TOKEN", "NPM_TOKEN"]);
-const SECRET_ENV_RE = /(_API_KEY|_SECRET_KEY|_SECRET_ACCESS_KEY|_SECRET|_AUTH_TOKEN|_ACCESS_TOKEN)$/i;
+const SECRET_ENV_RE = /(_API_KEY|_SECRET_KEY|_SECRET_ACCESS_KEY|_SECRET|_TOKEN)$/i;
 /** Environment for test/lint/check children: nothing that looks like an API key or token. Project code is not trusted with them. */
 export function testEnv(env = process.env) {
   const out = {};
@@ -128,6 +128,19 @@ export function testCommandFor(home, dir) {
   if (o) { const [cmd, ...args] = splitCommand(o); return { cmd, args, label: o, source: isTestConfigConfirmed(home) ? "settings" : "project", unconfirmed: !isTestConfigConfirmed(home) }; }
   return detectTestCommand(dir);
 }
+
+/**
+ * The test command the USER set for this project in Settings > Tests (confirmed, stored outside the repo), or null.
+ * Never detected from files, because a worker can edit package.json, pytest.ini, Cargo.toml... in its worktree.
+ */
+export function trustedTestCommand(home) {
+  const o = loadTestOverride(home);
+  if (!o || !isTestConfigConfirmed(home)) return null;
+  const [cmd, ...args] = splitCommand(o);
+  return { cmd, args, label: o, source: "settings" };
+}
+// These run a script defined in the worktree's package.json, which the worker may have edited.
+const SCRIPT_RUNNERS = new Set(["npm", "pnpm", "yarn", "bun"]);
 
 /** Optional lint command configured in Settings > Tests. */
 export function lintCommandFor(home) {
@@ -241,7 +254,7 @@ function executeSteps(steps, cwd, logFile, { timeoutMs = TEST_TIMEOUT_MS, onChil
  * Start the test run for a finished write job. Returns { job, done } where done resolves with the final job.
  * Throws when the job is not a finished write job, has no test command, or is already being tested.
  */
-export function runTests(jobs, id, { timeoutMs = TEST_TIMEOUT_MS, confirm = false } = {}) {
+export function runTests(jobs, id, { timeoutMs = TEST_TIMEOUT_MS, confirm = false, trustedOnly = false } = {}) {
   const j = jobs.get(id);
   if (!j.write) throw new Error("tests run in the worktree of a write job; this job is read-only");
   if (j.status !== "done") throw new Error(`job is ${j.status}; tests can run once it is done and before it is applied`);
@@ -252,8 +265,13 @@ export function runTests(jobs, id, { timeoutMs = TEST_TIMEOUT_MS, confirm = fals
   const root = fs.realpathSync(wt);
   if (path.dirname(cwd) !== root || path.basename(cwd) !== j.id) throw new Error("the job's folder is not one of its worktrees");
   if (testRunning(j)) throw new Error("tests are already running for this job");
-  const spec = testCommandFor(jobs.home, cwd);
+  // trustedOnly (orchestrator job_test, automatic runs): nothing the worker could have authored runs without the user.
+  const spec = trustedOnly ? trustedTestCommand(jobs.home) : testCommandFor(jobs.home, cwd);
+  if (!spec && trustedOnly) throw new Error("no trusted test command for this project: the user must set one in Settings > Tests (commands are never detected from the worker's files)");
   if (!spec) throw new Error("no test command found (no npm test script, pytest, go.mod or Cargo.toml). Set one in Settings.");
+  if (trustedOnly && SCRIPT_RUNNERS.has(path.basename(spec.cmd).replace(/\.(cmd|exe)$/i, "")) && (j.files || []).includes("package.json")) {
+    throw new Error("this job changed package.json, which defines the test command; the user must review the change and run the tests from the UI");
+  }
   if (spec.unconfirmed) { if (!confirm) throw needsConfirmation(jobs.home, [spec]); confirmTestConfig(jobs.home); }
 
   const started = Date.now();

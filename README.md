@@ -295,7 +295,7 @@ When a write worker produces png, jpg, webp or gif files (for example Codex imag
 <details>
 <summary><b>Tests</b></summary>
 
-Studio detects a test command per project: an `npm test` script in `package.json` (the npm placeholder is ignored), else `pytest -q` (`pytest.ini` or pytest in `pyproject.toml`), `go test ./...` (`go.mod`), `cargo test` (`Cargo.toml`). Override it under **Settings, Tests**. For a finished write job, the review and the job drawer have a **Run tests** button: it runs the command in that job's worktree (argument array, no shell, 10 minute timeout, one run per job), streams the output, and shows pass or fail with the end of the output. Network is not restricted, and a worktree has only committed files (dependencies are not installed), so a project whose tests need `node_modules` may need a setup command in its test script. Turn on **Run tests before Apply** to run them automatically when a write job finishes; the result shows as a chip on the job card. The orchestrator can call `job_test` to check its workers' work (allowed in every permission mode, since it changes no project files).
+Studio detects a test command per project: an `npm test` script in `package.json` (the npm placeholder is ignored), else `pytest -q` (`pytest.ini` or pytest in `pyproject.toml`), `go test ./...` (`go.mod`), `cargo test` (`Cargo.toml`). Override it under **Settings, Tests**. For a finished write job, the review and the job drawer have a **Run tests** button: it runs the command in that job's worktree (argument array, no shell, 10 minute timeout, one run per job), streams the output, and shows pass or fail with the end of the output. Network is not restricted, and a worktree has only committed files (dependencies are not installed), so a project whose tests need `node_modules` may need a setup command in its test script. Turn on **Run tests before Apply** to run them automatically when a write job finishes; the result shows as a chip on the job card. Automatic runs and the orchestrator's `job_test` only use a command you set under **Settings, Tests** (never one detected from the worker's files, which the worker can edit), with API keys and tokens removed from the environment; if the command is a package script (`npm`, `pnpm`, `yarn`, `bun`) and the job changed `package.json`, they refuse and you run the tests yourself after reviewing the change.
 
 </details>
 
@@ -365,7 +365,7 @@ Free NVIDIA models can be picked individually in the Team panel.
 | `job_status` | List jobs or inspect one |
 | `job_diff` | Full diff of a write job |
 | `job_merge` | Apply a job's diff to your working tree (staged, not committed) and clean up |
-| `job_test` | Run the project's tests in a finished write job's worktree; returns pass/fail and the end of the output |
+| `job_test` | Run the test command you set in Settings in a finished write job's worktree; returns pass/fail and the end of the output |
 | `job_discard` | Stop and throw away a job |
 
 </details>

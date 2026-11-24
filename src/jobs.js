@@ -548,7 +548,7 @@ export class Jobs {
       this.running.delete(id);
       // Optional: run the project's tests in the worktree as soon as a write job finishes (setting "Run tests before Apply").
       if (write && j.status === "done" && j.files.length) {
-        try { if (loadSettings().runTestsBeforeApply) runTests(this, id).done.catch(() => {}); } catch {}
+        try { if (loadSettings().runTestsBeforeApply) runTests(this, id, { trustedOnly: true }).done.catch(() => {}); } catch {}
       }
       if (!j.parent && (j.status === "done" || j.status === "failed")) {
         const n = jobNotice(j, write ? j.files.length : undefined);

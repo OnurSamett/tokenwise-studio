@@ -200,7 +200,7 @@ export function createOrchestratorTools({ jobs: jobsOpt = null, parent: parentOp
           tail: (testTail(jobs, id, 3000) || job.test?.tail || "").slice(-3000),
         });
         if (!testRunning(j) && !(j.test && j.test.status !== "running" && !rerun)) {
-          j = (await runTests(jobs, id).done) || jobs.get(id);
+          j = (await runTests(jobs, id, { trustedOnly: true }).done) || jobs.get(id);
         } else if (testRunning(j)) {
           const end = Date.now() + (timeout_s ?? 660) * 1000;
           while (testRunning(j) && Date.now() < end) {
@@ -320,7 +320,7 @@ export const ORCH_TOOL_SPECS = [
     type: "function",
     function: {
       name: "job_test",
-      description: "Run the project's test command inside a finished write job's worktree.",
+      description: "Run the test command the user set for this project in Settings inside a finished write job's worktree. Fails if the user has not set one.",
       parameters: {
         type: "object",
         properties: {
@@ -447,8 +447,9 @@ server.registerTool("job_diff", {
 server.registerTool("job_test", {
   title: "Run a write job's tests",
   description: [
-    "Run the project's test command (npm test, pytest -q, go test ./..., cargo test, or the one set in Settings) inside a finished write job's worktree and return pass/fail plus the tail of the output.",
-    "Use it to check a worker's changes before telling the user they are ready. It does not change any files in the project. Without rerun, an existing result (for example from the automatic run) is returned as is; a run in progress is waited for.",
+    "Run the test command the user set for this project in Settings > Tests inside a finished write job's worktree and return pass/fail plus the tail of the output.",
+    "It only runs that user-set command (never one detected from the worker's files); if none is set it returns an error, so tell the user to set one or to run the tests from the UI. Do not ask workers to add or change test scripts for it.",
+    "It does not change any files in the project. Without rerun, an existing result (for example from a run the user started) is returned as is; a run in progress is waited for.",
   ].join(" "),
   inputSchema: { id: z.string(), rerun: z.boolean().optional(), timeout_s: z.number().int().min(10).max(700).optional() },
 }, (a) => defaultTools.handlers.job_test(a));

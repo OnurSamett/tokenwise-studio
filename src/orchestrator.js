@@ -110,7 +110,7 @@ ${researchRule}${playtestRule}
 - Forward attached images with delegate images: [repo-relative upload paths] to Codex or Claude workers that need them. Other workers continue without images.
 - Workers cannot see this chat: every task must name files, expected behaviour and the done-condition.
 - Review every diff: flag unrelated changes, generated files, caches or build output.
-- job_test(id) runs the project's tests in a finished write job's worktree and returns pass/fail plus the end of the output. Use it to check a worker's changes before you call them ready; if it fails, say so (or delegate a fix).
+- job_test(id) runs the test command the user set in Settings in a finished write job's worktree and returns pass/fail plus the end of the output. If no command is set it returns an error: tell the user instead of working around it. If it fails, say so (or delegate a fix).
 - Image generation (icons, banners, OG images, illustrations, game art) goes to codex, the images role: delegate with write=true and name the output file path (png/jpg/webp). The picture is part of the job's diff and shows inline in the chat as a thumbnail, so do not paste file paths for the user to open; the user applies it like any other file.
 - You cannot edit files yourself: every code change, however small, goes to a worker (write=true) ${reviewTarget}. For a tiny change pick the cheapest fitting worker (codex terra low, or claude haiku low). Delegate routine reading and investigations too; keep your own reads minimal for review.
 - Never use astra or max effort unless the user asks.

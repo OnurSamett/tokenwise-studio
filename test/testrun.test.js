@@ -213,3 +213,43 @@ test("checkAfterApply setting defaults to false, validates, and triggers combine
     fs.rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("job_test never runs a test script the worker wrote in its worktree (H-2 PoC)", async () => {
+  const { jobs, id, cwd } = fixture();
+  const { createOrchestratorTools } = await import("../src/mcp.js");
+  const marker = path.join(tmp(), "job_test_rce");
+  // A prompt-injected worker edits package.json "test" inside its own worktree.
+  fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ name: "x", scripts: { test: `node -e "require('fs').writeFileSync(${JSON.stringify(marker)}, 'x')"` } }));
+  jobs.save({ ...jobs.get(id), files: ["package.json"] });
+  const tools = createOrchestratorTools({ jobs, permissionMode: "ask" });
+
+  // No user-set command: job_test refuses instead of detecting `npm test` from the worktree.
+  let r = await tools.callTool("job_test", { id });
+  assert.match(r.text, /no trusted test command/);
+  assert.equal(fs.existsSync(marker), false);
+
+  // A user-set `npm test` would still read the worker's package.json: refused while the job changed it.
+  saveTestOverride(jobs.home, "npm test");
+  r = await tools.callTool("job_test", { id });
+  assert.match(r.text, /changed package\.json/);
+  assert.equal(fs.existsSync(marker), false);
+
+  // A user-set command that does not go through package.json runs, in the worktree, without API keys or tokens.
+  const prev = { k: process.env.OPENAI_API_KEY, t: process.env.HF_TOKEN };
+  process.env.OPENAI_API_KEY = "sk-secret"; process.env.HF_TOKEN = "hf-secret";
+  try {
+    saveTestOverride(jobs.home, `node -e "process.exit(process.env.OPENAI_API_KEY || process.env.HF_TOKEN || !process.cwd().endsWith('${id}') ? 1 : 0)"`);
+    r = await tools.callTool("job_test", { id, rerun: true });
+    assert.equal(JSON.parse(r.text).status, "pass", r.text);
+    assert.equal(fs.existsSync(marker), false);
+  } finally {
+    if (prev.k === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = prev.k;
+    if (prev.t === undefined) delete process.env.HF_TOKEN; else process.env.HF_TOKEN = prev.t;
+  }
+});
+
+test("trustedOnly ignores an unconfirmed project-shipped test.json", () => {
+  const { jobs, id } = fixture();
+  fs.writeFileSync(path.join(jobs.home, "test.json"), JSON.stringify({ command: "node -e 0" }));
+  assert.throws(() => runTests(jobs, id, { trustedOnly: true }), /no trusted test command/);
+});
