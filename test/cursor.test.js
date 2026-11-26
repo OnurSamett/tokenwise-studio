@@ -62,3 +62,17 @@ test('single hosted model disables provider and model fallback', () => {
   assert.equal(strict.env.TOKENWISE_GROQ_MODEL, 'openai/gpt-oss-120b');
   assert.equal(strict.env.TOKENWISE_FREE_STRICT_MODEL, '1');
 });
+
+test('Cursor model discovery keeps every Grok variant and passes exact IDs to the CLI', async () => {
+  const { parseCursorModels } = await import('../src/cursor.js');
+  const output = ['Available models', 'auto - Auto', 'cursor-grok-4.5-high - Grok 4.5', 'grok-4.7-low - Grok 4.7 Low', 'grok-4.7-medium-fast - Grok 4.7 Medium Fast', 'grok-4.7-low - duplicate', 'bad output'].join('\n');
+  const models = parseCursorModels(output);
+  assert.deepEqual(models, ['auto', 'cursor-grok-4.5-high', 'grok-4.7-low', 'grok-4.7-medium-fast']);
+  for (const model of models.slice(1)) {
+    const spec = resolve({ agent: 'cursor', model });
+    const run = command(spec, { task: 'Review', cwd: '/tmp/project', write: false });
+    assert.equal(run.args[run.args.indexOf('--model') + 1], model);
+  }
+  const many = Array.from({ length: 150 }, (_, i) => `model-${i} - Model ${i}`).join('\n');
+  assert.equal(parseCursorModels(many).length, 150);
+});

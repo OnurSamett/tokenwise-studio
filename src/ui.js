@@ -22,7 +22,7 @@ import { loadTeam, saveTeam, teamOptions, geminiFamilies } from "./team.js";
 import { CATALOG } from "./models.js";
 import { MENTIONS } from "../ui/mentions.js";
 import { listFreeModels } from "./freechat.js";
-import { cursorModels, cursorModelsSnapshot } from "./cursor.js";
+import { cursorModels, cursorModelsSnapshot, cursorModelsAsync } from "./cursor.js";
 import { checkFreeConnection } from "./provider-health.js";
 import { loadSettings, saveSettings, settingsInfo } from "./settings.js";
 import { exportChat, backupAll } from "./export.js";
@@ -417,6 +417,7 @@ export const handler = async (req, res) => {
         const free = await Promise.race([listFreeModels(), new Promise((resolve) => setTimeout(() => resolve([]), 500))]);
         return send(res, 200, { team: loadTeam(jobs.home), options: teamOptions(free, { home: jobs.home, orchestratorAgent, doctorData: process.env.NODE_TEST_CONTEXT ? null : doctorSnapshot(), skipModelProbe: !process.env.NODE_TEST_CONTEXT }) });
       }
+      if (what === "cursor-models") return send(res, 200, { models: await cursorModelsAsync() });
       if (what === "models") {
         const d = process.env.NODE_TEST_CONTEXT ? doctor() : doctorSnapshot(), ok = (a) => !!(d[a] && d[a].installed && d[a].signedIn);
         const free = await Promise.race([listFreeModels(), new Promise((resolve) => setTimeout(() => resolve([]), 500))]);

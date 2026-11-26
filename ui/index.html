@@ -3339,6 +3339,10 @@ async function renderDrawer(full) {
     let data; try { [data] = await Promise.all([api(`team?orch=${encodeURIComponent($("#omodel").value)}`), loadCatalog()]); } catch (e) { if (drawer === opening) { toast(e.message, true); closeDrawer(); } return; }
     if (drawer !== opening) return;
     const opt = data.options, tm = JSON.parse(JSON.stringify(data.team));
+    // Keep saved Cursor models visible even while discovery is pending or unavailable.
+    for (const role of Object.values(tm.roles || {})) {
+      if (role.agent === "cursor" && role.model && !opt.agents.cursor.models.includes(role.model)) opt.agents.cursor.models.push(role.model);
+    }
     const RL = { code: t("team.role.code"), quick: t("team.role.quick"), review: t("team.role.review"), research: t("team.role.research"), images: t("team.role.images") };
     const SUB = { code: t("team.role.codeSub"), quick: t("team.role.quickSub"), review: t("team.role.reviewSub"), research: t("team.role.researchSub"), images: t("team.role.imagesSub") };
     const body = h("div", { class: "d-body" });
@@ -3398,6 +3402,11 @@ async function renderDrawer(full) {
             h("span", {}, "Codex Astra", h("small", {}, t("team.astraDesc"))))));
     };
     draw();
+    api("cursor-models").then((data) => {
+      if (drawer !== opening) return;
+      opt.agents.cursor.models = [...new Set(["auto", ...opt.agents.cursor.models, ...(data.models || [])])];
+      draw();
+    }).catch(() => {});
     set(d,
       h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("team.title")), h("div", { class: "meta" }, t("team.meta", { project: path0() }), h("button", { class: "linkbtn", onclick: () => openDrawer("models") }, t("side.modelGuide")), " · ", h("button", { class: "linkbtn", onclick: () => openDrawer("shootout") }, t("team.compareBtn")))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
       body,
@@ -3865,7 +3874,7 @@ async function renderDrawer(full) {
       addGroup("Claude", [["claude", "sonnet", "Claude Sonnet"], ["claude", "haiku", "Claude Haiku"], ["claude", "opus", "Claude Opus"]]),
       addGroup("Codex", [["codex", "sol", "Codex Sol"], ["codex", "terra", "Codex Terra"], ["codex", "luna", "Codex Luna"]]),
       addGroup("Gemini", [["gemini", "hydrogen", "Gemini Hydrogen"], ["gemini", "argon", "Gemini Argon"]]),
-      addGroup("Cursor", [["cursor", "auto", "Cursor · Auto"], ["cursor", "grok-4.7-medium", "Grok 4.7 · Medium"]]));
+      addGroup("Cursor", [["cursor", "auto", "Cursor · Auto"]]));
     const otherModels = h("select", { name: "otherModel", "aria-label": t("direct.otherModels") }, h("option", { value: "" }, "—"));
     directSelect.onchange = () => { otherModels.value = ""; const custom = f.querySelector("[name=modelOverride]"); if (custom) custom.value = ""; };
     const directExtra = h("details", { class: "direct-extra" }, h("summary", {}, t("direct.advanced")),
@@ -3885,10 +3894,16 @@ async function renderDrawer(full) {
     api("models").then((data) => {
       if (drawer !== directOpening) return;
       const available = data.available || {};
-      const cursor = (available.cursor || []).filter((id) => !/^grok/i.test(id) && !/^cursor-grok/i.test(id)).map((id) => ["cursor", id, `Cursor · ${id}`]);
       const free = (available.free || []).map((id) => ["free", id, id]);
-      if (cursor.length) otherModels.appendChild(addGroup("Cursor · Models", cursor));
       if (free.length) directSelect.appendChild(addGroup("Hosted API · NVIDIA / Groq", free));
+    }).catch(() => {});
+    api("cursor-models").then((data) => {
+      if (drawer !== directOpening) return;
+      const ids = [...new Set(data.models || [])].filter((id) => id !== "auto");
+      const grok = ids.filter((id) => /^(?:cursor-)?grok(?:[-.:/]|$)/i.test(id));
+      const other = ids.filter((id) => !grok.includes(id));
+      if (grok.length) directSelect.appendChild(addGroup("Cursor · Grok", grok.map((id) => ["cursor", id, id])));
+      if (other.length) otherModels.appendChild(addGroup("Cursor · Models", other.map((id) => ["cursor", id, `Cursor · ${id}`])));
     }).catch(() => {});
     set(d,
       h("div", { class: "d-head" }, h("div", {}, h("h3", {}, t("direct.title")), h("div", { class: "meta" }, t("direct.meta"))), h("button", { class: "x", onclick: closeDrawer, "aria-label": t("drawer.close") }, "×")),
