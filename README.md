@@ -2,8 +2,8 @@
 
 <h1 align="center">tokenwise studio</h1>
 
-<p align="center"><b>Make your AI limits last longer.</b><br>
-Free, no account, runs on your machine. Bring Claude, Codex, Gemini, Cursor and other workers together. Review every diff before it lands.</p>
+<p align="center"><b>An open-source workspace for AI coding agent orchestration.</b><br>
+Coordinate Claude, Codex, Gemini, Cursor and other workers, review changes in isolated Git worktrees, and track usage. Runs on your machine with no tokenwise account.</p>
 
 <p align="center">
   <a href="https://github.com/OnurSamett/tokenwise-studio/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/OnurSamett/tokenwise-studio?style=social"></a>
@@ -13,7 +13,7 @@ Free, no account, runs on your machine. Bring Claude, Codex, Gemini, Cursor and 
   <a href="CHANGELOG.md"><img alt="Version" src="https://img.shields.io/github/package-json/v/OnurSamett/tokenwise-studio?label=version"></a>
 </p>
 
-<p align="center"><a href="https://tokenwise.site">Website</a> · <a href="#install">Install</a> · <a href="#how-it-works">How it works</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="https://github.com/OnurSamett/tokenwise">tokenwise skill</a></p>
+<p align="center"><a href="https://tokenwise.site/studio/">Website</a> · <a href="#install">Install</a> · <a href="#how-it-works">How it works</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="https://github.com/OnurSamett/tokenwise">tokenwise skill</a></p>
 
 <p align="center"><b>Getting started:</b> <a href="docs/getting-started.md">English</a> · <a href="docs/baslangic.md">Türkçe</a> · <a href="docs/setup-es.md">Español</a> · <a href="docs/setup-de.md">Deutsch</a> · <a href="docs/setup-fr.md">Français</a></p>
 
