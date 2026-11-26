@@ -25,6 +25,10 @@ You describe a task in one chat. The selected orchestrator can plan it and hand 
 
 [tokenwise](https://github.com/OnurSamett/tokenwise) is the companion skill for Claude Code, Codex CLI and Gemini CLI. It runs inside your existing agent in the terminal or a supported IDE integration, helping choose a model and effort. tokenwise studio is a separate desktop and local web app with worker orchestration, worktrees and visual review. Use either independently or use both together; IDE support depends on the agent integration.
 
+![Studio workflow: task, agents, isolated Git worktrees, review and apply, with usage and limits](assets/studio-workflow.png)
+
+*Illustrative workflow. Available agents depend on your setup; writing workers use isolated Git worktrees.*
+
 ## Usage and cost
 
 Routing work can reduce token usage or estimated cost, but results depend on the task, model, provider and delegation overhead. Compare the same task and quality checks against a baseline. The Usage screen reports available token counts and API-equivalent estimates; subscription billing is separate. See the companion skill’s [benchmark method](https://github.com/OnurSamett/tokenwise/blob/main/bench/README.md).
